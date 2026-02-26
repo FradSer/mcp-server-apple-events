@@ -42,8 +42,8 @@ src/
 │   ├── prompts.ts        # Prompt template definitions and builders
 │   └── promptAbstractions.ts
 ├── tools/
-│   ├── definitions.ts    # MCP tool schemas (uses dependentSchemas for conditional validation)
-│   ├── index.ts          # Tool routing: normalizes names, dispatches to handlers
+│   ├── definitions.ts    # MCP tool schemas
+│   ├── index.ts          # Tool routing: dispatches to handlers
 │   └── handlers/         # Domain-specific CRUD handlers
 │       ├── reminderHandlers.ts
 │       ├── subtaskHandlers.ts
@@ -52,7 +52,6 @@ src/
 │       └── shared.ts     # Common formatting utilities (extractAndValidateArgs, formatListMarkdown)
 ├── utils/
 │   ├── cliExecutor.ts    # Executes Swift binary, parses JSON responses
-│   ├── permissionPrompt.ts  # AppleScript-based permission prompting
 │   ├── reminderRepository.ts  # Repository pattern for reminders
 │   ├── calendarRepository.ts  # Repository pattern for calendar events
 │   ├── binaryValidator.ts     # Secure binary path validation
@@ -69,27 +68,15 @@ src/
 
 1. MCP client sends tool call via stdio
 2. `handlers.ts` routes to `handleToolCall()` in `tools/index.ts`
-3. Tool router normalizes name (supports both `reminders_tasks` and `reminders.tasks`)
-4. Action router dispatches to specific handler (e.g., `handleCreateReminder`)
-5. Handler validates input via Zod schema, calls repository
-6. Repository calls `executeCli()` which:
-   - Proactively triggers AppleScript permission prompt on first access
-   - Runs Swift binary for EventKit operations
-   - Retries with AppleScript fallback on permission errors
-7. Swift binary performs EventKit operations, returns JSON
-8. Response flows back through layers as `CallToolResult`
+3. Tool router dispatches to specific handler (e.g., `handleCreateReminder`)
+4. Handler validates input via Zod schema, calls repository
+5. Repository calls `executeCli()` which runs Swift binary for EventKit operations
+6. Swift binary performs EventKit operations, returns JSON
+7. Response flows back through layers as `CallToolResult`
 
 ### Permission Handling
 
-The server implements a two-layer permission prompt strategy:
-
-1. **Proactive AppleScript Prompt**: On the first access to reminders or calendars, `executeCli()` proactively triggers an AppleScript command to ensure the permission dialog appears, even in non-interactive contexts where the Swift binary's native EventKit permission request may be suppressed.
-
-2. **Swift Binary Permission Check**: The Swift binary checks authorization status and requests permissions through EventKit's native API.
-
-3. **Retry with AppleScript Fallback**: If a permission error occurs after the Swift binary runs, the system retries once with the AppleScript fallback.
-
-This approach ensures permission dialogs appear reliably for MCP clients running in non-interactive contexts (e.g., Claude Code, terminal-based tools).
+The Swift binary handles all permission requests through EventKit's native API. If the app lacks permissions, the Swift CLI will return an error message indicating the permission issue, which is then surfaced to the user.
 
 ### Swift Bridge
 
@@ -109,7 +96,7 @@ const result = await executeCli<Reminder[]>([
 
 ### Zod Schema Validation
 
-All handler inputs are validated through Zod schemas in `validation/schemas.ts`. The tool definitions use `dependentSchemas` for conditional validation based on action type.
+All handler inputs are validated through Zod schemas in `validation/schemas.ts`.
 
 ### Repository Pattern
 
@@ -124,16 +111,6 @@ return handleAsyncOperation(async () => {
   // operation logic
 }, "operation description");
 ```
-
-### Tool Naming
-
-Tools support both underscore and dot notation:
-
-- `reminders_tasks` / `reminders.tasks`
-- `reminders_lists` / `reminders.lists`
-- `reminders_subtasks` / `reminders.subtasks`
-- `calendar_events` / `calendar.events`
-- `calendar_calendars` / `calendar.calendars`
 
 ## Testing
 
