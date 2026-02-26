@@ -83,16 +83,6 @@ const CALENDAR_ACTIONS = new Set([
   'delete-event',
 ]);
 
-const PERMISSION_FALLBACK_PREFIX =
-  'If the permission prompt does not appear, run the following command from the same app that launches the server (for example Terminal or Claude Desktop) and approve the prompt:';
-
-const APPLESCRIPT_COMMANDS: Record<PermissionDomain, string> = {
-  reminders:
-    'osascript -e \'tell application "Reminders" to get the name of every list\'',
-  calendars:
-    'osascript -e \'tell application "Calendar" to get the name of every calendar\'',
-};
-
 /**
  * Detects which permission domain an action requires
  * @param args - CLI arguments array

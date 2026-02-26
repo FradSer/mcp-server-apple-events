@@ -404,11 +404,6 @@ export const CreateReminderListSchema = z.object({
       message: 'Color must be a valid hex code (e.g., "#FF5733")',
     })
     .optional(),
-  emblem: z
-    .string()
-    .min(1, 'Emblem must not be empty')
-    .max(4, 'Emblem must be at most 4 characters')
-    .optional(),
 });
 
 export const UpdateReminderListSchema = z
@@ -421,14 +416,9 @@ export const UpdateReminderListSchema = z
         message: 'Color must be a valid hex code (e.g., "#FF5733")',
       })
       .optional(),
-    emblem: z
-      .string()
-      .min(1, 'Emblem must not be empty')
-      .max(4, 'Emblem must be at most 4 characters')
-      .optional(),
   })
-  .refine((data) => data.newName || data.color || data.emblem, {
-    message: 'At least one of newName, color, or emblem must be provided',
+  .refine((data) => data.newName || data.color, {
+    message: 'At least one of newName or color must be provided',
   });
 
 export const DeleteReminderListSchema = z.object({

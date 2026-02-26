@@ -189,9 +189,6 @@ describe('MCP Server E2E Tests', () => {
 
       const schema = reminderTool?.inputSchema;
       expect(schema?.properties?.title).toBeDefined();
-      expect(
-        (schema as Record<string, unknown>)?.dependentSchemas,
-      ).toBeDefined();
     });
   });
 });

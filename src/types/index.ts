@@ -315,6 +315,7 @@ export interface ListsToolArgs extends BaseToolArgs {
   action: ListAction;
   name?: string;
   newName?: string;
+  color?: string;
 }
 
 export interface CalendarToolArgs extends BaseToolArgs {
