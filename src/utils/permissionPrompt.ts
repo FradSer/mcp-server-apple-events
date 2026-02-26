@@ -20,12 +20,15 @@ export type PermissionPromptResult = {
 
 const TIMEOUT_SECONDS = 120;
 
+export const PERMISSION_FALLBACK_PREFIX = `macOS permission is required to access your data.
+If the permission prompt does not appear, run the following command from the same app that launches the server:`;
+
 const APPLESCRIPT_SNIPPETS: Record<PermissionDomain, string> = {
   reminders: `with timeout of ${TIMEOUT_SECONDS} seconds\ntell application "Reminders" to get the name of every list\nend timeout`,
   calendars: `with timeout of ${TIMEOUT_SECONDS} seconds\ntell application "Calendar" to get the name of every calendar\nend timeout`,
 };
 
-const APPLESCRIPT_COMMANDS: Record<PermissionDomain, string> = {
+export const APPLESCRIPT_COMMANDS: Record<PermissionDomain, string> = {
   reminders:
     'osascript -e \'tell application "Reminders" to get the name of every list\'',
   calendars:
@@ -99,4 +102,26 @@ export function hasBeenPrompted(domain: PermissionDomain): boolean {
 
 export function resetPromptedDomains(): void {
   promptPromises.clear();
+}
+
+export function buildPermissionFallbackInstruction(
+  domain: PermissionDomain,
+  promptResult?: PermissionPromptResult,
+): string {
+  const lines = [PERMISSION_FALLBACK_PREFIX, APPLESCRIPT_COMMANDS[domain]];
+  if (promptResult?.errorMessage) {
+    lines.push(`AppleScript prompt error: ${promptResult.errorMessage}`);
+  }
+  return lines.join('\n');
+}
+
+export function appendPermissionFallbackInstruction(
+  message: string,
+  domain: PermissionDomain,
+  promptResult?: PermissionPromptResult,
+): string {
+  if (message.includes(PERMISSION_FALLBACK_PREFIX)) {
+    return message;
+  }
+  return `${message}\n\n${buildPermissionFallbackInstruction(domain, promptResult)}`;
 }

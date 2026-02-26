@@ -14,12 +14,6 @@ import {
 import { FILE_SYSTEM } from './constants.js';
 import { CliUserError } from './errorHandling.js';
 import { bufferToString } from './helpers.js';
-import {
-  hasBeenPrompted,
-  type PermissionDomain,
-  type PermissionPromptResult,
-  triggerPermissionPrompt,
-} from './permissionPrompt.js';
 import { findProjectRoot } from './projectUtils.js';
 
 const execFilePromise = (
@@ -54,6 +48,8 @@ interface CliErrorResponse {
 
 type CliResponse<T> = CliSuccessResponse<T> | CliErrorResponse;
 
+export type PermissionDomain = 'reminders' | 'calendars';
+
 /**
  * Permission error patterns from the Swift CLI
  */
@@ -73,31 +69,6 @@ const PERMISSION_ERROR_PATTERNS: Record<PermissionDomain, RegExp[]> = {
 };
 
 /**
- * Calendar-specific action names used in Swift CLI
- */
-const CALENDAR_ACTIONS = new Set([
-  'read-events',
-  'read-calendars',
-  'create-event',
-  'update-event',
-  'delete-event',
-]);
-
-/**
- * Detects which permission domain an action requires
- * @param args - CLI arguments array
- * @returns The permission domain ('reminders' or 'calendars')
- */
-function detectActionDomain(args: string[]): PermissionDomain {
-  const actionIndex = args.indexOf('--action');
-  if (actionIndex !== -1 && actionIndex + 1 < args.length) {
-    const action = args[actionIndex + 1];
-    return CALENDAR_ACTIONS.has(action) ? 'calendars' : 'reminders';
-  }
-  return 'reminders'; // Default to reminders if action not found
-}
-
-/**
  * Detects if an error message indicates a permission issue
  * @param message - Error message to check
  * @returns The permission domain if detected, null otherwise
@@ -109,28 +80,6 @@ function detectPermissionError(message: string): PermissionDomain | null {
     }
   }
   return null;
-}
-
-function buildPermissionFallbackInstruction(
-  domain: PermissionDomain,
-  promptResult?: PermissionPromptResult,
-): string {
-  const lines = [PERMISSION_FALLBACK_PREFIX, APPLESCRIPT_COMMANDS[domain]];
-  if (promptResult?.errorMessage) {
-    lines.push(`AppleScript prompt error: ${promptResult.errorMessage}`);
-  }
-  return lines.join('\n');
-}
-
-function appendPermissionFallbackInstruction(
-  message: string,
-  domain: PermissionDomain,
-  promptResult?: PermissionPromptResult,
-): string {
-  if (message.includes(PERMISSION_FALLBACK_PREFIX)) {
-    return message;
-  }
-  return `${message}\n\n${buildPermissionFallbackInstruction(domain, promptResult)}`;
 }
 
 /**
@@ -145,10 +94,6 @@ export class CliPermissionError extends Error {
     this.name = 'CliPermissionError';
   }
 }
-
-/**
- * Calendar action strings used in Swift CLI (different from MCP tool action names)
- */
 
 /**
  * Parses JSON output from CLI
@@ -209,8 +154,6 @@ const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
  * @description
  * - Locates binary using secure path validation
  * - Parses JSON response from Swift CLI
- * - Proactively triggers permission prompts via AppleScript on first access
- * - Automatically retries with AppleScript fallback on permission errors
  * @example
  * const result = await executeCli<Reminder[]>(['--action', 'read', '--showCompleted', 'true']);
  */
@@ -254,47 +197,7 @@ Then use the local path in your Claude Desktop config:
     );
   }
 
-  // Detect which permission domain this action requires
-  const domain = detectActionDomain(args);
-  const promptResults = new Map<PermissionDomain, PermissionPromptResult>();
-
-  const recordPromptResult = async (
-    promptDomain: PermissionDomain,
-    force = false,
-  ): Promise<PermissionPromptResult> => {
-    const result = await triggerPermissionPrompt(promptDomain, force);
-    promptResults.set(promptDomain, result);
-    return result;
-  };
-
-  // Proactively trigger AppleScript permission prompt on first access
-  if (!hasBeenPrompted(domain)) {
-    await recordPromptResult(domain);
-  }
-
-  try {
-    return await runCli<T>(cliPath, args);
-  } catch (error) {
-    if (error instanceof CliPermissionError) {
-      const retryPromptResult = await recordPromptResult(error.domain, true);
-      try {
-        return await runCli<T>(cliPath, args);
-      } catch (retryError) {
-        if (retryError instanceof CliPermissionError) {
-          throw new CliPermissionError(
-            appendPermissionFallbackInstruction(
-              retryError.message,
-              retryError.domain,
-              retryPromptResult,
-            ),
-            retryError.domain,
-          );
-        }
-        throw retryError;
-      }
-    }
-    throw error;
-  }
+  return await runCli<T>(cliPath, args);
 }
 
 /**
