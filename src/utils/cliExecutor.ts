@@ -249,7 +249,7 @@ export async function executeCli<T>(args: string[]): Promise<T> {
    pnpm store path
 
 2. Navigate to the package and build:
-   cd \$(pnpm store path)/.pnpm/mcp-server-apple-events@*
+   cd $(pnpm store path)/.pnpm/mcp-server-apple-events@*
    pnpm run build
 
 Alternatively, clone the repository and build locally:

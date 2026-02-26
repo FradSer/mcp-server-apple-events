@@ -22,12 +22,26 @@ export function getTomorrowStart(): Date {
 }
 
 /**
- * Creates a date object representing the end of the week (7 days from today)
+ * Creates a date object representing the start of the current calendar week.
+ * Uses Sunday as the first day of the week, matching Swift's Calendar.current
+ * on macOS with the default US locale.
+ */
+export function getWeekStart(): Date {
+  const today = getTodayStart();
+  const dayOfWeek = today.getDay(); // 0=Sunday, 6=Saturday
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - dayOfWeek);
+  return weekStart;
+}
+
+/**
+ * Creates a date object representing the end of the current calendar week
+ * (start of next week). Matches Swift's Calendar.current.dateInterval(of: .weekOfYear).
  */
 export function getWeekEnd(): Date {
-  const today = getTodayStart();
-  const weekEnd = new Date(today);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekStart = getWeekStart();
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
   return weekEnd;
 }
 

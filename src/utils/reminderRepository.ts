@@ -131,15 +131,6 @@ class ReminderRepository {
     return reminders.map((reminder) => this.mapReminder(reminder));
   }
 
-  private async readAll(): Promise<ReminderReadResult> {
-    return executeCli<ReminderReadResult>([
-      '--action',
-      'read',
-      '--showCompleted',
-      'true',
-    ]);
-  }
-
   async findReminderById(id: string): Promise<Reminder> {
     const reminderJSON = await executeCli<ReminderJSON>([
       '--action',
@@ -151,13 +142,30 @@ class ReminderRepository {
   }
 
   async findReminders(filters: ReminderFilters = {}): Promise<Reminder[]> {
-    const { reminders } = await this.readAll();
+    const args = ['--action', 'read'];
+    addOptionalBooleanArg(
+      args,
+      '--showCompleted',
+      filters.showCompleted ?? true,
+    );
+    addOptionalArg(args, '--filterList', filters.list);
+    addOptionalArg(args, '--search', filters.search);
+    addOptionalArg(args, '--dueWithin', filters.dueWithin);
+
+    const { reminders } = await executeCli<ReminderReadResult>(args);
     const normalizedReminders = this.mapReminders(reminders);
-    return applyReminderFilters(normalizedReminders, filters);
+
+    return applyReminderFilters(normalizedReminders, {
+      ...filters,
+      showCompleted: undefined,
+      list: undefined,
+      search: undefined,
+      dueWithin: undefined,
+    });
   }
 
   async findAllLists(): Promise<ReminderList[]> {
-    const { lists } = await this.readAll();
+    const lists = await executeCli<ListJSON[]>(['--action', 'read-lists']);
 
     // Get emblems for all lists in parallel
     const listTitles = lists.map((l) => l.title);

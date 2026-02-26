@@ -4,7 +4,12 @@
  */
 
 import type { Reminder } from '../types/index.js';
-import { getTodayStart, getTomorrowStart, getWeekEnd } from './dateUtils.js';
+import {
+  getTodayStart,
+  getTomorrowStart,
+  getWeekEnd,
+  getWeekStart,
+} from './dateUtils.js';
 import { parseReminderDueDate } from './reminderDateParser.js';
 import { hasAllTags } from './tagUtils.js';
 
@@ -25,6 +30,7 @@ interface DateBoundaries {
   today: Date;
   tomorrow: Date;
   dayAfterTomorrow: Date;
+  weekStart: Date;
   weekEnd: Date;
 }
 
@@ -36,9 +42,10 @@ function createDateBoundaries(): DateBoundaries {
   const tomorrow = getTomorrowStart();
   const dayAfterTomorrow = getTomorrowStart();
   dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+  const weekStart = getWeekStart();
   const weekEnd = getWeekEnd();
 
-  return { today, tomorrow, dayAfterTomorrow, weekEnd };
+  return { today, tomorrow, dayAfterTomorrow, weekStart, weekEnd };
 }
 
 /**
@@ -52,7 +59,8 @@ function filterRemindersByDate(
     return reminders.filter((reminder) => !reminder.dueDate);
   }
 
-  const { today, tomorrow, dayAfterTomorrow, weekEnd } = createDateBoundaries();
+  const { today, tomorrow, dayAfterTomorrow, weekStart, weekEnd } =
+    createDateBoundaries();
 
   return reminders.filter((reminder) => {
     if (!reminder.dueDate) return false;
@@ -78,8 +86,8 @@ function filterRemindersByDate(
 
       case 'this-week':
         return (
-          dueDate.getTime() >= today.getTime() &&
-          dueDate.getTime() <= weekEnd.getTime()
+          dueDate.getTime() >= weekStart.getTime() &&
+          dueDate.getTime() < weekEnd.getTime()
         );
 
       default:

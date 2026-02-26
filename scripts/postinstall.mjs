@@ -48,7 +48,7 @@ buildSwift()
     console.log('Swift binary built successfully');
     process.exit(0);
   })
-  .catch((error) => {
+  .catch(() => {
     console.error(
       'Failed to build Swift binary. The MCP server requires the EventKitCLI binary to function on macOS. Please build it manually with: pnpm run build',
     );
