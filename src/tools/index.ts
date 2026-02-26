@@ -35,12 +35,6 @@ import {
   handleUpdateSubtask,
 } from './handlers/index.js';
 
-const TOOL_ALIASES: Record<string, string> = TOOL_NAMES.ALIASES;
-
-function normalizeToolName(name: string): string {
-  return TOOL_ALIASES[name] ?? name;
-}
-
 type ToolArgs =
   | RemindersToolArgs
   | ListsToolArgs
@@ -148,13 +142,11 @@ export async function handleToolCall(
   name: string,
   args?: ToolArgs,
 ): Promise<CallToolResult> {
-  const normalizedName = normalizeToolName(name);
-
-  if (!isManagedToolName(normalizedName)) {
+  if (!isManagedToolName(name)) {
     return createErrorResponse(MESSAGES.ERROR.UNKNOWN_TOOL(name));
   }
 
-  const router = TOOL_ROUTER_MAP[normalizedName];
+  const router = TOOL_ROUTER_MAP[name];
   return router(args);
 }
 
