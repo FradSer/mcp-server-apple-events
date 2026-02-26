@@ -18,13 +18,7 @@ import {
   escapeAppleScriptString,
   executeCli,
 } from './cliExecutor.js';
-import { hasBeenPrompted } from './permissionPrompt.js';
 import { findProjectRoot } from './projectUtils.js';
-
-const REMINDERS_COMMAND =
-  'osascript -e \'tell application "Reminders" to get the name of every list\'';
-const CALENDARS_COMMAND =
-  'osascript -e \'tell application "Calendar" to get the name of every calendar\'';
 
 type ExecFileCallback =
   | ((
@@ -43,17 +37,6 @@ jest.mock('./binaryValidator.js', () => ({
   findSecureBinaryPath: jest.fn(),
   getEnvironmentBinaryConfig: jest.fn(),
 }));
-jest.mock('./permissionPrompt.js', () => ({
-  triggerPermissionPrompt: jest.fn((domain: string) =>
-    Promise.resolve({
-      ok: true,
-      domain,
-      command: domain === 'calendars' ? CALENDARS_COMMAND : REMINDERS_COMMAND,
-    }),
-  ),
-  hasBeenPrompted: jest.fn().mockReturnValue(false),
-  resetPromptedDomains: jest.fn(),
-}));
 
 const mockExecFile = execFile as jest.MockedFunction<typeof execFile>;
 const mockFindProjectRoot = findProjectRoot as jest.MockedFunction<
@@ -66,9 +49,6 @@ const mockGetEnvironmentBinaryConfig =
   getEnvironmentBinaryConfig as jest.MockedFunction<
     typeof getEnvironmentBinaryConfig
   >;
-const mockHasBeenPrompted = hasBeenPrompted as jest.MockedFunction<
-  typeof hasBeenPrompted
->;
 
 describe('cliExecutor', () => {
   beforeEach(() => {
@@ -78,8 +58,6 @@ describe('cliExecutor', () => {
     mockFindSecureBinaryPath.mockReturnValue({
       path: '/test/project/bin/EventKitCLI',
     });
-    // Default: simulate that permission has not been prompted yet
-    mockHasBeenPrompted.mockReturnValue(false);
   });
 
   const invokeCallback = (
