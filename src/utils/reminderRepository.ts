@@ -228,7 +228,10 @@ class ReminderRepository {
     await executeCli<unknown>(['--action', 'delete', '--id', id]);
   }
 
-  async createReminderList(name: string, color?: string): Promise<ReminderList> {
+  async createReminderList(
+    name: string,
+    color?: string,
+  ): Promise<ReminderList> {
     const args = ['--action', 'create-list', '--name', name];
     if (color) {
       args.push('--color', color);
