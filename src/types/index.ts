@@ -129,7 +129,6 @@ export interface ReminderList {
   id: string;
   title: string;
   color?: string;
-  emblem?: string;
 }
 
 /**
@@ -315,6 +314,7 @@ export interface ListsToolArgs extends BaseToolArgs {
   action: ListAction;
   name?: string;
   newName?: string;
+  color?: string;
 }
 
 export interface CalendarToolArgs extends BaseToolArgs {

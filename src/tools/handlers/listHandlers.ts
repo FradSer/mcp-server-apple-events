@@ -5,7 +5,6 @@
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { ListsToolArgs } from '../../types/index.js';
-import { formatListDisplay } from '../../utils/applescriptList.js';
 import { handleAsyncOperation } from '../../utils/errorHandling.js';
 import { reminderRepository } from '../../utils/reminderRepository.js';
 import {
@@ -28,10 +27,12 @@ import {
 const formatReminderList = (list: {
   title: string;
   id: string;
-  emblem?: string;
   color?: string;
 }): string[] => {
-  const display = formatListDisplay(list.title, list.emblem, list.color);
+  let display = list.title;
+  if (list.color) {
+    display = `${display} (Color: ${list.color})`;
+  }
   return [`- ${display} (ID: ${list.id})`];
 };
 
@@ -58,7 +59,6 @@ export const handleCreateReminderList = async (
     const list = await reminderRepository.createReminderList(
       validatedArgs.name,
       validatedArgs.color,
-      validatedArgs.emblem,
     );
     return formatSuccessMessage('created', 'list', list.title, list.id);
   }, 'create reminder list');
@@ -76,7 +76,6 @@ export const handleUpdateReminderList = async (
       validatedArgs.name,
       validatedArgs.newName,
       validatedArgs.color,
-      validatedArgs.emblem,
     );
     return formatSuccessMessage('updated', 'list', list.title, list.id);
   }, 'update reminder list');

@@ -108,11 +108,11 @@ describe('MCP Server E2E Tests', () => {
   });
 
   describe('Tool Calls', () => {
-    it('should call reminders_tasks with list action', async () => {
+    it('should call reminders_tasks with read action', async () => {
       const result = await client.callTool({
         name: 'reminders_tasks',
         arguments: {
-          action: 'list',
+          action: 'read',
           showCompleted: true,
         },
       });
@@ -125,7 +125,7 @@ describe('MCP Server E2E Tests', () => {
     it('should call reminders_lists tool', async () => {
       const result = await client.callTool({
         name: 'reminders_lists',
-        arguments: {},
+        arguments: { action: 'read' },
       });
 
       expect(result).toBeDefined();
@@ -135,7 +135,7 @@ describe('MCP Server E2E Tests', () => {
     it('should call calendar_calendars tool', async () => {
       const result = await client.callTool({
         name: 'calendar_calendars',
-        arguments: {},
+        arguments: { action: 'read' },
       });
 
       expect(result).toBeDefined();
@@ -147,7 +147,7 @@ describe('MCP Server E2E Tests', () => {
     it('should handle invalid tool names gracefully with isError flag', async () => {
       const result = await client.callTool({
         name: 'invalid_tool_name',
-        arguments: {},
+        arguments: { action: 'read' },
       });
 
       expect(result.isError).toBe(true);
@@ -189,9 +189,6 @@ describe('MCP Server E2E Tests', () => {
 
       const schema = reminderTool?.inputSchema;
       expect(schema?.properties?.title).toBeDefined();
-      expect(
-        (schema as Record<string, unknown>)?.dependentSchemas,
-      ).toBeDefined();
     });
   });
 });

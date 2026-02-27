@@ -44,15 +44,6 @@ export const TOOLS = {
   CALENDAR_EVENTS: 'calendar_events',
   /** Calendar collections management tool */
   CALENDAR_CALENDARS: 'calendar_calendars',
-
-  /** Aliases for dot notation support */
-  ALIASES: {
-    'reminders.tasks': 'reminders_tasks',
-    'reminders.lists': 'reminders_lists',
-    'reminders.subtasks': 'reminders_subtasks',
-    'calendar.events': 'calendar_events',
-    'calendar.calendars': 'calendar_calendars',
-  } as const,
 } as const;
 
 /**

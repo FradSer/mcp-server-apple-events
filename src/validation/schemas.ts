@@ -18,8 +18,83 @@ const SAFE_TEXT_PATTERN = /^[\u0020-\u007E\u00A0-\uFFFF\n\r\t]*$/u;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}.*$/;
 // URL validation that blocks internal/private network addresses and localhost
 // Prevents SSRF attacks while allowing legitimate external URLs
+// Blocks: IPv4 private/reserved (127.x, 192.168.x, 10.x, 172.16-31.x, 169.254.x, 0.0.0.0, 224-239.x multicast)
+// Blocks: IPv6 loopback (::1), unspecified (::), link-local (fe80::), private (fc/fd), multicast (ff)
+// Blocks: Cloud metadata (169.254.169.254, 100.100.100.200, metadata.google.internal)
+// Blocks: Internal hostnames (localhost, localhost.localdomain, local, internal)
+// Note: For production use, consider using a dedicated SSRF protection library
+
+// Base URL pattern for HTTP/HTTPS with basic structure validation
+// SSRF checks are done via refinement function for accuracy
 const URL_PATTERN =
-  /^https?:\/\/(?!(?:127\.|192\.168\.|10\.|localhost|0\.0\.0\.0))[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*(?:\/[^\s<>"{}|\\^`[\]]*)?$/i;
+  /^https?:\/\/(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|\[[0-9a-fA-F:]+\])(?::\d+)?(?:\/[^\s<>"{}|\\^`[\]]*)?$/i;
+
+/**
+ * Checks if a hostname is blocked for SSRF protection
+ */
+function isBlockedHostname(hostname: string): boolean {
+  const lowerHostname = hostname.toLowerCase();
+
+  // Blocked hostnames
+  const blockedHostnames = [
+    'localhost',
+    'localhost.localdomain',
+    'local',
+    'internal',
+    'metadata.google.internal',
+  ];
+  if (blockedHostnames.includes(lowerHostname)) {
+    return true;
+  }
+
+  // IPv4 pattern checks
+  const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/;
+  const ipv4Match = lowerHostname.match(ipv4Pattern);
+  if (ipv4Match) {
+    const [, a, b, c, d] = ipv4Match.map(Number);
+    // 127.0.0.0/8 (loopback)
+    if (a === 127) return true;
+    // 192.168.0.0/16 (private)
+    if (a === 192 && b === 168) return true;
+    // 10.0.0.0/8 (private)
+    if (a === 10) return true;
+    // 172.16.0.0/12 (private)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    // 169.254.0.0/16 (link-local + cloud metadata)
+    if (a === 169 && b === 254) {
+      // Specific cloud metadata endpoints
+      if (c === 169 && d === 254) return true; // AWS/Azure
+      return true; // All link-local
+    }
+    // 100.100.100.200 (Alibaba Cloud metadata)
+    if (a === 100 && b === 100 && c === 100 && d === 200) return true;
+    // 0.0.0.0 (unspecified)
+    if (a === 0 && b === 0 && c === 0 && d === 0) return true;
+    // 224.0.0.0/4 (multicast)
+    if (a >= 224 && a <= 239) return true;
+  }
+
+  // IPv6 pattern checks (remove brackets first)
+  const ipv6Hostname = lowerHostname.replace(/^\[|\]$/g, '');
+  // ::1 (loopback)
+  if (ipv6Hostname === '::1' || ipv6Hostname === '0:0:0:0:0:0:0:1') return true;
+  // :: (unspecified)
+  if (ipv6Hostname === '::' || ipv6Hostname === '0:0:0:0:0:0:0:0') return true;
+  // fe80::/10 (link-local)
+  if (/^fe[89ab][0-9a-f]:/i.test(ipv6Hostname)) return true;
+  // fc00::/7 (ULA - unique local address)
+  if (
+    /^fc[0-9a-f][0-9a-f]:/i.test(ipv6Hostname) ||
+    /^fd[0-9a-f][0-9a-f]:/i.test(ipv6Hostname)
+  )
+    return true;
+  // ff00::/8 (multicast)
+  if (/^ff[0-9a-f][0-9a-f]:/i.test(ipv6Hostname)) return true;
+  // 2001:db8::/32 (documentation)
+  if (/^2001:db8:/i.test(ipv6Hostname)) return true;
+
+  return false;
+}
 
 // Maximum lengths for security (imported from constants.ts)
 
@@ -126,6 +201,14 @@ export const SafeUrlSchema = z
     VALIDATION.MAX_URL_LENGTH,
     `URL cannot exceed ${VALIDATION.MAX_URL_LENGTH} characters`,
   )
+  .refine((url) => {
+    try {
+      const parsed = new URL(url);
+      return !isBlockedHostname(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }, 'URL must not point to internal, private, or blocked addresses')
   .optional();
 
 // Reusable schemas for common fields
@@ -404,11 +487,6 @@ export const CreateReminderListSchema = z.object({
       message: 'Color must be a valid hex code (e.g., "#FF5733")',
     })
     .optional(),
-  emblem: z
-    .string()
-    .min(1, 'Emblem must not be empty')
-    .max(4, 'Emblem must be at most 4 characters')
-    .optional(),
 });
 
 export const UpdateReminderListSchema = z
@@ -421,14 +499,9 @@ export const UpdateReminderListSchema = z
         message: 'Color must be a valid hex code (e.g., "#FF5733")',
       })
       .optional(),
-    emblem: z
-      .string()
-      .min(1, 'Emblem must not be empty')
-      .max(4, 'Emblem must be at most 4 characters')
-      .optional(),
   })
-  .refine((data) => data.newName || data.color || data.emblem, {
-    message: 'At least one of newName, color, or emblem must be provided',
+  .refine((data) => data.newName || data.color, {
+    message: 'At least one of newName or color must be provided',
   });
 
 export const DeleteReminderListSchema = z.object({
