@@ -199,36 +199,3 @@ Then use the local path in your Claude Desktop config:
 
   return await runCli<T>(cliPath, args);
 }
-
-/**
- * Escapes a string for safe AppleScript string interpolation
- * @param value - The string to escape
- * @returns The escaped string
- */
-export function escapeAppleScriptString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-/**
- * Executes an AppleScript command and returns the output
- * @param script - The AppleScript to execute
- * @returns Promise<string> The output from the AppleScript
- */
-export async function runAppleScript(script: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile('osascript', ['-e', script], (error, stdout, stderr) => {
-      if (error) {
-        const execError = error as ExecFileException & {
-          stdout?: string | Buffer;
-          stderr?: string | Buffer;
-        };
-        execError.stdout = stdout;
-        execError.stderr = stderr;
-        reject(execError);
-        return;
-      }
-      const output = bufferToString(stdout);
-      resolve(output ?? '');
-    });
-  });
-}
