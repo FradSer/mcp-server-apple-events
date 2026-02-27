@@ -152,6 +152,317 @@ describe('ValidationSchemas', () => {
         expect(() => SafeUrlSchema.parse('not-a-url')).toThrow();
         expect(() => SafeUrlSchema.parse('ftp://example.com')).toThrow();
       });
+
+      describe('SSRF Protection', () => {
+        describe('IPv4 loopback protection', () => {
+          it('should block 127.0.0.1', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://127.0.0.1/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('https://127.0.0.1/api'),
+            ).toThrow();
+          });
+
+          it('should block 127.0.0.1 with port', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://127.0.0.1:8080/admin'),
+            ).toThrow();
+          });
+
+          it('should block 127.0.1.1 (Debian/Ubuntu default)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://127.0.1.1/admin'),
+            ).toThrow();
+          });
+
+          it('should block entire 127.0.0.0/8 range', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://127.1.1.1/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://127.255.255.255/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('IPv6 loopback protection', () => {
+          it('should block ::1 without brackets', () => {
+            expect(() => SafeUrlSchema.parse('http://::1/admin')).toThrow();
+          });
+
+          it('should block ::1 with brackets', () => {
+            expect(() => SafeUrlSchema.parse('http://[::1]/admin')).toThrow();
+          });
+
+          it('should block ::1 with port', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::1]:8080/admin'),
+            ).toThrow();
+          });
+
+          it('should block :: (unspecified address)', () => {
+            expect(() => SafeUrlSchema.parse('http://::/admin')).toThrow();
+            expect(() => SafeUrlSchema.parse('http://[::]/admin')).toThrow();
+          });
+
+          it('should block 0:0:0:0:0:0:0:1 (full ::1)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[0:0:0:0:0:0:0:1]/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('Cloud metadata endpoint protection', () => {
+          it('should block AWS metadata endpoint', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://169.254.169.254/latest/meta-data/'),
+            ).toThrow();
+          });
+
+          it('should block AWS metadata endpoint with HTTPS', () => {
+            expect(() =>
+              SafeUrlSchema.parse('https://169.254.169.254/latest/meta-data/'),
+            ).toThrow();
+          });
+
+          it('should block Alibaba Cloud metadata endpoint', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://100.100.100.200/latest/meta-data/'),
+            ).toThrow();
+          });
+
+          it('should block GCP metadata hostname', () => {
+            expect(() =>
+              SafeUrlSchema.parse(
+                'http://metadata.google.internal/computeMetadata/v1/',
+              ),
+            ).toThrow();
+          });
+
+          it('should block Azure metadata endpoint', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://169.254.169.254/metadata/instance'),
+            ).toThrow();
+          });
+        });
+
+        describe('IPv4 link-local protection', () => {
+          it('should block 169.254.1.1', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://169.254.1.1/resource'),
+            ).toThrow();
+          });
+
+          it('should block entire 169.254.0.0/16 range', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://169.254.0.1/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://169.254.255.255/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('IPv6 link-local protection', () => {
+          it('should block fe80::1 without brackets', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://fe80::1/resource'),
+            ).toThrow();
+          });
+
+          it('should block fe80::1 with brackets', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[fe80::1]/resource'),
+            ).toThrow();
+          });
+
+          it('should block entire fe80::/10 range', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[fe80::ffff:ffff:ffff:ffff]/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://[febf::ffff]/admin'),
+            ).toThrow();
+          });
+
+          it('should block fc00::/7 unique local (ULA)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[fc00::1]/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://[fd00::1]/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('IPv6 documentation prefix', () => {
+          it('should block 2001:db8::/32 range', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[2001:db8::1]/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('Private network protection', () => {
+          it('should block 192.168.0.0/16', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://192.168.0.1/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://192.168.255.255/admin'),
+            ).toThrow();
+          });
+
+          it('should block 10.0.0.0/8', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://10.0.0.1/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://10.255.255.255/admin'),
+            ).toThrow();
+          });
+
+          it('should block 172.16.0.0/12', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://172.16.0.1/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://172.31.255.255/admin'),
+            ).toThrow();
+          });
+
+          it('should not block 172.32.0.1 (outside private range)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://172.32.0.1/admin'),
+            ).not.toThrow();
+          });
+        });
+
+        describe('Reserved and special addresses', () => {
+          it('should block 0.0.0.0', () => {
+            expect(() => SafeUrlSchema.parse('http://0.0.0.0/admin')).toThrow();
+          });
+
+          it('should block 224.0.0.0/4 multicast', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://224.0.0.1/admin'),
+            ).toThrow();
+          });
+
+          it('should block ff00::/8 IPv6 multicast', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[ff00::1]/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('Public URLs allowed', () => {
+          it('should allow example.com', () => {
+            expect(() =>
+              SafeUrlSchema.parse('https://example.com/page'),
+            ).not.toThrow();
+          });
+
+          it('should allow api.example.com subdomain', () => {
+            expect(() =>
+              SafeUrlSchema.parse('https://api.example.com/v1/users'),
+            ).not.toThrow();
+          });
+
+          it('should allow public IP addresses', () => {
+            expect(() =>
+              SafeUrlSchema.parse('https://1.1.1.1/api'),
+            ).not.toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('https://8.8.8.8/resolve'),
+            ).not.toThrow();
+          });
+
+          it('should allow IPv6 public addresses', () => {
+            expect(() =>
+              SafeUrlSchema.parse(
+                'https://[2606:2800:220:1:248:1893:25c8:1946]/',
+              ),
+            ).not.toThrow();
+          });
+
+          it('should allow URLs with paths and query strings', () => {
+            expect(() =>
+              SafeUrlSchema.parse('https://example.com/api/v1/users?limit=10'),
+            ).not.toThrow();
+          });
+
+          it('should allow URLs with ports', () => {
+            expect(() =>
+              SafeUrlSchema.parse('https://example.com:8443/api'),
+            ).not.toThrow();
+          });
+        });
+
+        describe('Hostname-based bypass protection', () => {
+          it('should block localhost', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://localhost/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('https://localhost:3000/api'),
+            ).toThrow();
+          });
+
+          it('should block localhost.localdomain', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://localhost.localdomain/admin'),
+            ).toThrow();
+          });
+
+          it('should block local.internal variants', () => {
+            expect(() => SafeUrlSchema.parse('http://local/admin')).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://internal/admin'),
+            ).toThrow();
+          });
+        });
+
+        describe('Protocol restrictions', () => {
+          it('should reject non-HTTP protocols', () => {
+            expect(() => SafeUrlSchema.parse('file:///etc/passwd')).toThrow();
+            expect(() => SafeUrlSchema.parse('ftp://example.com')).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('jar:http://evil.com!/'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('dict://127.0.0.1:11211/'),
+            ).toThrow();
+          });
+
+          it('should only allow http and https', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://example.com'),
+            ).not.toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('https://example.com'),
+            ).not.toThrow();
+          });
+        });
+
+        describe('URL encoding bypass attempts', () => {
+          it('should reject URL-encoded localhost variants', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://%6C%6F%63%61%6C%68%6F%73%74/admin'),
+            ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('http://l%6Fcalhost/admin'),
+            ).toThrow();
+          });
+
+          it('should reject URL-encoded IP addresses', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://127%2E0%2E0%2E1/admin'),
+            ).toThrow();
+          });
+        });
+      });
     });
   });
 
