@@ -273,3 +273,6 @@ class ReminderRepository {
 }
 
 export const reminderRepository = new ReminderRepository();
+
+// Export class for dependency injection and testing
+export { ReminderRepository };

@@ -16,6 +16,19 @@ import { CliUserError } from './errorHandling.js';
 import { bufferToString } from './helpers.js';
 import { findProjectRoot } from './projectUtils.js';
 
+/**
+ * Cached binary path after successful validation
+ * Eliminates repeated validation overhead (~1-3ms per call)
+ */
+let cachedBinaryPath: string | null = null;
+
+/**
+ * Clears the cached binary path (for testing)
+ */
+export function clearBinaryPathCache(): void {
+  cachedBinaryPath = null;
+}
+
 const execFilePromise = (
   cliPath: string,
   args: string[],
@@ -184,6 +197,11 @@ const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
  * const result = await executeCli<Reminder[]>(['--action', 'read', '--showCompleted', 'true']);
  */
 export async function executeCli<T>(args: string[]): Promise<T> {
+  // Use cached binary path if available
+  if (cachedBinaryPath) {
+    return await runCli<T>(cachedBinaryPath, args);
+  }
+
   const projectRoot = findProjectRoot();
   const binaryName = FILE_SYSTEM.SWIFT_BINARY_NAME;
   const possiblePaths = [path.join(projectRoot, 'bin', binaryName)];
@@ -222,6 +240,9 @@ Then use the local path in your Claude Desktop config:
    "args": ["/absolute/path/to/mcp-server-apple-events/bin/run.cjs"]`,
     );
   }
+
+  // Cache the validated path for subsequent calls
+  cachedBinaryPath = cliPath;
 
   return await runCli<T>(cliPath, args);
 }

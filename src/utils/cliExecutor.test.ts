@@ -13,7 +13,11 @@ import {
   findSecureBinaryPath,
   getEnvironmentBinaryConfig,
 } from './binaryValidator.js';
-import { CliPermissionError, executeCli } from './cliExecutor.js';
+import {
+  CliPermissionError,
+  clearBinaryPathCache,
+  executeCli,
+} from './cliExecutor.js';
 import { findProjectRoot } from './projectUtils.js';
 
 type ExecFileCallback =
@@ -49,6 +53,7 @@ const mockGetEnvironmentBinaryConfig =
 describe('cliExecutor', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    clearBinaryPathCache();
     mockFindProjectRoot.mockReturnValue('/test/project');
     mockGetEnvironmentBinaryConfig.mockReturnValue({});
     mockFindSecureBinaryPath.mockReturnValue({

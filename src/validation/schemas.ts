@@ -11,8 +11,10 @@ import { VALIDATION } from '../utils/constants.js';
 // Security patterns – allow printable Unicode text while blocking dangerous control and delimiter chars.
 // Allows standard printable ASCII, extended Latin, CJK, plus newlines/tabs for notes.
 // Blocks: control chars (0x00-0x1F except \n\r\t), DEL, dangerous delimiters, Unicode line separators
+// Blocks: bidirectional control characters (U+202A-U+202E, U+2066-U+2069) to prevent visual spoofing
 // This keeps Chinese/Unicode names working while remaining safe with AppleScript quoting.
-const SAFE_TEXT_PATTERN = /^[\u0020-\u007E\u00A0-\uFFFF\n\r\t]*$/u;
+const SAFE_TEXT_PATTERN =
+  /^[\u0020-\u007E\u00A0-\u2029\u202F-\u2065\u206A-\uFFFF\n\r\t]*$/u;
 // Support multiple date formats: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, or ISO 8601
 // Basic validation - detailed parsing handled by Swift
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}.*$/;
@@ -47,31 +49,48 @@ function isBlockedHostname(hostname: string): boolean {
     return true;
   }
 
-  // IPv4 pattern checks
+  // Check for decimal IP notation (e.g., 2130706433 for 127.0.0.1)
+  if (/^\d+$/.test(lowerHostname)) {
+    const decimal = parseInt(lowerHostname, 10);
+    if (!Number.isNaN(decimal) && decimal > 0 && decimal <= 4294967295) {
+      const a = (decimal >>> 24) & 255;
+      const b = (decimal >>> 16) & 255;
+      const c = (decimal >>> 8) & 255;
+      const d = decimal & 255;
+      if (isBlockedIPv4(a, b, c, d)) return true;
+    }
+  }
+
+  // Check for hexadecimal IP notation (e.g., 0x7f000001 for 127.0.0.1)
+  if (/^0x[0-9a-f]+$/i.test(lowerHostname)) {
+    const hex = parseInt(lowerHostname, 16);
+    if (!Number.isNaN(hex) && hex > 0 && hex <= 4294967295) {
+      const a = (hex >>> 24) & 255;
+      const b = (hex >>> 16) & 255;
+      const c = (hex >>> 8) & 255;
+      const d = hex & 255;
+      if (isBlockedIPv4(a, b, c, d)) return true;
+    }
+  }
+
+  // Check for octal IP notation (e.g., 0177.0.0.1 for 127.0.0.1)
+  const octalPattern = /^0[0-7]*(?:\.[0-7]+){0,3}$/;
+  if (octalPattern.test(lowerHostname)) {
+    const parts = lowerHostname.split('.').map((p) => parseInt(p, 8));
+    if (
+      parts.length === 4 &&
+      parts.every((p) => !Number.isNaN(p) && p >= 0 && p <= 255)
+    ) {
+      if (isBlockedIPv4(parts[0], parts[1], parts[2], parts[3])) return true;
+    }
+  }
+
+  // IPv4 pattern checks (standard dotted decimal)
   const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/;
   const ipv4Match = lowerHostname.match(ipv4Pattern);
   if (ipv4Match) {
     const [, a, b, c, d] = ipv4Match.map(Number);
-    // 127.0.0.0/8 (loopback)
-    if (a === 127) return true;
-    // 192.168.0.0/16 (private)
-    if (a === 192 && b === 168) return true;
-    // 10.0.0.0/8 (private)
-    if (a === 10) return true;
-    // 172.16.0.0/12 (private)
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    // 169.254.0.0/16 (link-local + cloud metadata)
-    if (a === 169 && b === 254) {
-      // Specific cloud metadata endpoints
-      if (c === 169 && d === 254) return true; // AWS/Azure
-      return true; // All link-local
-    }
-    // 100.100.100.200 (Alibaba Cloud metadata)
-    if (a === 100 && b === 100 && c === 100 && d === 200) return true;
-    // 0.0.0.0 (unspecified)
-    if (a === 0 && b === 0 && c === 0 && d === 0) return true;
-    // 224.0.0.0/4 (multicast)
-    if (a >= 224 && a <= 239) return true;
+    if (isBlockedIPv4(a, b, c, d)) return true;
   }
 
   // IPv6 pattern checks (remove brackets first)
@@ -93,6 +112,44 @@ function isBlockedHostname(hostname: string): boolean {
   // 2001:db8::/32 (documentation)
   if (/^2001:db8:/i.test(ipv6Hostname)) return true;
 
+  return false;
+}
+
+/**
+ * Checks if IPv4 octets represent a blocked address
+ */
+function isBlockedIPv4(a: number, b: number, c: number, d: number): boolean {
+  // Validate octet ranges
+  if (
+    a < 0 ||
+    a > 255 ||
+    b < 0 ||
+    b > 255 ||
+    c < 0 ||
+    c > 255 ||
+    d < 0 ||
+    d > 255
+  ) {
+    return false;
+  }
+  // 127.0.0.0/8 (loopback)
+  if (a === 127) return true;
+  // 192.168.0.0/16 (private)
+  if (a === 192 && b === 168) return true;
+  // 10.0.0.0/8 (private)
+  if (a === 10) return true;
+  // 172.16.0.0/12 (private)
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  // 169.254.0.0/16 (link-local + cloud metadata)
+  if (a === 169 && b === 254) return true;
+  // 100.100.100.200 (Alibaba Cloud metadata)
+  if (a === 100 && b === 100 && c === 100 && d === 200) return true;
+  // 0.0.0.0/8 (unspecified/current network)
+  if (a === 0) return true;
+  // 224.0.0.0/4 (multicast)
+  if (a >= 224 && a <= 239) return true;
+  // 240.0.0.0/4 (reserved for future use)
+  if (a >= 240) return true;
   return false;
 }
 

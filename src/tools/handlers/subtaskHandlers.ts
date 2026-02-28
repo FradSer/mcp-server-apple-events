@@ -24,7 +24,11 @@ import {
   ToggleSubtaskSchema,
   UpdateSubtaskSchema,
 } from '../../validation/schemas.js';
-import { extractAndValidateArgs, formatSuccessMessage } from './shared.js';
+import {
+  extractAndValidateArgs,
+  formatDeleteMessage,
+  formatSuccessMessage,
+} from './shared.js';
 
 /**
  * Formats a single subtask for display
@@ -130,7 +134,12 @@ export const handleUpdateSubtask = async (
       notes: updatedNotes,
     });
 
-    return `✅ Updated subtask with ID ${validatedArgs.subtaskId}`;
+    return formatSuccessMessage(
+      'updated',
+      'subtask',
+      validatedArgs.title ?? 'subtask',
+      validatedArgs.subtaskId,
+    );
   }, 'update subtask');
 };
 
@@ -151,7 +160,7 @@ export const handleDeleteSubtask = async (
       notes: updatedNotes,
     });
 
-    return `✅ Deleted subtask with ID ${validatedArgs.subtaskId}`;
+    return formatDeleteMessage('subtask', validatedArgs.subtaskId);
   }, 'delete subtask');
 };
 
@@ -176,7 +185,7 @@ export const handleToggleSubtask = async (
     });
 
     const status = subtask.isCompleted ? 'completed' : 'uncompleted';
-    return `✅ Subtask "${subtask.title}" marked as ${status}`;
+    return `Successfully marked subtask "${subtask.title}" as ${status}.\n- ID: ${validatedArgs.subtaskId}`;
   }, 'toggle subtask');
 };
 
@@ -197,6 +206,6 @@ export const handleReorderSubtasks = async (
       notes: updatedNotes,
     });
 
-    return `✅ Reordered ${validatedArgs.order.length} subtasks`;
+    return `Successfully reordered ${validatedArgs.order.length} subtasks.\n- Reminder ID: ${validatedArgs.reminderId}`;
   }, 'reorder subtasks');
 };

@@ -231,3 +231,6 @@ class CalendarRepository {
 }
 
 export const calendarRepository = new CalendarRepository();
+
+// Export class for dependency injection and testing
+export { CalendarRepository };
