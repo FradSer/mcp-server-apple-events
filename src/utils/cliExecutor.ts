@@ -21,7 +21,7 @@ const execFilePromise = (
   args: string[],
 ): Promise<{ stdout: string; stderr: string }> =>
   new Promise((resolve, reject) => {
-    execFile(cliPath, args, (error, stdout, stderr) => {
+    execFile(cliPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         const execError = error as ExecFileException & {
           stdout?: string | Buffer;
