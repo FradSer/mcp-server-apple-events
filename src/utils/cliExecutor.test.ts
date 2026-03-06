@@ -93,6 +93,7 @@ describe('cliExecutor', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/EventKitCLI',
         ['--action', 'read', '--id', '123'],
+        { maxBuffer: 10 * 1024 * 1024 },
         expect.any(Function),
       );
     });
@@ -219,6 +220,7 @@ describe('cliExecutor', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/custom/project/path/bin/EventKitCLI',
         ['--action', 'read'],
+        { maxBuffer: 10 * 1024 * 1024 },
         expect.any(Function),
       );
     });
