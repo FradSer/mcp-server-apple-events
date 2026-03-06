@@ -219,7 +219,7 @@ export async function executeCli<T>(args: string[]): Promise<T> {
   const { path: cliPath } = findSecureBinaryPath(possiblePaths, config);
 
   if (!cliPath) {
-    throw new Error(
+    throw new CliUserError(
       `EventKitCLI binary not found. When installed via npx, the Swift binary must be built manually:
 
 1. Find the npx cache location:

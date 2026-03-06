@@ -48,9 +48,22 @@ buildSwift()
     console.log('Swift binary built successfully');
     process.exit(0);
   })
-  .catch(() => {
+  .catch((error) => {
+    console.error(`\n${'='.repeat(70)}`);
+    console.error('⚠️  WARNING: Swift binary build failed');
+    console.error('='.repeat(70));
+    console.error('\nError details:', error.message);
     console.error(
-      'Failed to build Swift binary. The MCP server requires the EventKitCLI binary to function on macOS. Please build it manually with: pnpm run build',
+      '\nThe MCP server requires the EventKitCLI binary to function.',
     );
+    console.error('\nTo build manually:');
+    console.error('  1. Navigate to the package directory');
+    console.error('  2. Run: pnpm install && pnpm run build');
+    console.error('\nOr use a local clone instead of npx:');
+    console.error(
+      '  git clone https://github.com/fradser/mcp-server-apple-events.git',
+    );
+    console.error('  cd mcp-server-apple-events && pnpm install && pnpm build');
+    console.error(`${'='.repeat(70)}\n`);
     process.exit(0); // Exit gracefully to not block installation
   });
