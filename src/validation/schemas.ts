@@ -278,8 +278,8 @@ const PriorityFilterEnum = z.enum(['high', 'medium', 'low', 'none']).optional();
 const PriorityValueSchema = z
   .number()
   .int()
-  .refine((val) => [0, 1, 2, 3].includes(val), {
-    message: 'Priority must be 0 (none), 1 (high), 2 (medium), or 3 (low)',
+  .refine((val) => [0, 1, 5, 9].includes(val), {
+    message: 'Priority must be 0 (none), 1 (high), 5 (medium), or 9 (low)',
   })
   .optional();
 
