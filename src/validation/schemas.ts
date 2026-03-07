@@ -681,3 +681,56 @@ export const ReorderSubtasksSchema = z.object({
   reminderId: SafeIdSchema,
   order: SubtaskOrderSchema,
 });
+
+/**
+ * Prompt argument validation schemas
+ * These schemas validate user inputs for MCP prompt templates
+ */
+
+/**
+ * Schema for daily-task-organizer prompt arguments
+ */
+export const DailyTaskOrganizerArgsSchema = z.object({
+  todayFocus: createSafeTextSchema(
+    0,
+    VALIDATION.MAX_TITLE_LENGTH,
+    'Focus area',
+    true,
+  ),
+});
+
+/**
+ * Schema for smart-reminder-creator prompt arguments
+ */
+export const SmartReminderCreatorArgsSchema = z.object({
+  taskIdea: createSafeTextSchema(
+    0,
+    VALIDATION.MAX_NOTE_LENGTH,
+    'Task idea',
+    true,
+  ),
+});
+
+/**
+ * Schema for reminder-review-assistant prompt arguments
+ */
+export const ReminderReviewAssistantArgsSchema = z.object({
+  reviewFocus: createSafeTextSchema(
+    0,
+    VALIDATION.MAX_TITLE_LENGTH,
+    'Review focus',
+    true,
+  ),
+});
+
+/**
+ * Schema for weekly-planning-workflow prompt arguments
+ */
+export const WeeklyPlanningWorkflowArgsSchema = z.object({
+  userIdeas: createSafeTextSchema(
+    0,
+    VALIDATION.MAX_NOTE_LENGTH,
+    'Planning ideas',
+    true,
+  ),
+});

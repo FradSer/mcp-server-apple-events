@@ -143,3 +143,56 @@ When modifying notes programmatically, preserve existing tags and subtasks unles
 - **Permission handling**: Swift layer manages `EKEventStore.authorizationStatus()`
 - **Binary security**: Path validation in `binaryValidator.ts` restricts allowed binary locations
 - **Date formats**: Prefer `YYYY-MM-DD HH:mm:ss` for local time, ISO 8601 with timezone for UTC
+
+## Prompt System
+
+### Confidence-Gating System
+
+All prompts use a three-tier confidence system for action execution:
+
+- **HIGH CONFIDENCE (>80%)**: Execute immediately with actual MCP tool calls
+- **MEDIUM CONFIDENCE (60-80%)**: Provide recommendations in tool-ready format with rationale
+- **LOW CONFIDENCE (<60%)**: Use AskUserQuestion tool to present options to the user
+
+### Example: reminder-review-assistant Prompt Output
+
+**HIGH Confidence Action (should execute immediately)**:
+
+```
+### Action queue
+
+**HIGH CONFIDENCE (>80%) — Executed immediately**
+
+✓ Marked "Complete project documentation" as complete
+  - Tool: reminders_tasks, action: update, id: D15A5A2B-EEDB-42DB-A368-9748F1400326, completed: true
+  - Rationale: Note contains complete research content, task appears finished
+```
+
+**LOW Confidence Action (should use AskUserQuestion)**:
+
+Instead of text like:
+```
+**LOW CONFIDENCE (<60%) — Need confirmation**
+- [LOW, 45%] Delete unclear tasks in Ideas list
+```
+
+Should trigger:
+```
+[AskUserQuestion tool call with:
+  question: "Found 3 tasks with unclear titles in Ideas list. What should we do with them?"
+  options: [
+    { label: "Delete all", description: "Remove tasks: 'Task A', 'Task B', etc." },
+    { label: "Keep for now", description: "Leave them in the list, review later" },
+    { label: "Show me details", description: "I'll review each one individually" }
+  ]
+]
+```
+
+### Key Prompt Constraints
+
+- HIGH confidence actions MUST result in actual tool calls, not just descriptions
+- LOW confidence decisions MUST use AskUserQuestion tool, not text questions
+- No text-based questions should appear in final output - all user decisions use AskUserQuestion
+- Updates and deletions are allowed for existing reminders when confidence is high (>80%)
+- New reminders should only be created when explicitly requested by the user
+

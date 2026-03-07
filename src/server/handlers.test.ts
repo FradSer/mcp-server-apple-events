@@ -174,7 +174,7 @@ describe('Server Handlers', () => {
     describe('Get Prompt Handler', () => {
       it('should return daily-task-organizer prompt with forwarded arguments', async () => {
         const args = {
-          today_focus: 'finish quarterly report and prepare slides',
+          todayFocus: 'finish quarterly report and prepare slides',
         };
         const request = {
           params: { name: 'daily-task-organizer', arguments: args },
@@ -189,7 +189,7 @@ describe('Server Handlers', () => {
         expect(result.messages[0].role).toBe('user');
         expect(result.messages[0].content.type).toBe('text');
         expect((result.messages[0].content as MessageContent).text).toContain(
-          args.today_focus,
+          args.todayFocus,
         );
       });
 
