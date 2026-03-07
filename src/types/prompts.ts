@@ -57,28 +57,28 @@ export interface PromptResponse {
  * Arguments accepted by the `daily-task-organizer` prompt.
  */
 export interface DailyTaskOrganizerArgs {
-  todayFocus?: string;
+  "Today's focus"?: string;
 }
 
 /**
  * Arguments accepted by the `smart-reminder-creator` prompt.
  */
 export interface SmartReminderCreatorArgs {
-  taskIdea?: string;
+  'Task idea'?: string;
 }
 
 /**
  * Arguments accepted by the `reminder-review-assistant` prompt.
  */
 export interface ReminderReviewAssistantArgs {
-  reviewFocus?: string;
+  'Review focus'?: string;
 }
 
 /**
  * Arguments accepted by the `weekly-planning-workflow` prompt.
  */
 export interface WeeklyPlanningWorkflowArgs {
-  userIdeas?: string;
+  'User ideas'?: string;
 }
 
 /**

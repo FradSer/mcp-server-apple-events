@@ -691,10 +691,10 @@ export const ReorderSubtasksSchema = z.object({
  * Schema for daily-task-organizer prompt arguments
  */
 export const DailyTaskOrganizerArgsSchema = z.object({
-  todayFocus: createSafeTextSchema(
+  "Today's focus": createSafeTextSchema(
     0,
     VALIDATION.MAX_TITLE_LENGTH,
-    'Focus area',
+    "Today's focus",
     true,
   ),
 });
@@ -703,7 +703,7 @@ export const DailyTaskOrganizerArgsSchema = z.object({
  * Schema for smart-reminder-creator prompt arguments
  */
 export const SmartReminderCreatorArgsSchema = z.object({
-  taskIdea: createSafeTextSchema(
+  'Task idea': createSafeTextSchema(
     0,
     VALIDATION.MAX_NOTE_LENGTH,
     'Task idea',
@@ -715,7 +715,7 @@ export const SmartReminderCreatorArgsSchema = z.object({
  * Schema for reminder-review-assistant prompt arguments
  */
 export const ReminderReviewAssistantArgsSchema = z.object({
-  reviewFocus: createSafeTextSchema(
+  'Review focus': createSafeTextSchema(
     0,
     VALIDATION.MAX_TITLE_LENGTH,
     'Review focus',
@@ -727,10 +727,10 @@ export const ReminderReviewAssistantArgsSchema = z.object({
  * Schema for weekly-planning-workflow prompt arguments
  */
 export const WeeklyPlanningWorkflowArgsSchema = z.object({
-  userIdeas: createSafeTextSchema(
+  'User ideas': createSafeTextSchema(
     0,
     VALIDATION.MAX_NOTE_LENGTH,
-    'Planning ideas',
+    'User ideas',
     true,
   ),
 });

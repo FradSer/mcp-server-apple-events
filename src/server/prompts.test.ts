@@ -55,14 +55,14 @@ describe('prompt templates', () => {
 
   describe('argument validation', () => {
     it('validates and accepts valid arguments', () => {
-      const validArgs = { todayFocus: 'urgency-based organization' };
+      const validArgs = { "Today's focus": 'urgency-based organization' };
       expect(() =>
         getPromptText('daily-task-organizer', validArgs),
       ).not.toThrow();
     });
 
     it('rejects arguments with invalid characters', () => {
-      const invalidArgs = { todayFocus: 'test\x00invalid' };
+      const invalidArgs = { "Today's focus": 'test\x00invalid' };
       expect(() => getPromptText('daily-task-organizer', invalidArgs)).toThrow(
         ValidationError,
       );
@@ -70,7 +70,7 @@ describe('prompt templates', () => {
 
     it('rejects arguments exceeding maximum length', () => {
       const longString = 'a'.repeat(300);
-      const invalidArgs = { todayFocus: longString };
+      const invalidArgs = { "Today's focus": longString };
       expect(() => getPromptText('daily-task-organizer', invalidArgs)).toThrow(
         ValidationError,
       );
@@ -113,7 +113,7 @@ describe('prompt templates', () => {
     it('surfaces optional focus input and calibration guidance', () => {
       const focus = 'urgency-based organization';
       const text = getPromptText('daily-task-organizer', {
-        todayFocus: focus,
+        "Today's focus": focus,
       });
 
       expect(text).toContain(focus);
@@ -136,7 +136,7 @@ describe('prompt templates', () => {
         null,
         [
           /strategist and productivity coach/i,
-          /### Current state/i,
+          /### Review summary/i,
           /### Action queue/i,
         ],
       ],
@@ -147,7 +147,7 @@ describe('prompt templates', () => {
       ],
       [
         'custom review focus',
-        { reviewFocus: 'overdue tasks' },
+        { 'Review focus': 'overdue tasks' },
         [/overdue tasks/i, /strategist and productivity coach/i],
       ],
     ])('handles %s inputs', (_label, rawArgs, patterns) => {
@@ -169,8 +169,8 @@ describe('prompt templates', () => {
 
     it('specifies tool call examples in output format', () => {
       const text = getPromptText('reminder-review-assistant');
-      expect(text).toMatch(/Make actual MCP tool calls/i);
-      expect(text).toMatch(/Example.*Tool call/i);
+      expect(text).toMatch(/Execute immediately with tool calls/i);
+      expect(text).toMatch(/After execution, show:/i);
     });
 
     it('requires actual tool execution in quality bar', () => {
@@ -194,7 +194,7 @@ describe('prompt templates', () => {
   describe('smart-reminder-creator', () => {
     it('includes mission, structure, and constraint scaffolding', () => {
       const text = getPromptText('smart-reminder-creator', {
-        taskIdea: 'Complete project documentation',
+        'Task idea': 'Complete project documentation',
       });
 
       expectPatterns(text, [

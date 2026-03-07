@@ -145,7 +145,7 @@ const validatePromptArgs = <T>(
  * with appropriate time-based properties.
  *
  * @param {DailyTaskOrganizerArgs} args - Organization arguments
- * @param {string} [args.todayFocus] - Optional focus area (e.g., "urgency-based", "gap filling")
+ * @param {string} [args.Today's focus] - Optional focus area (e.g., "urgency-based", "gap filling")
  * @returns {PromptResponse} Structured prompt response with executable action queue
  *
  * @example
@@ -155,14 +155,14 @@ const validatePromptArgs = <T>(
  *
  * // Focused on urgent tasks
  * const urgentPrompt = buildDailyTaskOrganizerPrompt({
- *   todayFocus: 'urgency-based organization'
+ *   "Today's focus": 'urgency-based organization'
  * });
  * ```
  */
 const buildDailyTaskOrganizerPrompt = (
   args: DailyTaskOrganizerArgs,
 ): PromptResponse => {
-  const todayFocus = args.todayFocus ?? '';
+  const todayFocus = args["Today's focus"] ?? '';
   const timeContext = getTimeContext();
   const fuzzyTimes = getFuzzyTimeSuggestions();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
@@ -243,21 +243,21 @@ const buildDailyTaskOrganizerPrompt = (
  * scheduling, context, and metadata based on a task idea.
  *
  * @param args - Reminder creation arguments
- * @param args.taskIdea - Optional task description to convert into reminder
+ * @param args.Task idea - Optional task description to convert into reminder
  * @returns Structured prompt response for creating a single reminder
  *
  * @example
  * ```typescript
  * // Create reminder from task idea
  * const prompt = buildSmartReminderCreatorPrompt({
- *   taskIdea: 'Submit quarterly report by Friday'
+ *   'Task idea': 'Submit quarterly report by Friday'
  * });
  * ```
  */
 const buildSmartReminderCreatorPrompt = (
   args: SmartReminderCreatorArgs,
 ): PromptResponse => {
-  const taskIdea = args.taskIdea ?? '';
+  const taskIdea = args['Task idea'] ?? '';
   const timeContext = getTimeContext();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
 
@@ -338,7 +338,7 @@ const buildSmartReminderCreatorPrompt = (
 const buildReminderReviewAssistantPrompt = (
   args: ReminderReviewAssistantArgs,
 ): PromptResponse => {
-  const reviewFocus = args.reviewFocus ?? '';
+  const reviewFocus = args['Review focus'] ?? '';
   const timeContext = getTimeContext();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
 
@@ -355,27 +355,23 @@ const buildReminderReviewAssistantPrompt = (
             `Current time context: ${timeContext.timeDescription} (${timeContext.currentDate})`,
           ],
           process: [
-            'Inventory reminders by status, list, and due window.',
-            'Identify root causes behind overdue or low-value reminders.',
-            'Prioritize clean-up actions and apply confidence gating.',
-            'After presenting findings, execute HIGH confidence actions immediately, then use AskUserQuestion for MEDIUM/LOW confidence decisions that require user input.',
-            'Recommend lightweight routines to sustain the system.',
+            'Analyze reminders: identify overdue items, stale tasks, and patterns.',
+            'Execute HIGH confidence actions immediately with tool calls.',
+            'Use AskUserQuestion for MEDIUM/LOW confidence decisions.',
+            'Recommend lightweight maintenance routines.',
           ],
           constraints: [
             'Use fuzzy time adjustments when suggesting schedules or follow-ups.',
             'Ask for critical missing context before final guidance.',
             'Keep recommendations grounded in Apple Reminders native capabilities.',
             'Do not create NEW reminders unless the user explicitly requests it. However, you SHOULD execute updates and deletions for existing reminders when confidence is high (>80%).',
-            'Call out the primary review scope before detailed recommendations.',
             'When you need user confirmation or decisions, use the AskUserQuestion tool with clear options instead of asking text questions.',
             'For critical decisions (e.g., whether to complete a task, delete items, or adjust dates), present 2-4 options with descriptions using AskUserQuestion.',
             ...ASK_USER_QUESTION_EXAMPLES,
             ...CORE_CONSTRAINTS,
           ],
           outputFormat: [
-            '### Focus alignment — short paragraph identifying the primary review scope and headline issues.',
-            '### Current state — brief overview with key metrics: total reminders reviewed, overdue items, stale reminders, main issues identified.',
-            '### Findings — bullet list of key insights about the current reminder landscape.',
+            '### Review summary — concise overview: total reminders, overdue count, key issues, and primary focus area.',
             ...standardOutput.actionQueue,
             standardOutput.verificationLog,
           ],
@@ -405,14 +401,14 @@ const buildReminderReviewAssistantPrompt = (
  * planning ideas and current priorities.
  *
  * @param args - Weekly planning arguments
- * @param args.userIdeas - Optional planning thoughts for the week
+ * @param args.User ideas - Optional planning thoughts for the week
  * @returns Structured prompt response with weekly scheduling plan
  *
  * @example
  * ```typescript
  * // Plan week with user ideas
  * const prompt = buildWeeklyPlanningWorkflowPrompt({
- *   userIdeas: 'Focus on project launch and client presentations'
+ *   'User ideas': 'Focus on project launch and client presentations'
  * });
  *
  * // Auto-plan based on existing reminders
@@ -422,7 +418,7 @@ const buildReminderReviewAssistantPrompt = (
 const buildWeeklyPlanningWorkflowPrompt = (
   args: WeeklyPlanningWorkflowArgs,
 ): PromptResponse => {
-  const userIdeas = args.userIdeas ?? '';
+  const userIdeas = args['User ideas'] ?? '';
   const timeContext = getTimeContext();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
 
@@ -493,7 +489,7 @@ const PROMPTS: PromptRegistry = {
       version: '1.0.0',
       arguments: [
         {
-          name: 'todayFocus',
+          name: "Today's focus",
           description:
             'Organization focus area (e.g., urgency-based organization, gap filling, reminder setup, or comprehensive organization)',
           required: false,
@@ -517,7 +513,7 @@ const PROMPTS: PromptRegistry = {
       version: '1.0.0',
       arguments: [
         {
-          name: 'taskIdea',
+          name: 'Task idea',
           description: 'A short description of what you want to do',
           required: false,
         },
@@ -540,7 +536,7 @@ const PROMPTS: PromptRegistry = {
       version: '1.0.0',
       arguments: [
         {
-          name: 'reviewFocus',
+          name: 'Review focus',
           description:
             'A short note on what to review (e.g., overdue, a list name)',
           required: false,
@@ -564,7 +560,7 @@ const PROMPTS: PromptRegistry = {
       version: '1.0.0',
       arguments: [
         {
-          name: 'userIdeas',
+          name: 'User ideas',
           description:
             'Your thoughts and ideas for what you want to accomplish this week',
           required: false,
