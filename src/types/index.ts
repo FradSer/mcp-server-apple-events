@@ -113,7 +113,7 @@ export interface Reminder {
   externalId?: string;
   list: string;
   isCompleted: boolean;
-  priority: number; // 0=none, 1=high, 2=medium, 3=low
+  priority: number; // 0=none, 1=high, 5=medium, 9=low
   alarms?: Alarm[];
   recurrenceRules?: RecurrenceRule[];
   locationTrigger?: LocationTrigger;
@@ -268,7 +268,7 @@ export interface RemindersToolArgs extends BaseToolArgs {
   location?: string;
   completed?: boolean;
   completionDate?: string;
-  priority?: number; // 0=none, 1=high, 2=medium, 3=low
+  priority?: number; // 0=none, 1=high, 5=medium, 9=low
   alarms?: Alarm[];
   clearAlarms?: boolean;
   // Recurrence parameters

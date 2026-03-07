@@ -107,8 +107,8 @@ export type PriorityFilter = 'high' | 'medium' | 'low' | 'none';
 const PRIORITY_FILTER_MAP: Record<PriorityFilter, number> = {
   none: 0,
   high: 1,
-  medium: 2,
-  low: 3,
+  medium: 5,
+  low: 9,
 };
 
 /**
