@@ -3,6 +3,7 @@
  * Central registry for MCP prompts and their runtime helpers
  */
 
+import { z } from 'zod/v3';
 import type {
   DailyTaskOrganizerArgs,
   PromptMetadata,
@@ -18,7 +19,15 @@ import {
   getTimeContext,
 } from '../utils/timeHelpers.js';
 import {
+  DailyTaskOrganizerArgsSchema,
+  ReminderReviewAssistantArgsSchema,
+  SmartReminderCreatorArgsSchema,
+  ValidationError,
+  WeeklyPlanningWorkflowArgsSchema,
+} from '../validation/schemas.js';
+import {
   APPLE_REMINDERS_LIMITATIONS,
+  ASK_USER_QUESTION_EXAMPLES,
   buildStandardOutputFormat,
   CONTEXT_CALIBRATION,
   CORE_CONSTRAINTS,
@@ -99,22 +108,34 @@ const createStructuredPrompt = ({
 };
 
 /**
- * Type guard to check if a value is a non-empty string
- * @param {unknown} value - Value to check
- * @returns {boolean} True if value is a non-empty string
+ * Validates and parses prompt arguments using Zod schema
+ * @template T - Expected argument type
+ * @param {z.ZodSchema<T>} schema - Zod schema for validation
+ * @param {Record<string, unknown> | null | undefined} rawArgs - Raw arguments to validate
+ * @param {string} promptName - Name of the prompt for error messages
+ * @returns {T} Validated and parsed arguments
+ * @throws {ValidationError} If validation fails
  * @private
  */
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
-
-/**
- * Parses optional string values, filtering out empty strings
- * @param {unknown} value - Value to parse
- * @returns {string | undefined} Trimmed string if non-empty, undefined otherwise
- * @private
- */
-const parseOptionalString = (value: unknown): string | undefined =>
-  isNonEmptyString(value) ? value : undefined;
+const validatePromptArgs = <T>(
+  schema: z.ZodSchema<T>,
+  rawArgs: Record<string, unknown> | null | undefined,
+  promptName: string,
+): T => {
+  try {
+    return schema.parse(rawArgs ?? {});
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const errorMessages = error.errors
+        .map((err) => `${err.path.join('.')}: ${err.message}`)
+        .join('; ');
+      throw new ValidationError(
+        `Invalid arguments for prompt '${promptName}': ${errorMessages}`,
+      );
+    }
+    throw error;
+  }
+};
 
 /**
  * Build daily task organizer prompt for same-day task management
@@ -124,7 +145,7 @@ const parseOptionalString = (value: unknown): string | undefined =>
  * with appropriate time-based properties.
  *
  * @param {DailyTaskOrganizerArgs} args - Organization arguments
- * @param {string} [args.today_focus] - Optional focus area (e.g., "urgency-based", "gap filling")
+ * @param {string} [args.Today's focus] - Optional focus area (e.g., "urgency-based", "gap filling")
  * @returns {PromptResponse} Structured prompt response with executable action queue
  *
  * @example
@@ -134,14 +155,14 @@ const parseOptionalString = (value: unknown): string | undefined =>
  *
  * // Focused on urgent tasks
  * const urgentPrompt = buildDailyTaskOrganizerPrompt({
- *   today_focus: 'urgency-based organization'
+ *   "Today's focus": 'urgency-based organization'
  * });
  * ```
  */
 const buildDailyTaskOrganizerPrompt = (
   args: DailyTaskOrganizerArgs,
 ): PromptResponse => {
-  const todayFocus = args.today_focus ?? '';
+  const todayFocus = args["Today's focus"] ?? '';
   const timeContext = getTimeContext();
   const fuzzyTimes = getFuzzyTimeSuggestions();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
@@ -222,21 +243,21 @@ const buildDailyTaskOrganizerPrompt = (
  * scheduling, context, and metadata based on a task idea.
  *
  * @param args - Reminder creation arguments
- * @param args.task_idea - Optional task description to convert into reminder
+ * @param args.Task idea - Optional task description to convert into reminder
  * @returns Structured prompt response for creating a single reminder
  *
  * @example
  * ```typescript
  * // Create reminder from task idea
  * const prompt = buildSmartReminderCreatorPrompt({
- *   task_idea: 'Submit quarterly report by Friday'
+ *   'Task idea': 'Submit quarterly report by Friday'
  * });
  * ```
  */
 const buildSmartReminderCreatorPrompt = (
   args: SmartReminderCreatorArgs,
 ): PromptResponse => {
-  const taskIdea = args.task_idea ?? '';
+  const taskIdea = args['Task idea'] ?? '';
   const timeContext = getTimeContext();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
 
@@ -300,7 +321,7 @@ const buildSmartReminderCreatorPrompt = (
  * clean-up, scheduling, and habit recommendations to boost completion rates.
  *
  * @param args - Review arguments
- * @param args.review_focus - Optional focus area (e.g., "overdue", list name)
+ * @param args.reviewFocus - Optional focus area (e.g., "overdue", list name)
  * @returns Structured prompt response with cleanup recommendations
  *
  * @example
@@ -310,14 +331,14 @@ const buildSmartReminderCreatorPrompt = (
  *
  * // Focus on overdue items
  * const overduePrompt = buildReminderReviewAssistantPrompt({
- *   review_focus: 'overdue reminders'
+ *   reviewFocus: 'overdue reminders'
  * });
  * ```
  */
 const buildReminderReviewAssistantPrompt = (
   args: ReminderReviewAssistantArgs,
 ): PromptResponse => {
-  const reviewFocus = args.review_focus ?? '';
+  const reviewFocus = args['Review focus'] ?? '';
   const timeContext = getTimeContext();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
 
@@ -334,29 +355,32 @@ const buildReminderReviewAssistantPrompt = (
             `Current time context: ${timeContext.timeDescription} (${timeContext.currentDate})`,
           ],
           process: [
-            'Inventory reminders by status, list, and due window.',
-            'Identify root causes behind overdue or low-value reminders.',
-            'Prioritize clean-up actions and apply confidence gating.',
-            'Recommend lightweight routines to sustain the system.',
+            'Analyze reminders: identify overdue items, stale tasks, and patterns.',
+            'Execute HIGH confidence actions immediately with tool calls.',
+            'Use AskUserQuestion for MEDIUM/LOW confidence decisions.',
+            'Recommend lightweight maintenance routines.',
           ],
           constraints: [
             'Use fuzzy time adjustments when suggesting schedules or follow-ups.',
             'Ask for critical missing context before final guidance.',
             'Keep recommendations grounded in Apple Reminders native capabilities.',
-            'Do not create new reminders unless the user explicitly opts in.',
-            'Call out the primary review scope before detailed recommendations.',
+            'Do not create NEW reminders unless the user explicitly requests it. However, you SHOULD execute updates and deletions for existing reminders when confidence is high (>80%).',
+            'When you need user confirmation or decisions, use the AskUserQuestion tool with clear options instead of asking text questions.',
+            'For critical decisions (e.g., whether to complete a task, delete items, or adjust dates), present 2-4 options with descriptions using AskUserQuestion.',
+            ...ASK_USER_QUESTION_EXAMPLES,
             ...CORE_CONSTRAINTS,
           ],
           outputFormat: [
-            '### Focus alignment — short paragraph identifying the primary review scope and headline issues.',
-            '### Current state — brief overview with key metrics: total reminders reviewed, overdue items, stale reminders, main issues identified.',
-            '### Findings — bullet list of key insights about the current reminder landscape.',
+            '### Review summary — concise overview: total reminders, overdue count, key issues, and primary focus area.',
             ...standardOutput.actionQueue,
             standardOutput.verificationLog,
           ],
           qualityBar: [
             'Actions tie back to a specific list or pattern.',
             'Action queue entries follow confidence gating with rationale.',
+            'HIGH confidence actions (>80%) must result in actual tool calls, not just descriptions.',
+            'LOW confidence decisions (<60%) must use AskUserQuestion tool, not text questions.',
+            'No text-based questions appear in final output - all user decisions use AskUserQuestion.',
             'Routines are lightweight and sustainable.',
             'No new reminders are created unless explicitly requested.',
           ],
@@ -377,14 +401,14 @@ const buildReminderReviewAssistantPrompt = (
  * planning ideas and current priorities.
  *
  * @param args - Weekly planning arguments
- * @param args.user_ideas - Optional planning thoughts for the week
+ * @param args.User ideas - Optional planning thoughts for the week
  * @returns Structured prompt response with weekly scheduling plan
  *
  * @example
  * ```typescript
  * // Plan week with user ideas
  * const prompt = buildWeeklyPlanningWorkflowPrompt({
- *   user_ideas: 'Focus on project launch and client presentations'
+ *   'User ideas': 'Focus on project launch and client presentations'
  * });
  *
  * // Auto-plan based on existing reminders
@@ -394,7 +418,7 @@ const buildReminderReviewAssistantPrompt = (
 const buildWeeklyPlanningWorkflowPrompt = (
   args: WeeklyPlanningWorkflowArgs,
 ): PromptResponse => {
-  const userIdeas = args.user_ideas ?? '';
+  const userIdeas = args['User ideas'] ?? '';
   const timeContext = getTimeContext();
   const standardOutput = buildStandardOutputFormat(timeContext.currentDate);
 
@@ -462,9 +486,10 @@ const PROMPTS: PromptRegistry = {
       name: 'daily-task-organizer',
       description:
         'Proactive daily task organization with intelligent reminder creation and optimization',
+      version: '1.0.0',
       arguments: [
         {
-          name: 'today_focus',
+          name: "Today's focus",
           description:
             'Organization focus area (e.g., urgency-based organization, gap filling, reminder setup, or comprehensive organization)',
           required: false,
@@ -472,10 +497,11 @@ const PROMPTS: PromptRegistry = {
       ],
     },
     parseArgs(rawArgs: Record<string, unknown> | null | undefined) {
-      const args = (rawArgs ?? {}) as Partial<DailyTaskOrganizerArgs>;
-      return {
-        today_focus: parseOptionalString(args.today_focus),
-      };
+      return validatePromptArgs(
+        DailyTaskOrganizerArgsSchema,
+        rawArgs,
+        'daily-task-organizer',
+      );
     },
     buildPrompt: buildDailyTaskOrganizerPrompt,
   },
@@ -484,19 +510,21 @@ const PROMPTS: PromptRegistry = {
       name: 'smart-reminder-creator',
       description:
         'Intelligently create reminders with optimal scheduling and context',
+      version: '1.0.0',
       arguments: [
         {
-          name: 'task_idea',
+          name: 'Task idea',
           description: 'A short description of what you want to do',
           required: false,
         },
       ],
     },
     parseArgs(rawArgs: Record<string, unknown> | null | undefined) {
-      const args = (rawArgs ?? {}) as Partial<SmartReminderCreatorArgs>;
-      return {
-        task_idea: parseOptionalString(args.task_idea),
-      };
+      return validatePromptArgs(
+        SmartReminderCreatorArgsSchema,
+        rawArgs,
+        'smart-reminder-creator',
+      );
     },
     buildPrompt: buildSmartReminderCreatorPrompt,
   },
@@ -505,9 +533,10 @@ const PROMPTS: PromptRegistry = {
       name: 'reminder-review-assistant',
       description:
         'Analyze and review existing reminders for productivity optimization',
+      version: '1.0.0',
       arguments: [
         {
-          name: 'review_focus',
+          name: 'Review focus',
           description:
             'A short note on what to review (e.g., overdue, a list name)',
           required: false,
@@ -515,10 +544,11 @@ const PROMPTS: PromptRegistry = {
       ],
     },
     parseArgs(rawArgs: Record<string, unknown> | null | undefined) {
-      const args = (rawArgs ?? {}) as Partial<ReminderReviewAssistantArgs>;
-      return {
-        review_focus: parseOptionalString(args.review_focus),
-      };
+      return validatePromptArgs(
+        ReminderReviewAssistantArgsSchema,
+        rawArgs,
+        'reminder-review-assistant',
+      );
     },
     buildPrompt: buildReminderReviewAssistantPrompt,
   },
@@ -527,9 +557,10 @@ const PROMPTS: PromptRegistry = {
       name: 'weekly-planning-workflow',
       description:
         'Assign due dates to existing reminders based on your weekly planning ideas',
+      version: '1.0.0',
       arguments: [
         {
-          name: 'user_ideas',
+          name: 'User ideas',
           description:
             'Your thoughts and ideas for what you want to accomplish this week',
           required: false,
@@ -537,10 +568,11 @@ const PROMPTS: PromptRegistry = {
       ],
     },
     parseArgs(rawArgs: Record<string, unknown> | null | undefined) {
-      const args = (rawArgs ?? {}) as Partial<WeeklyPlanningWorkflowArgs>;
-      return {
-        user_ideas: parseOptionalString(args.user_ideas),
-      };
+      return validatePromptArgs(
+        WeeklyPlanningWorkflowArgsSchema,
+        rawArgs,
+        'weekly-planning-workflow',
+      );
     },
     buildPrompt: buildWeeklyPlanningWorkflowPrompt,
   },

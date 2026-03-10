@@ -34,12 +34,28 @@ export class CliUserError extends Error {
 }
 
 /**
+ * Determines if the application is running in development mode.
+ * Development mode is enabled when:
+ * - NODE_ENV is set to 'development', OR
+ * - DEBUG environment variable is set to any truthy value
+ *
+ * This allows detailed error messages to be shown in development
+ * while keeping production error messages generic for security.
+ */
+export function isDevelopmentMode(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' ||
+    (!!process.env.DEBUG && process.env.DEBUG !== '')
+  );
+}
+
+/**
  * Creates a descriptive error message, showing validation details in dev mode.
  */
 function createErrorMessage(operation: string, error: unknown): string {
   const message =
     error instanceof Error ? error.message : 'System error occurred';
-  const isDev = process.env.NODE_ENV === 'development' || process.env.DEBUG;
+  const isDev = isDevelopmentMode();
 
   // For validation and CLI user errors, always return the detailed message.
   if (error instanceof ValidationError || error instanceof CliUserError) {

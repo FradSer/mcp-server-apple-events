@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-apple-events",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "MCP server that provides native integration with Apple Reminders and Calendar on macOS.",
   "author": "Frad Lee <https://frad.me>",
   "license": "MIT",

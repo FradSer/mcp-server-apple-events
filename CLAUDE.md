@@ -42,8 +42,8 @@ src/
 │   ├── prompts.ts        # Prompt template definitions and builders
 │   └── promptAbstractions.ts
 ├── tools/
-│   ├── definitions.ts    # MCP tool schemas (uses dependentSchemas for conditional validation)
-│   ├── index.ts          # Tool routing: normalizes names, dispatches to handlers
+│   ├── definitions.ts    # MCP tool schemas
+│   ├── index.ts          # Tool routing: dispatches to handlers
 │   └── handlers/         # Domain-specific CRUD handlers
 │       ├── reminderHandlers.ts
 │       ├── subtaskHandlers.ts
@@ -52,7 +52,6 @@ src/
 │       └── shared.ts     # Common formatting utilities (extractAndValidateArgs, formatListMarkdown)
 ├── utils/
 │   ├── cliExecutor.ts    # Executes Swift binary, parses JSON responses
-│   ├── permissionPrompt.ts  # AppleScript-based permission prompting
 │   ├── reminderRepository.ts  # Repository pattern for reminders
 │   ├── calendarRepository.ts  # Repository pattern for calendar events
 │   ├── binaryValidator.ts     # Secure binary path validation
@@ -69,27 +68,15 @@ src/
 
 1. MCP client sends tool call via stdio
 2. `handlers.ts` routes to `handleToolCall()` in `tools/index.ts`
-3. Tool router normalizes name (supports both `reminders_tasks` and `reminders.tasks`)
-4. Action router dispatches to specific handler (e.g., `handleCreateReminder`)
-5. Handler validates input via Zod schema, calls repository
-6. Repository calls `executeCli()` which:
-   - Proactively triggers AppleScript permission prompt on first access
-   - Runs Swift binary for EventKit operations
-   - Retries with AppleScript fallback on permission errors
-7. Swift binary performs EventKit operations, returns JSON
-8. Response flows back through layers as `CallToolResult`
+3. Tool router dispatches to specific handler (e.g., `handleCreateReminder`)
+4. Handler validates input via Zod schema, calls repository
+5. Repository calls `executeCli()` which runs Swift binary for EventKit operations
+6. Swift binary performs EventKit operations, returns JSON
+7. Response flows back through layers as `CallToolResult`
 
 ### Permission Handling
 
-The server implements a two-layer permission prompt strategy:
-
-1. **Proactive AppleScript Prompt**: On the first access to reminders or calendars, `executeCli()` proactively triggers an AppleScript command to ensure the permission dialog appears, even in non-interactive contexts where the Swift binary's native EventKit permission request may be suppressed.
-
-2. **Swift Binary Permission Check**: The Swift binary checks authorization status and requests permissions through EventKit's native API.
-
-3. **Retry with AppleScript Fallback**: If a permission error occurs after the Swift binary runs, the system retries once with the AppleScript fallback.
-
-This approach ensures permission dialogs appear reliably for MCP clients running in non-interactive contexts (e.g., Claude Code, terminal-based tools).
+The Swift binary handles all permission requests through EventKit's native API. If the app lacks permissions, the Swift CLI will return an error message indicating the permission issue, which is then surfaced to the user.
 
 ### Swift Bridge
 
@@ -109,7 +96,7 @@ const result = await executeCli<Reminder[]>([
 
 ### Zod Schema Validation
 
-All handler inputs are validated through Zod schemas in `validation/schemas.ts`. The tool definitions use `dependentSchemas` for conditional validation based on action type.
+All handler inputs are validated through Zod schemas in `validation/schemas.ts`.
 
 ### Repository Pattern
 
@@ -124,16 +111,6 @@ return handleAsyncOperation(async () => {
   // operation logic
 }, "operation description");
 ```
-
-### Tool Naming
-
-Tools support both underscore and dot notation:
-
-- `reminders_tasks` / `reminders.tasks`
-- `reminders_lists` / `reminders.lists`
-- `reminders_subtasks` / `reminders.subtasks`
-- `calendar_events` / `calendar.events`
-- `calendar_calendars` / `calendar.calendars`
 
 ## Testing
 
@@ -166,3 +143,56 @@ When modifying notes programmatically, preserve existing tags and subtasks unles
 - **Permission handling**: Swift layer manages `EKEventStore.authorizationStatus()`
 - **Binary security**: Path validation in `binaryValidator.ts` restricts allowed binary locations
 - **Date formats**: Prefer `YYYY-MM-DD HH:mm:ss` for local time, ISO 8601 with timezone for UTC
+
+## Prompt System
+
+### Confidence-Gating System
+
+All prompts use a three-tier confidence system for action execution:
+
+- **HIGH CONFIDENCE (>80%)**: Execute immediately with actual MCP tool calls
+- **MEDIUM CONFIDENCE (60-80%)**: Provide recommendations in tool-ready format with rationale
+- **LOW CONFIDENCE (<60%)**: Use AskUserQuestion tool to present options to the user
+
+### Example: reminder-review-assistant Prompt Output
+
+**HIGH Confidence Action (should execute immediately)**:
+
+```
+### Action queue
+
+**HIGH CONFIDENCE (>80%) — Executed immediately**
+
+✓ Marked "Complete project documentation" as complete
+  - Tool: reminders_tasks, action: update, id: D15A5A2B-EEDB-42DB-A368-9748F1400326, completed: true
+  - Rationale: Note contains complete research content, task appears finished
+```
+
+**LOW Confidence Action (should use AskUserQuestion)**:
+
+Instead of text like:
+```
+**LOW CONFIDENCE (<60%) — Need confirmation**
+- [LOW, 45%] Delete unclear tasks in Ideas list
+```
+
+Should trigger:
+```
+[AskUserQuestion tool call with:
+  question: "Found 3 tasks with unclear titles in Ideas list. What should we do with them?"
+  options: [
+    { label: "Delete all", description: "Remove tasks: 'Task A', 'Task B', etc." },
+    { label: "Keep for now", description: "Leave them in the list, review later" },
+    { label: "Show me details", description: "I'll review each one individually" }
+  ]
+]
+```
+
+### Key Prompt Constraints
+
+- HIGH confidence actions MUST result in actual tool calls, not just descriptions
+- LOW confidence decisions MUST use AskUserQuestion tool, not text questions
+- No text-based questions should appear in final output - all user decisions use AskUserQuestion
+- Updates and deletions are allowed for existing reminders when confidence is high (>80%)
+- New reminders should only be created when explicitly requested by the user
+

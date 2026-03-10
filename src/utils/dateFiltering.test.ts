@@ -234,7 +234,8 @@ describe('DateFiltering', () => {
       expect(result[0].id).toBe('2');
     });
 
-    it('should filter this-week reminders', () => {
+    it('should filter this-week reminders using calendar week boundaries', () => {
+      // Mock now is 2024-01-15 (Monday). Calendar week (Sunday start) is Jan 14–20.
       const weekReminders: Reminder[] = [
         createReminder({
           id: '1',
@@ -243,11 +244,16 @@ describe('DateFiltering', () => {
         }),
         createReminder({
           id: '2',
+          title: 'Earlier this week (Sunday)',
+          dueDate: '2024-01-14T10:00:00Z',
+        }),
+        createReminder({
+          id: '3',
           title: 'This week task',
           dueDate: '2024-01-17T10:00:00Z',
         }),
         createReminder({
-          id: '3',
+          id: '4',
           title: 'Next week task',
           dueDate: '2024-01-25T10:00:00Z',
         }),
@@ -256,8 +262,9 @@ describe('DateFiltering', () => {
       const filters: ReminderFilters = { dueWithin: 'this-week' };
       const result = applyReminderFilters(weekReminders, filters);
 
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(2);
       expect(result[0].id).toBe('2');
+      expect(result[1].id).toBe('3');
     });
 
     it('should handle unknown dueWithin filter (default branch)', () => {

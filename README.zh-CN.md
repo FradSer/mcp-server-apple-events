@@ -313,7 +313,7 @@ code %APPDATA%\Claude\claude_desktop_config.json
 - `note` *(可选)*：提醒事项备注内容
 - `url` *(可选)*：与提醒事项关联的 URL
 - `location` *(可选)*：位置文本（`EKCalendarItem.location`，不是地理围栏触发器）
-- `priority` *(可选)*：优先级级别 (0=无, 1=高, 2=中, 3=低)
+- `priority` *(可选)*：优先级级别 (0=无, 1=高, 5=中, 9=低)
 - `alarms` *(可选)*：提醒数组（见下方「提醒对象」）
 - `recurrenceRules` *(可选)*：重复规则数组（见下方「重复规则对象」）
 - `recurrence` *(可选)*：兼容旧写法的单个重复规则（等价于单元素 `recurrenceRules`）
@@ -332,7 +332,7 @@ code %APPDATA%\Claude\claude_desktop_config.json
 - `completed` *(可选)*：设置提醒事项完成状态
 - `completionDate` *(可选)*：设置显式完成时间
 - `targetList` *(可选)*：提醒事项所在列表
-- `priority` *(可选)*：新优先级级别 (0=无, 1=高, 2=中, 3=低)
+- `priority` *(可选)*：新优先级级别 (0=无, 1=高, 5=中, 9=低)
 - `alarms` *(可选)*：用此数组替换所有提醒
 - `clearAlarms` *(可选)*：设置为 true 以移除所有提醒
 - `recurrenceRules` *(可选)*：用此数组替换所有重复规则

@@ -25,6 +25,7 @@ export interface PromptMetadata<Name extends PromptName = PromptName> {
   name: Name;
   description: string;
   arguments: PromptArgumentDefinition[];
+  version?: string;
 }
 
 /**
@@ -56,28 +57,28 @@ export interface PromptResponse {
  * Arguments accepted by the `daily-task-organizer` prompt.
  */
 export interface DailyTaskOrganizerArgs {
-  today_focus?: string;
+  "Today's focus"?: string;
 }
 
 /**
  * Arguments accepted by the `smart-reminder-creator` prompt.
  */
 export interface SmartReminderCreatorArgs {
-  task_idea?: string;
+  'Task idea'?: string;
 }
 
 /**
  * Arguments accepted by the `reminder-review-assistant` prompt.
  */
 export interface ReminderReviewAssistantArgs {
-  review_focus?: string;
+  'Review focus'?: string;
 }
 
 /**
  * Arguments accepted by the `weekly-planning-workflow` prompt.
  */
 export interface WeeklyPlanningWorkflowArgs {
-  user_ideas?: string;
+  'User ideas'?: string;
 }
 
 /**

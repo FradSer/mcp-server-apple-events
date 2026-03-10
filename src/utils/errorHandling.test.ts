@@ -4,13 +4,23 @@
  */
 
 import { ValidationError } from '../validation/schemas.js';
-import { CliUserError, handleAsyncOperation } from './errorHandling.js';
+import {
+  CliUserError,
+  handleAsyncOperation,
+  isDevelopmentMode,
+} from './errorHandling.js';
 
 describe('ErrorHandling', () => {
   const originalEnv = process.env.NODE_ENV;
+  const originalDebug = process.env.DEBUG;
 
   afterEach(() => {
     process.env.NODE_ENV = originalEnv;
+    if (originalDebug === undefined) {
+      delete process.env.DEBUG;
+    } else {
+      process.env.DEBUG = originalDebug;
+    }
   });
 
   describe('handleAsyncOperation', () => {
@@ -254,6 +264,210 @@ describe('ErrorHandling', () => {
 
       delete process.env.DEBUG;
       process.env.NODE_ENV = originalEnv;
+    });
+  });
+
+  describe('isDevelopmentMode', () => {
+    describe('Scenario: Development mode shows detailed errors', () => {
+      it('Given NODE_ENV="development" When isDevelopmentMode is called Then returns true', () => {
+        process.env.NODE_ENV = 'development';
+        delete process.env.DEBUG;
+
+        expect(isDevelopmentMode()).toBe(true);
+      });
+
+      it('Given NODE_ENV="development" And an internal error occurs When createErrorMessage generates the response Then the full error message is returned', async () => {
+        process.env.NODE_ENV = 'development';
+        delete process.env.DEBUG;
+
+        const mockOperation = jest
+          .fn()
+          .mockRejectedValue(new Error('Internal database connection failed'));
+
+        const result = await handleAsyncOperation(
+          mockOperation,
+          'test operation',
+        );
+
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+          'Failed to test operation: Internal database connection failed',
+        );
+      });
+    });
+
+    describe('Scenario: Production mode sanitizes errors', () => {
+      it('Given NODE_ENV="production" And DEBUG is not set When isDevelopmentMode is called Then returns false', () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.DEBUG;
+
+        expect(isDevelopmentMode()).toBe(false);
+      });
+
+      it('Given NODE_ENV="production" And DEBUG is not set And an internal error occurs When createErrorMessage generates the response Then "System error occurred" is returned', async () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.DEBUG;
+
+        const mockOperation = jest
+          .fn()
+          .mockRejectedValue(new Error('Internal database connection failed'));
+
+        const result = await handleAsyncOperation(
+          mockOperation,
+          'test operation',
+        );
+
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+          'Failed to test operation: System error occurred',
+        );
+      });
+    });
+
+    describe('Scenario: Production mode with DEBUG shows details', () => {
+      it('Given NODE_ENV="production" And DEBUG="1" When isDevelopmentMode is called Then returns true', () => {
+        process.env.NODE_ENV = 'production';
+        process.env.DEBUG = '1';
+
+        expect(isDevelopmentMode()).toBe(true);
+      });
+
+      it('Given NODE_ENV="production" And DEBUG="1" And an internal error occurs When createErrorMessage generates the response Then the full error message is returned', async () => {
+        process.env.NODE_ENV = 'production';
+        process.env.DEBUG = '1';
+
+        const mockOperation = jest
+          .fn()
+          .mockRejectedValue(new Error('Internal database connection failed'));
+
+        const result = await handleAsyncOperation(
+          mockOperation,
+          'test operation',
+        );
+
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+          'Failed to test operation: Internal database connection failed',
+        );
+      });
+
+      it('Given NODE_ENV="production" And DEBUG="true" When isDevelopmentMode is called Then returns true', () => {
+        process.env.NODE_ENV = 'production';
+        process.env.DEBUG = 'true';
+
+        expect(isDevelopmentMode()).toBe(true);
+      });
+    });
+
+    describe('Scenario: Undefined NODE_ENV defaults to production-safe', () => {
+      it('Given NODE_ENV is undefined And DEBUG is not set When isDevelopmentMode is called Then returns false', () => {
+        delete process.env.NODE_ENV;
+        delete process.env.DEBUG;
+
+        expect(isDevelopmentMode()).toBe(false);
+      });
+
+      it('Given NODE_ENV is undefined And DEBUG is not set And an internal error occurs When createErrorMessage generates the response Then "System error occurred" is returned', async () => {
+        delete process.env.NODE_ENV;
+        delete process.env.DEBUG;
+
+        const mockOperation = jest
+          .fn()
+          .mockRejectedValue(new Error('Internal database connection failed'));
+
+        const result = await handleAsyncOperation(
+          mockOperation,
+          'test operation',
+        );
+
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+          'Failed to test operation: System error occurred',
+        );
+      });
+    });
+
+    describe('Scenario: DEBUG alone enables development mode', () => {
+      it('Given NODE_ENV is undefined And DEBUG="1" When isDevelopmentMode is called Then returns true', () => {
+        delete process.env.NODE_ENV;
+        process.env.DEBUG = '1';
+
+        expect(isDevelopmentMode()).toBe(true);
+      });
+
+      it('Given NODE_ENV="production" And DEBUG is empty string When isDevelopmentMode is called Then returns false', () => {
+        process.env.NODE_ENV = 'production';
+        process.env.DEBUG = '';
+
+        expect(isDevelopmentMode()).toBe(false);
+      });
+    });
+  });
+
+  describe('createErrorMessage integration', () => {
+    describe('Scenario: ValidationError always shown', () => {
+      it('Given NODE_ENV="production" And a ValidationError occurs When createErrorMessage generates the response Then the validation error details are shown', async () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.DEBUG;
+
+        const validationError = new ValidationError('Invalid input', {
+          email: ['Invalid email format'],
+          age: ['Must be a positive number'],
+        });
+        const mockOperation = jest.fn().mockRejectedValue(validationError);
+
+        const result = await handleAsyncOperation(
+          mockOperation,
+          'validate user',
+        );
+
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+          'Invalid input',
+        );
+      });
+    });
+
+    describe('Scenario: CliUserError always shown', () => {
+      it('Given NODE_ENV="production" And a CliUserError occurs When createErrorMessage generates the response Then the user error details are shown', async () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.DEBUG;
+
+        const userError = new CliUserError(
+          "Account 'foobar' not found. Available accounts: iCloud, Google",
+        );
+        const mockOperation = jest.fn().mockRejectedValue(userError);
+
+        const result = await handleAsyncOperation(mockOperation, 'read events');
+
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as { type: 'text'; text: string }).text).toBe(
+          "Account 'foobar' not found. Available accounts: iCloud, Google",
+        );
+      });
+    });
+
+    describe('Scenario: Permission errors always shown', () => {
+      it('Given NODE_ENV="production" And a permission error occurs When createErrorMessage generates the response Then the permission error details are shown', async () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.DEBUG;
+
+        const permissionError = new Error(
+          'Calendar permission denied or restricted.\n\nPlease grant Full Calendar Access in:\nSystem Settings > Privacy & Security > Calendars',
+        );
+        const mockOperation = jest.fn().mockRejectedValue(permissionError);
+
+        const result = await handleAsyncOperation(
+          mockOperation,
+          'read calendar events',
+        );
+
+        expect(result.isError).toBe(true);
+        const text = (result.content[0] as { type: 'text'; text: string }).text;
+        expect(text).toContain('Failed to read calendar events:');
+        expect(text).toContain('Calendar permission denied');
+        expect(text).toContain('Full Calendar Access');
+      });
     });
   });
 });

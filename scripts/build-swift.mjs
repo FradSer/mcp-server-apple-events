@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
@@ -25,10 +26,14 @@ async function main() {
     process.exit(1);
   }
 
-  const scriptDir = path.resolve(process.cwd(), 'src', 'swift');
+  // Resolve paths relative to script location, not process.cwd()
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const projectRoot = path.resolve(__dirname, '..');
+  const scriptDir = path.join(projectRoot, 'src', 'swift');
   const sourceFile = path.join(scriptDir, 'EventKitCLI.swift');
   const infoPlistFile = path.join(scriptDir, 'Info.plist');
-  const binDir = path.resolve(process.cwd(), 'bin');
+  const binDir = path.join(projectRoot, 'bin');
   const outputFile = path.join(binDir, 'EventKitCLI');
 
   try {

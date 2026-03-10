@@ -4,7 +4,6 @@
  */
 
 import type { Reminder, ReminderList } from '../types/index.js';
-import { getListEmblems, setListEmblem } from './applescriptList.js';
 import { executeCli } from './cliExecutor.js';
 import type { ReminderFilters } from './dateFiltering.js';
 import { applyReminderFilters } from './dateFiltering.js';
@@ -13,17 +12,10 @@ import { reminderRepository } from './reminderRepository.js';
 // Mock dependencies
 jest.mock('./cliExecutor.js');
 jest.mock('./dateFiltering.js');
-jest.mock('./applescriptList.js');
 
 const mockExecuteCli = executeCli as jest.MockedFunction<typeof executeCli>;
 const mockApplyReminderFilters = applyReminderFilters as jest.MockedFunction<
   typeof applyReminderFilters
->;
-const mockSetListEmblem = setListEmblem as jest.MockedFunction<
-  typeof setListEmblem
->;
-const mockGetListEmblems = getListEmblems as jest.MockedFunction<
-  typeof getListEmblems
 >;
 
 describe('ReminderRepository', () => {
@@ -132,12 +124,10 @@ describe('ReminderRepository', () => {
   });
 
   describe('findReminders', () => {
-    it('should return filtered reminders', async () => {
+    it('should pass showCompleted=false to CLI and clear it for JS filtering', async () => {
       const mockReminders: Partial<Reminder>[] = [
         { id: '1', title: 'Test 1', isCompleted: false, list: 'Default' },
-        { id: '2', title: 'Test 2', isCompleted: true, list: 'Work' },
       ];
-      const mockLists: ReminderList[] = [];
       const filters: ReminderFilters = { showCompleted: false };
       const filteredReminders: Reminder[] = [
         {
@@ -151,7 +141,6 @@ describe('ReminderRepository', () => {
 
       mockExecuteCli.mockResolvedValue({
         reminders: mockReminders,
-        lists: mockLists,
       });
       mockApplyReminderFilters.mockReturnValue(filteredReminders);
 
@@ -161,13 +150,71 @@ describe('ReminderRepository', () => {
         '--action',
         'read',
         '--showCompleted',
-        'true',
+        'false',
       ]);
-      expect(mockApplyReminderFilters).toHaveBeenCalledWith(
-        expect.any(Array),
-        filters,
-      );
+      expect(mockApplyReminderFilters).toHaveBeenCalledWith(expect.any(Array), {
+        ...filters,
+        showCompleted: undefined,
+      });
       expect(result).toBe(filteredReminders);
+    });
+
+    it('should pass CLI-supported filters to Swift and clear them for JS filtering', async () => {
+      const mockReminders: Partial<Reminder>[] = [
+        { id: '1', title: 'Test 1', isCompleted: false, list: 'Work' },
+      ];
+      const filters: ReminderFilters = {
+        showCompleted: true,
+        list: 'Work',
+        search: 'test',
+        dueWithin: 'today',
+        priority: 'high',
+      };
+
+      mockExecuteCli.mockResolvedValue({ reminders: mockReminders });
+      mockApplyReminderFilters.mockImplementation((reminders) => reminders);
+
+      await repository.findReminders(filters);
+
+      expect(mockExecuteCli).toHaveBeenCalledWith([
+        '--action',
+        'read',
+        '--showCompleted',
+        'true',
+        '--filterList',
+        'Work',
+        '--search',
+        'test',
+        '--dueWithin',
+        'today',
+      ]);
+      expect(mockApplyReminderFilters).toHaveBeenCalledWith(expect.any(Array), {
+        ...filters,
+        showCompleted: undefined,
+        list: undefined,
+        search: undefined,
+        dueWithin: undefined,
+      });
+    });
+
+    it('should default showCompleted to false when not specified', async () => {
+      const mockReminders: Partial<Reminder>[] = [
+        { id: '1', title: 'Test', isCompleted: false, list: 'Default' },
+      ];
+
+      mockExecuteCli.mockResolvedValue({
+        reminders: mockReminders,
+      });
+      mockApplyReminderFilters.mockImplementation((reminders) => reminders);
+
+      await repository.findReminders();
+
+      expect(mockExecuteCli).toHaveBeenCalledWith([
+        '--action',
+        'read',
+        '--showCompleted',
+        'false',
+      ]);
     });
 
     it('should convert JSON reminders to proper Reminder objects', async () => {
@@ -185,7 +232,6 @@ describe('ReminderRepository', () => {
 
       mockExecuteCli.mockResolvedValue({
         reminders: mockReminders,
-        lists: [],
       });
       mockApplyReminderFilters.mockImplementation((reminders) => reminders);
 
@@ -209,7 +255,6 @@ describe('ReminderRepository', () => {
 
       mockExecuteCli.mockResolvedValue({
         reminders: mockReminders,
-        lists: [],
       });
       mockApplyReminderFilters.mockImplementation((reminders) => reminders);
 
@@ -231,7 +276,6 @@ describe('ReminderRepository', () => {
 
       mockExecuteCli.mockResolvedValue({
         reminders: mockReminders,
-        lists: [],
       });
       mockApplyReminderFilters.mockImplementation((reminders) => reminders);
 
@@ -254,7 +298,6 @@ describe('ReminderRepository', () => {
 
       mockExecuteCli.mockResolvedValue({
         reminders: mockReminders,
-        lists: [],
       });
       mockApplyReminderFilters.mockImplementation((reminders) => reminders);
 
@@ -267,29 +310,22 @@ describe('ReminderRepository', () => {
   });
 
   describe('findAllLists', () => {
-    it('should return all reminder lists', async () => {
+    it('should return all reminder lists using read-lists action', async () => {
       const mockLists: ReminderList[] = [
         { id: '1', title: 'Default' },
         { id: '2', title: 'Work' },
       ];
 
-      mockExecuteCli.mockResolvedValue({
-        reminders: [],
-        lists: mockLists,
-      });
-      mockGetListEmblems.mockResolvedValue(new Map());
+      mockExecuteCli.mockResolvedValue(mockLists);
 
       const result = await repository.findAllLists();
 
+      expect(mockExecuteCli).toHaveBeenCalledWith(['--action', 'read-lists']);
       expect(result).toEqual(mockLists);
     });
 
     it('should return empty array when no lists', async () => {
-      mockExecuteCli.mockResolvedValue({
-        reminders: [],
-        lists: [],
-      });
-      mockGetListEmblems.mockResolvedValue(new Map());
+      mockExecuteCli.mockResolvedValue([]);
 
       const result = await repository.findAllLists();
 
@@ -604,38 +640,6 @@ describe('ReminderRepository', () => {
         'No calendar source available',
       );
     });
-
-    it('should return emblem when set successfully', async () => {
-      const mockResult: ReminderList = { id: '456', title: 'New List' };
-      mockSetListEmblem.mockResolvedValue(undefined);
-
-      mockExecuteCli.mockResolvedValue(mockResult);
-
-      const result = await repository.createReminderList(
-        'New List',
-        undefined,
-        '🛒',
-      );
-
-      expect(result.emblem).toBe('🛒');
-      expect(mockSetListEmblem).toHaveBeenCalledWith('New List', '🛒');
-    });
-
-    it('should return undefined emblem when setting fails', async () => {
-      const mockResult: ReminderList = { id: '456', title: 'New List' };
-      mockSetListEmblem.mockRejectedValue(new Error('List not found'));
-
-      mockExecuteCli.mockResolvedValue(mockResult);
-
-      const result = await repository.createReminderList(
-        'New List',
-        undefined,
-        '🛒',
-      );
-
-      expect(result.emblem).toBeUndefined();
-      expect(mockSetListEmblem).toHaveBeenCalledWith('New List', '🛒');
-    });
   });
 
   describe('updateReminderList', () => {
@@ -658,40 +662,6 @@ describe('ReminderRepository', () => {
         'New Name',
       ]);
       expect(result).toEqual(mockResult);
-    });
-
-    it('should return emblem when set successfully', async () => {
-      const mockResult: ReminderList = { id: '456', title: 'New List' };
-      mockSetListEmblem.mockResolvedValue(undefined);
-
-      mockExecuteCli.mockResolvedValue(mockResult);
-
-      const result = await repository.updateReminderList(
-        'Old Name',
-        'New Name',
-        undefined,
-        '🛒',
-      );
-
-      expect(result.emblem).toBe('🛒');
-      expect(mockSetListEmblem).toHaveBeenCalledWith('New Name', '🛒');
-    });
-
-    it('should return undefined emblem when setting fails', async () => {
-      const mockResult: ReminderList = { id: '456', title: 'New List' };
-      mockSetListEmblem.mockRejectedValue(new Error('List not found'));
-
-      mockExecuteCli.mockResolvedValue(mockResult);
-
-      const result = await repository.updateReminderList(
-        'Old Name',
-        'New Name',
-        undefined,
-        '🛒',
-      );
-
-      expect(result.emblem).toBeUndefined();
-      expect(mockSetListEmblem).toHaveBeenCalledWith('New Name', '🛒');
     });
   });
 

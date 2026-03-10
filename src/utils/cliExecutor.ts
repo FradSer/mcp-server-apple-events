@@ -14,32 +14,44 @@ import {
 import { FILE_SYSTEM } from './constants.js';
 import { CliUserError } from './errorHandling.js';
 import { bufferToString } from './helpers.js';
-import {
-  hasBeenPrompted,
-  type PermissionDomain,
-  type PermissionPromptResult,
-  triggerPermissionPrompt,
-} from './permissionPrompt.js';
 import { findProjectRoot } from './projectUtils.js';
+
+/**
+ * Cached binary path after successful validation
+ * Eliminates repeated validation overhead (~1-3ms per call)
+ */
+let cachedBinaryPath: string | null = null;
+
+/**
+ * Clears the cached binary path (for testing)
+ */
+export function clearBinaryPathCache(): void {
+  cachedBinaryPath = null;
+}
 
 const execFilePromise = (
   cliPath: string,
   args: string[],
 ): Promise<{ stdout: string; stderr: string }> =>
   new Promise((resolve, reject) => {
-    execFile(cliPath, args, (error, stdout, stderr) => {
-      if (error) {
-        const execError = error as ExecFileException & {
-          stdout?: string | Buffer;
-          stderr?: string | Buffer;
-        };
-        execError.stdout = stdout;
-        execError.stderr = stderr;
-        reject(execError);
-        return;
-      }
-      resolve({ stdout, stderr });
-    });
+    execFile(
+      cliPath,
+      args,
+      { maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          const execError = error as ExecFileException & {
+            stdout?: string | Buffer;
+            stderr?: string | Buffer;
+          };
+          execError.stdout = stdout;
+          execError.stderr = stderr;
+          reject(execError);
+          return;
+        }
+        resolve({ stdout, stderr });
+      },
+    );
   });
 
 interface CliSuccessResponse<T> {
@@ -53,6 +65,8 @@ interface CliErrorResponse {
 }
 
 type CliResponse<T> = CliSuccessResponse<T> | CliErrorResponse;
+
+export type PermissionDomain = 'reminders' | 'calendars';
 
 /**
  * Permission error patterns from the Swift CLI
@@ -73,41 +87,6 @@ const PERMISSION_ERROR_PATTERNS: Record<PermissionDomain, RegExp[]> = {
 };
 
 /**
- * Calendar-specific action names used in Swift CLI
- */
-const CALENDAR_ACTIONS = new Set([
-  'read-events',
-  'read-calendars',
-  'create-event',
-  'update-event',
-  'delete-event',
-]);
-
-const PERMISSION_FALLBACK_PREFIX =
-  'If the permission prompt does not appear, run the following command from the same app that launches the server (for example Terminal or Claude Desktop) and approve the prompt:';
-
-const APPLESCRIPT_COMMANDS: Record<PermissionDomain, string> = {
-  reminders:
-    'osascript -e \'tell application "Reminders" to get the name of every list\'',
-  calendars:
-    'osascript -e \'tell application "Calendar" to get the name of every calendar\'',
-};
-
-/**
- * Detects which permission domain an action requires
- * @param args - CLI arguments array
- * @returns The permission domain ('reminders' or 'calendars')
- */
-function detectActionDomain(args: string[]): PermissionDomain {
-  const actionIndex = args.indexOf('--action');
-  if (actionIndex !== -1 && actionIndex + 1 < args.length) {
-    const action = args[actionIndex + 1];
-    return CALENDAR_ACTIONS.has(action) ? 'calendars' : 'reminders';
-  }
-  return 'reminders'; // Default to reminders if action not found
-}
-
-/**
  * Detects if an error message indicates a permission issue
  * @param message - Error message to check
  * @returns The permission domain if detected, null otherwise
@@ -119,28 +98,6 @@ function detectPermissionError(message: string): PermissionDomain | null {
     }
   }
   return null;
-}
-
-function buildPermissionFallbackInstruction(
-  domain: PermissionDomain,
-  promptResult?: PermissionPromptResult,
-): string {
-  const lines = [PERMISSION_FALLBACK_PREFIX, APPLESCRIPT_COMMANDS[domain]];
-  if (promptResult?.errorMessage) {
-    lines.push(`AppleScript prompt error: ${promptResult.errorMessage}`);
-  }
-  return lines.join('\n');
-}
-
-function appendPermissionFallbackInstruction(
-  message: string,
-  domain: PermissionDomain,
-  promptResult?: PermissionPromptResult,
-): string {
-  if (message.includes(PERMISSION_FALLBACK_PREFIX)) {
-    return message;
-  }
-  return `${message}\n\n${buildPermissionFallbackInstruction(domain, promptResult)}`;
 }
 
 /**
@@ -155,10 +112,6 @@ export class CliPermissionError extends Error {
     this.name = 'CliPermissionError';
   }
 }
-
-/**
- * Calendar action strings used in Swift CLI (different from MCP tool action names)
- */
 
 /**
  * Parses JSON output from CLI
@@ -219,12 +172,41 @@ const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
  * @description
  * - Locates binary using secure path validation
  * - Parses JSON response from Swift CLI
- * - Proactively triggers permission prompts via AppleScript on first access
- * - Automatically retries with AppleScript fallback on permission errors
+ *
+ * @security
+ * This function prevents shell injection through argument separation:
+ *
+ * 1. **Uses `execFile()` instead of `exec()`**: The Node.js `child_process.execFile()`
+ *    function spawns the process directly without invoking a shell interpreter. This
+ *    means shell metacharacters like `;`, `|`, `&`, `$`, `()`, and backticks are
+ *    treated as literal text, not as command operators.
+ *
+ * 2. **Arguments passed as separate array**: Arguments are passed as an array of
+ *    discrete strings to the binary, not concatenated into a command string. The
+ *    operating system passes each argument directly to the spawned process via
+ *    `execve()`, preventing injection through argument boundaries.
+ *
+ * 3. **Swift CLI ArgumentParser**: The Swift binary uses Swift's ArgumentParser
+ *    library, which provides type-safe argument parsing and additional validation
+ *    at the native layer.
+ *
+ * Example of safe handling with malicious input:
+ * ```typescript
+ * // Even with malicious title containing shell metacharacters
+ * await executeCli(['--title', 'test; rm -rf /']);
+ * // The semicolon is passed as a literal string to the binary,
+ * // NOT interpreted as a command separator
+ * ```
+ *
  * @example
  * const result = await executeCli<Reminder[]>(['--action', 'read', '--showCompleted', 'true']);
  */
 export async function executeCli<T>(args: string[]): Promise<T> {
+  // Use cached binary path if available
+  if (cachedBinaryPath) {
+    return await runCli<T>(cachedBinaryPath, args);
+  }
+
   const projectRoot = findProjectRoot();
   const binaryName = FILE_SYSTEM.SWIFT_BINARY_NAME;
   const possiblePaths = [path.join(projectRoot, 'bin', binaryName)];
@@ -242,14 +224,14 @@ export async function executeCli<T>(args: string[]): Promise<T> {
   const { path: cliPath } = findSecureBinaryPath(possiblePaths, config);
 
   if (!cliPath) {
-    throw new Error(
+    throw new CliUserError(
       `EventKitCLI binary not found. When installed via npx, the Swift binary must be built manually:
 
 1. Find the npx cache location:
    pnpm store path
 
 2. Navigate to the package and build:
-   cd \$(pnpm store path)/.pnpm/mcp-server-apple-events@*
+   cd $(pnpm store path)/.pnpm/mcp-server-apple-events@*
    pnpm run build
 
 Alternatively, clone the repository and build locally:
@@ -264,78 +246,8 @@ Then use the local path in your Claude Desktop config:
     );
   }
 
-  // Detect which permission domain this action requires
-  const domain = detectActionDomain(args);
-  const promptResults = new Map<PermissionDomain, PermissionPromptResult>();
+  // Cache the validated path for subsequent calls
+  cachedBinaryPath = cliPath;
 
-  const recordPromptResult = async (
-    promptDomain: PermissionDomain,
-    force = false,
-  ): Promise<PermissionPromptResult> => {
-    const result = await triggerPermissionPrompt(promptDomain, force);
-    promptResults.set(promptDomain, result);
-    return result;
-  };
-
-  // Proactively trigger AppleScript permission prompt on first access
-  if (!hasBeenPrompted(domain)) {
-    await recordPromptResult(domain);
-  }
-
-  try {
-    return await runCli<T>(cliPath, args);
-  } catch (error) {
-    if (error instanceof CliPermissionError) {
-      const retryPromptResult = await recordPromptResult(error.domain, true);
-      try {
-        return await runCli<T>(cliPath, args);
-      } catch (retryError) {
-        if (retryError instanceof CliPermissionError) {
-          throw new CliPermissionError(
-            appendPermissionFallbackInstruction(
-              retryError.message,
-              retryError.domain,
-              retryPromptResult,
-            ),
-            retryError.domain,
-          );
-        }
-        throw retryError;
-      }
-    }
-    throw error;
-  }
-}
-
-/**
- * Escapes a string for safe AppleScript string interpolation
- * @param value - The string to escape
- * @returns The escaped string
- */
-export function escapeAppleScriptString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-/**
- * Executes an AppleScript command and returns the output
- * @param script - The AppleScript to execute
- * @returns Promise<string> The output from the AppleScript
- */
-export async function runAppleScript(script: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile('osascript', ['-e', script], (error, stdout, stderr) => {
-      if (error) {
-        const execError = error as ExecFileException & {
-          stdout?: string | Buffer;
-          stderr?: string | Buffer;
-        };
-        execError.stdout = stdout;
-        execError.stderr = stderr;
-        reject(execError);
-        return;
-      }
-      const output = bufferToString(stdout);
-      resolve(output ?? '');
-    });
-  });
+  return await runCli<T>(cliPath, args);
 }

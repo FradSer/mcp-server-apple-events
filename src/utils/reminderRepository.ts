@@ -13,7 +13,6 @@ import type {
   ReminderReadResult,
   UpdateReminderData,
 } from '../types/repository.js';
-import { getListEmblems, setListEmblem } from './applescriptList.js';
 import { executeCli } from './cliExecutor.js';
 import type { ReminderFilters } from './dateFiltering.js';
 import { applyReminderFilters } from './dateFiltering.js';
@@ -131,15 +130,6 @@ class ReminderRepository {
     return reminders.map((reminder) => this.mapReminder(reminder));
   }
 
-  private async readAll(): Promise<ReminderReadResult> {
-    return executeCli<ReminderReadResult>([
-      '--action',
-      'read',
-      '--showCompleted',
-      'true',
-    ]);
-  }
-
   async findReminderById(id: string): Promise<Reminder> {
     const reminderJSON = await executeCli<ReminderJSON>([
       '--action',
@@ -151,17 +141,30 @@ class ReminderRepository {
   }
 
   async findReminders(filters: ReminderFilters = {}): Promise<Reminder[]> {
-    const { reminders } = await this.readAll();
+    const args = ['--action', 'read'];
+    addOptionalBooleanArg(
+      args,
+      '--showCompleted',
+      filters.showCompleted ?? false,
+    );
+    addOptionalArg(args, '--filterList', filters.list);
+    addOptionalArg(args, '--search', filters.search);
+    addOptionalArg(args, '--dueWithin', filters.dueWithin);
+
+    const { reminders } = await executeCli<ReminderReadResult>(args);
     const normalizedReminders = this.mapReminders(reminders);
-    return applyReminderFilters(normalizedReminders, filters);
+
+    return applyReminderFilters(normalizedReminders, {
+      ...filters,
+      showCompleted: undefined,
+      list: undefined,
+      search: undefined,
+      dueWithin: undefined,
+    });
   }
 
   async findAllLists(): Promise<ReminderList[]> {
-    const { lists } = await this.readAll();
-
-    // Get emblems for all lists in parallel
-    const listTitles = lists.map((l) => l.title);
-    const emblems = await getListEmblems(listTitles);
+    const lists = await executeCli<ListJSON[]>(['--action', 'read-lists']);
 
     return lists.map((list) => {
       const result: ReminderList = {
@@ -172,12 +175,6 @@ class ReminderRepository {
       // Add color if present and not null
       if (list.color) {
         result.color = list.color;
-      }
-
-      // Add emblem if found
-      const emblem = emblems.get(list.title);
-      if (emblem) {
-        result.emblem = emblem;
       }
 
       return result;
@@ -234,7 +231,6 @@ class ReminderRepository {
   async createReminderList(
     name: string,
     color?: string,
-    emblem?: string,
   ): Promise<ReminderList> {
     const args = ['--action', 'create-list', '--name', name];
     if (color) {
@@ -242,22 +238,10 @@ class ReminderRepository {
     }
     const listJson = await executeCli<ListJSON>(args);
 
-    // Set emblem if provided
-    let actualEmblem: string | undefined;
-    if (emblem) {
-      try {
-        await setListEmblem(name, emblem);
-        actualEmblem = emblem;
-      } catch {
-        // Emblem setting failed but list was created
-      }
-    }
-
     return {
       id: listJson.id,
       title: listJson.title,
       color: listJson.color ?? undefined,
-      emblem: actualEmblem,
     };
   }
 
@@ -265,10 +249,8 @@ class ReminderRepository {
     currentName: string,
     newName?: string,
     color?: string,
-    emblem?: string,
   ): Promise<ReminderList> {
     const args = ['--action', 'update-list', '--name', currentName];
-    const effectiveName = newName ?? currentName;
 
     if (newName) {
       args.push('--newName', newName);
@@ -278,22 +260,10 @@ class ReminderRepository {
     }
     const listJson = await executeCli<ListJSON>(args);
 
-    // Set emblem if provided
-    let actualEmblem: string | undefined;
-    if (emblem) {
-      try {
-        await setListEmblem(effectiveName, emblem);
-        actualEmblem = emblem;
-      } catch {
-        // Emblem setting failed but list was updated
-      }
-    }
-
     return {
       id: listJson.id,
       title: listJson.title,
       color: listJson.color ?? undefined,
-      emblem: actualEmblem,
     };
   }
 
@@ -303,3 +273,6 @@ class ReminderRepository {
 }
 
 export const reminderRepository = new ReminderRepository();
+
+// Export class for dependency injection and testing
+export { ReminderRepository };

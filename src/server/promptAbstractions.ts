@@ -11,8 +11,19 @@
  */
 export const CONFIDENCE_CONSTRAINTS = [
   'Assess confidence for each action (high >80%, medium 60-80%, low <60%).',
-  'If scope is ambiguous, ask. Otherwise: high = execute, medium = recommend, low = confirm.',
+  'HIGH CONFIDENCE (>80%): You MUST make actual MCP tool calls immediately. Do not just describe the action - execute it by calling the reminders_tasks or reminders_lists tool with the appropriate parameters.',
+  'MEDIUM CONFIDENCE (60-80%): Provide recommendations in tool-ready format with rationale.',
+  'LOW CONFIDENCE (<60%): Use AskUserQuestion tool to present options to the user. Do not list them as text descriptions - convert them into interactive questions.',
   'Provide brief rationale for medium-confidence actions.',
+];
+
+/**
+ * AskUserQuestion tool usage examples
+ */
+export const ASK_USER_QUESTION_EXAMPLES = [
+  'Use AskUserQuestion tool for decisions requiring user input.',
+  'Example: AskUserQuestion with options: ["Mark as complete", "Keep open", "Need more info"]',
+  'Each option should have a clear description of what will happen if selected.',
 ];
 
 /**
@@ -131,9 +142,20 @@ export const TIME_BLOCK_CREATION_CONSTRAINTS = [
  * Standard action queue output format
  */
 export const getActionQueueFormat = (_currentDate: string): string[] => [
-  '### Action queue — prioritized list of actions organized by confidence level (high/medium/low) and impact. IMPORTANT: High-confidence actions (>80%) should be EXECUTED immediately using MCP tool calls, not just described. Each action should specify:',
-  '  - HIGH CONFIDENCE (>80%): Execute using tool calls. MEDIUM CONFIDENCE (60-80%): Provide recommendations in tool call format. LOW CONFIDENCE (<60%): Text description only, ask for confirmation.',
-  '  - Each action must include: confidence level, action type (create/update/recommendation), exact properties (title, list, dueDate, note, url if applicable), and brief rationale',
+  '### Action queue',
+  '',
+  '**HIGH CONFIDENCE (>80%)**: Execute immediately with tool calls. After execution, show:',
+  '✓ Action description',
+  '  - Tool: tool_name, key parameters',
+  '  - Rationale: brief reason',
+  '',
+  '**MEDIUM CONFIDENCE (60-80%)**: Recommend with tool-ready format:',
+  '- [MEDIUM, XX%] Action description',
+  '  - Tool: tool_name, key parameters',
+  '  - Rationale: brief reason',
+  '',
+  '**LOW CONFIDENCE (<60%)**: Use AskUserQuestion tool to present options.',
+  '',
   `  - Use ${TIME_FORMAT_SPEC} format for dueDate (e.g., "2025-11-04 18:00:00-05:00").`,
 ];
 

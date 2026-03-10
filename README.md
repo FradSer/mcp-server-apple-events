@@ -353,7 +353,7 @@ Manages individual reminder tasks with full CRUD support, including priority, al
 - `note` _(optional)_: Note text to attach to the reminder
 - `url` _(optional)_: URL to associate with the reminder
 - `location` _(optional)_: Location text (`EKCalendarItem.location`) (not a geofence trigger)
-- `priority` _(optional)_: Priority level (0=none, 1=high, 2=medium, 3=low)
+- `priority` _(optional)_: Priority level (0=none, 1=high, 5=medium, 9=low)
 - `alarms` _(optional)_: Array of alarm objects (see Alarm Object below)
 - `recurrenceRules` _(optional)_: Array of recurrence rules (see Recurrence Rules below)
 - `recurrence` _(optional)_: Legacy single recurrence rule object (shorthand for one-item `recurrenceRules`)
@@ -373,7 +373,7 @@ Manages individual reminder tasks with full CRUD support, including priority, al
 - `completed` _(optional)_: Mark reminder as completed/uncompleted
 - `completionDate` _(optional)_: Set an explicit completion date/time
 - `targetList` _(optional)_: Name of the list containing the reminder
-- `priority` _(optional)_: New priority level (0=none, 1=high, 2=medium, 3=low)
+- `priority` _(optional)_: New priority level (0=none, 1=high, 5=medium, 9=low)
 - `alarms` _(optional)_: Replace alarms with this array
 - `clearAlarms` _(optional)_: Set to true to remove all alarms
 - `recurrenceRules` _(optional)_: Replace recurrence rules with this array

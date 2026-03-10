@@ -11,31 +11,7 @@ import {
   REMINDER_ACTIONS,
 } from '../types/index.js';
 
-/**
- * Extended JSON Schema with dependentSchemas support
- * This extends the base schema type to include the JSON Schema Draft 2019-09 dependentSchemas keyword
- */
-interface ExtendedJSONSchema {
-  type?: string;
-  properties?: Record<string, unknown>;
-  required?: string[];
-  dependentSchemas?: Record<string, unknown>;
-  enum?: unknown[];
-  description?: string;
-  default?: unknown;
-  format?: string;
-}
-
-/**
- * Extended Tool type that supports dependentSchemas in inputSchema
- */
-interface ExtendedTool {
-  name: string;
-  description?: string;
-  inputSchema: ExtendedJSONSchema;
-}
-
-const _EXTENDED_TOOLS: ExtendedTool[] = [
+export const TOOLS: Tool[] = [
   {
     name: 'reminders_tasks',
     description:
@@ -95,9 +71,9 @@ const _EXTENDED_TOOLS: ExtendedTool[] = [
         },
         priority: {
           type: 'integer',
-          enum: [0, 1, 2, 3],
+          enum: [0, 1, 5, 9],
           description:
-            'Priority level: 0=none, 1=high, 2=medium, 3=low (for create/update).',
+            'Priority level: 0=none, 1=high, 5=medium, 9=low (for create/update).',
         },
         alarms: {
           type: 'array',
@@ -373,19 +349,6 @@ const _EXTENDED_TOOLS: ExtendedTool[] = [
         },
       },
       required: ['action'],
-      dependentSchemas: {
-        action: {
-          oneOf: [
-            { properties: { action: { const: 'read' } } },
-            {
-              properties: { action: { const: 'create' } },
-              required: ['title'],
-            },
-            { properties: { action: { const: 'update' } }, required: ['id'] },
-            { properties: { action: { const: 'delete' } }, required: ['id'] },
-          ],
-        },
-      },
     },
   },
   {
@@ -414,23 +377,8 @@ const _EXTENDED_TOOLS: ExtendedTool[] = [
           description:
             'The hex color code for the list (for create/update). Example: "#FF5733".',
         },
-        emblem: {
-          type: 'string',
-          description:
-            'An emoji to use as the list icon/emblem (for create/update). Example: "🛒". Limited to 1-4 characters.',
-        },
       },
       required: ['action'],
-      dependentSchemas: {
-        action: {
-          oneOf: [
-            { properties: { action: { const: 'read' } } },
-            { properties: { action: { const: 'create' } }, required: ['name'] },
-            { properties: { action: { const: 'update' } }, required: ['name'] },
-            { properties: { action: { const: 'delete' } }, required: ['name'] },
-          ],
-        },
-      },
     },
   },
   {
@@ -656,19 +604,6 @@ const _EXTENDED_TOOLS: ExtendedTool[] = [
         },
       },
       required: ['action'],
-      dependentSchemas: {
-        action: {
-          oneOf: [
-            { properties: { action: { const: 'read' } } },
-            {
-              properties: { action: { const: 'create' } },
-              required: ['title', 'startDate', 'endDate'],
-            },
-            { properties: { action: { const: 'update' } }, required: ['id'] },
-            { properties: { action: { const: 'delete' } }, required: ['id'] },
-          ],
-        },
-      },
     },
   },
   {
@@ -685,11 +620,6 @@ const _EXTENDED_TOOLS: ExtendedTool[] = [
         },
       },
       required: ['action'],
-      dependentSchemas: {
-        action: {
-          oneOf: [{ properties: { action: { const: 'read' } } }],
-        },
-      },
     },
   },
   {
@@ -732,39 +662,6 @@ const _EXTENDED_TOOLS: ExtendedTool[] = [
         },
       },
       required: ['action', 'reminderId'],
-      dependentSchemas: {
-        action: {
-          oneOf: [
-            { properties: { action: { const: 'read' } } },
-            {
-              properties: { action: { const: 'create' } },
-              required: ['title'],
-            },
-            {
-              properties: { action: { const: 'update' } },
-              required: ['subtaskId'],
-            },
-            {
-              properties: { action: { const: 'delete' } },
-              required: ['subtaskId'],
-            },
-            {
-              properties: { action: { const: 'toggle' } },
-              required: ['subtaskId'],
-            },
-            {
-              properties: { action: { const: 'reorder' } },
-              required: ['order'],
-            },
-          ],
-        },
-      },
     },
   },
 ];
-
-/**
- * Export TOOLS as Tool[] for MCP server compatibility
- * The dependentSchemas are preserved at runtime even though TypeScript doesn't type-check them
- */
-export const TOOLS = _EXTENDED_TOOLS as unknown as Tool[];
