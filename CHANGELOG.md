@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-10
+
+### Added
+
+- **List Colors & Emojis**: Set reminder list color and emoji/emblem via native EventKit API
+- **Alarm Types**: Support for different alarm types on reminders (date, time, location-based)
+- **Account/Source Filtering**: Filter calendar events by account and source
+- **CliUserError**: New error type for clear user-facing CLI error messages
+- E2E tests using MCP client protocol
+- Local build configuration documentation
+
+### Changed
+
+- Bumped @modelcontextprotocol/sdk from 1.25.1 to 1.26.0
+
+### Fixed
+
+- Safe emblem batch parsing for reminder lists
+- Full access permission errors for calendar operations
+- Correct priority values for reminders using EventKit standard
+- Support for completed status on reminder creation
+- Source setting for new reminder lists
+- Secure AppleScript execution with improved types
+- Error handling for missing Swift binary
+- Documented default end time for calendar events
+
 ## [1.3.0] - 2026-02-04
 
 ### Added
@@ -424,7 +450,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic Apple Reminders integration
 - Foundation for macOS native reminder management
 
-[unreleased]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.3.0...HEAD
+[unreleased]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.0.1...v1.1.0
