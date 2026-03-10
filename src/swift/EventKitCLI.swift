@@ -621,11 +621,14 @@ class RemindersManager {
             let now = Date()
             let todayStart = Calendar.current.startOfDay(for: now)
             filtered = filtered.filter { reminder in
-                guard let dueDate = reminder.dueDateComponents?.date else { return dueFilter == "no-date" }
+                guard let dueDateComponents = reminder.dueDateComponents,
+                      let dueDate = Calendar.current.date(from: dueDateComponents) else {
+                    return dueFilter == "no-date"
+                }
                 if dueFilter == "overdue" { return dueDate < todayStart }
                 if dueFilter == "today" { return Calendar.current.isDateInToday(dueDate) }
                 if dueFilter == "tomorrow" { return Calendar.current.isDateInTomorrow(dueDate) }
-                if dueFilter == "this-week" { 
+                if dueFilter == "this-week" {
                     guard let weekInterval = Calendar.current.dateInterval(of: .weekOfYear, for: now) else { return false }
                     return weekInterval.contains(dueDate)
                 }
