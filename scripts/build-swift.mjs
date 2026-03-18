@@ -33,6 +33,7 @@ async function main() {
   const scriptDir = path.join(projectRoot, 'src', 'swift');
   const sourceFile = path.join(scriptDir, 'EventKitCLI.swift');
   const infoPlistFile = path.join(scriptDir, 'Info.plist');
+  const entitlementsFile = path.join(scriptDir, 'EventKitCLI.entitlements');
   const binDir = path.join(projectRoot, 'bin');
   const outputFile = path.join(binDir, 'EventKitCLI');
 
@@ -49,6 +50,16 @@ async function main() {
     console.error(`Error: Info.plist not found: ${infoPlistFile}`);
     console.error(
       'Info.plist is required for EventKit permissions to work properly.',
+    );
+    process.exit(1);
+  }
+
+  try {
+    await fs.access(entitlementsFile);
+  } catch (_error) {
+    console.error(`Error: Entitlements file not found: ${entitlementsFile}`);
+    console.error(
+      'Entitlements file is required for TCC permission dialogs on macOS 26+.',
     );
     process.exit(1);
   }
@@ -74,6 +85,16 @@ async function main() {
 
     await fs.chmod(outputFile, '755');
     console.log('Binary is now executable.');
+
+    const codesignCommand = `codesign --force --sign - --entitlements "${entitlementsFile}" "${outputFile}"`;
+    const { stdout: csOut, stderr: csErr } = await execAsync(codesignCommand);
+    if (csErr) {
+      console.warn(`codesign warnings:\n${csErr}`);
+    }
+    if (csOut) {
+      console.log(csOut);
+    }
+    console.log('Binary signed with entitlements.');
     console.log('Swift binary build complete!');
   } catch (error) {
     console.error('Compilation failed!');
