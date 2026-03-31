@@ -67,8 +67,8 @@ describe('tagUtils', () => {
       expect(extractTags('#social, #work.')).toEqual(['social', 'work']);
     });
 
-    it('does not extract bare hashtags starting with digit', () => {
-      expect(extractTags('color: #123abc')).toEqual([]);
+    it('extracts digit-starting mixed tags like #1st', () => {
+      expect(extractTags('#1st #2024q1 notes')).toEqual(['1st', '2024q1']);
     });
   });
 
@@ -93,6 +93,10 @@ describe('tagUtils', () => {
 
     it('preserves mid-word hashes', () => {
       expect(stripTags('C#programming')).toBe('C#programming');
+    });
+
+    it('collapses double spaces after stripping mid-sentence tags', () => {
+      expect(stripTags('A #tag B')).toBe('A B');
     });
   });
 

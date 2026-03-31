@@ -1,0 +1,7 @@
+scopes:
+    - name: bin
+      description: Launch and runtime helper scripts
+    - name: scripts
+      description: Build, postinstall, and utility scripts
+    - name: src
+      description: Core application source code and libraries

@@ -14,10 +14,10 @@
 const BRACKET_TAG_REGEX = /\[#([^\]]+)\]/g;
 
 // Regex to match bare #tag format (Apple Reminders native).
-// Must be preceded by start-of-string or whitespace, tag must start with a letter,
-// and can contain letters, digits, underscores, hyphens.
-// This avoids false positives like issue #42 or mid-word foo#bar.
-const BARE_TAG_REGEX = /(?:^|(?<=\s))#([a-zA-Z][a-zA-Z0-9_-]*)/gm;
+// Must be preceded by start-of-string or whitespace.
+// Uses negative lookahead to exclude purely numeric tags (e.g. #42)
+// while allowing digit-starting mixed tags (e.g. #1st, #2024q1).
+const BARE_TAG_REGEX = /(?:^|(?<=\s))#(?![0-9]+\b)([a-zA-Z0-9_-]+)/gm;
 
 /**
  * Normalizes a tag by removing # prefix, trimming, and lowercasing
@@ -45,35 +45,21 @@ function normalizeTags(tags: string[]): string[] {
 export function extractTags(notes: string | null | undefined): string[] {
   if (!notes) return [];
 
-  const tags: string[] = [];
+  const tags = new Set<string>();
 
   // Extract bracket-format tags: [#tagname]
-  for (
-    let match = BRACKET_TAG_REGEX.exec(notes);
-    match !== null;
-    match = BRACKET_TAG_REGEX.exec(notes)
-  ) {
+  for (const match of notes.matchAll(BRACKET_TAG_REGEX)) {
     const tag = match[1].trim().toLowerCase();
-    if (tag && !tags.includes(tag)) {
-      tags.push(tag);
-    }
+    if (tag) tags.add(tag);
   }
-  BRACKET_TAG_REGEX.lastIndex = 0;
 
   // Extract bare-format tags: #tagname (Apple Reminders native)
-  for (
-    let match = BARE_TAG_REGEX.exec(notes);
-    match !== null;
-    match = BARE_TAG_REGEX.exec(notes)
-  ) {
+  for (const match of notes.matchAll(BARE_TAG_REGEX)) {
     const tag = match[1].trim().toLowerCase();
-    if (tag && !tags.includes(tag)) {
-      tags.push(tag);
-    }
+    if (tag) tags.add(tag);
   }
-  BARE_TAG_REGEX.lastIndex = 0;
 
-  return tags;
+  return Array.from(tags);
 }
 
 /**
@@ -88,6 +74,7 @@ export function stripTags(notes: string | null | undefined): string {
   return notes
     .replace(BRACKET_TAG_REGEX, '')
     .replace(BARE_TAG_REGEX, '')
+    .replace(/[ \t]{2,}/g, ' ') // Collapse multiple spaces
     .replace(/^\s+/, '') // Trim leading whitespace
     .replace(/\s+$/, '') // Trim trailing whitespace
     .replace(/\n{3,}/g, '\n\n'); // Collapse multiple newlines
