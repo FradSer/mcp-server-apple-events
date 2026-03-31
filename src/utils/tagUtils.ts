@@ -1,13 +1,23 @@
 /**
  * tagUtils.ts
- * Utilities for handling tags stored in reminder notes using [#tag] format
+ * Utilities for handling tags stored in reminder notes.
  *
- * Tags are stored in the notes field with the format: [#tagname]
- * Example: "[#work] [#urgent] This is the reminder note content"
+ * Supports two tag formats:
+ * - Bracket format: [#tagname]  (written by this MCP server)
+ * - Bare format:    #tagname    (used by Apple Reminders native UI)
+ *
+ * Writing always uses bracket format for unambiguous round-tripping.
+ * Reading parses both formats so native Apple Reminders tags are recognized.
  */
 
-// Regex to match tags in [#tag] format
-const TAG_REGEX = /\[#([^\]]+)\]/g;
+// Regex to match tags in [#tag] bracket format
+const BRACKET_TAG_REGEX = /\[#([^\]]+)\]/g;
+
+// Regex to match bare #tag format (Apple Reminders native).
+// Must be preceded by start-of-string or whitespace, tag must start with a letter,
+// and can contain letters, digits, underscores, hyphens.
+// This avoids false positives like issue #42 or mid-word foo#bar.
+const BARE_TAG_REGEX = /(?:^|(?<=\s))#([a-zA-Z][a-zA-Z0-9_-]*)/gm;
 
 /**
  * Normalizes a tag by removing # prefix, trimming, and lowercasing
@@ -28,32 +38,47 @@ function normalizeTags(tags: string[]): string[] {
 }
 
 /**
- * Extracts tags from notes content
+ * Extracts tags from notes content, supporting both [#tag] and bare #tag formats
  * @param notes - The notes string that may contain tags
- * @returns Array of tag names (without # prefix)
+ * @returns Array of tag names (without # prefix), deduplicated and lowercased
  */
 export function extractTags(notes: string | null | undefined): string[] {
   if (!notes) return [];
 
   const tags: string[] = [];
+
+  // Extract bracket-format tags: [#tagname]
   for (
-    let match = TAG_REGEX.exec(notes);
+    let match = BRACKET_TAG_REGEX.exec(notes);
     match !== null;
-    match = TAG_REGEX.exec(notes)
+    match = BRACKET_TAG_REGEX.exec(notes)
   ) {
     const tag = match[1].trim().toLowerCase();
     if (tag && !tags.includes(tag)) {
       tags.push(tag);
     }
   }
+  BRACKET_TAG_REGEX.lastIndex = 0;
 
-  TAG_REGEX.lastIndex = 0;
+  // Extract bare-format tags: #tagname (Apple Reminders native)
+  for (
+    let match = BARE_TAG_REGEX.exec(notes);
+    match !== null;
+    match = BARE_TAG_REGEX.exec(notes)
+  ) {
+    const tag = match[1].trim().toLowerCase();
+    if (tag && !tags.includes(tag)) {
+      tags.push(tag);
+    }
+  }
+  BARE_TAG_REGEX.lastIndex = 0;
 
   return tags;
 }
 
 /**
- * Removes tag markers from notes, returning clean content
+ * Removes tag markers from notes, returning clean content.
+ * Strips both [#tag] bracket format and bare #tag format.
  * @param notes - The notes string with potential tags
  * @returns Notes content without tag markers
  */
@@ -61,7 +86,8 @@ export function stripTags(notes: string | null | undefined): string {
   if (!notes) return '';
 
   return notes
-    .replace(TAG_REGEX, '')
+    .replace(BRACKET_TAG_REGEX, '')
+    .replace(BARE_TAG_REGEX, '')
     .replace(/^\s+/, '') // Trim leading whitespace
     .replace(/\s+$/, '') // Trim trailing whitespace
     .replace(/\n{3,}/g, '\n\n'); // Collapse multiple newlines

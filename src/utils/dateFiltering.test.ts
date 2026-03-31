@@ -330,4 +330,51 @@ describe('DateFiltering', () => {
       });
     });
   });
+
+  describe('tag filtering', () => {
+    const taggedReminders: Reminder[] = [
+      createReminder({
+        id: 'bracket-tags',
+        title: 'Bracket tagged',
+        tags: ['work', 'urgent'],
+      }),
+      createReminder({
+        id: 'bare-tags',
+        title: 'Bare tagged',
+        tags: ['social', 'work'],
+      }),
+      createReminder({
+        id: 'no-tags',
+        title: 'No tags',
+      }),
+    ];
+
+    it('should filter reminders by single tag', () => {
+      const result = applyReminderFilters(taggedReminders, {
+        tags: ['social'],
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('bare-tags');
+    });
+
+    it('should filter reminders requiring ALL tags (AND logic)', () => {
+      const result = applyReminderFilters(taggedReminders, {
+        tags: ['work', 'urgent'],
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('bracket-tags');
+    });
+
+    it('should return all reminders when no tags filter', () => {
+      const result = applyReminderFilters(taggedReminders, {});
+      expect(result).toHaveLength(3);
+    });
+
+    it('should return empty when no reminders match tags', () => {
+      const result = applyReminderFilters(taggedReminders, {
+        tags: ['nonexistent'],
+      });
+      expect(result).toHaveLength(0);
+    });
+  });
 });
