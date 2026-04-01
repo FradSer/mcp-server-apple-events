@@ -23,7 +23,7 @@ export const FILE_SYSTEM = {
 export const VALIDATION = {
   /** Maximum lengths for different text fields */
   MAX_TITLE_LENGTH: 200,
-  MAX_NOTE_LENGTH: 2000,
+  MAX_NOTE_LENGTH: 20000,
   MAX_LIST_NAME_LENGTH: 100,
   MAX_SEARCH_LENGTH: 100,
   MAX_URL_LENGTH: 500,

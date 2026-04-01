@@ -65,7 +65,7 @@ describe('ValidationSchemas', () => {
       });
 
       it('should reject notes that are too long', () => {
-        const longNote = 'a'.repeat(2001);
+        const longNote = 'a'.repeat(20001);
         expect(() => SafeNoteSchema.parse(longNote)).toThrow();
       });
 
@@ -76,7 +76,7 @@ describe('ValidationSchemas', () => {
 
       it('should use custom fieldName in error messages', () => {
         // SafeNoteSchema uses 'Note' as fieldName
-        const longText = 'a'.repeat(2001);
+        const longText = 'a'.repeat(20001);
         try {
           SafeNoteSchema.parse(longText);
           expect(true).toBe(false); // Should throw
