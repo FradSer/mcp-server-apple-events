@@ -304,6 +304,33 @@ describe('cliExecutor', () => {
       expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
+    it('detects subprocess calendar permission denial on macOS 26+', async () => {
+      const permissionError = JSON.stringify({
+        status: 'error',
+        message:
+          'Calendar permission denied. The permission dialog may not appear when running as a subprocess.',
+      });
+
+      mockExecFile.mockImplementation(((
+        _cliPath: string,
+        _args: readonly string[] | null | undefined,
+        optionsOrCallback?: ExecFileOptions | null | ExecFileCallback,
+        callback?: ExecFileCallback,
+      ) => {
+        const cb = invokeCallback(optionsOrCallback, callback);
+        const error = Object.assign(new Error('Command failed'), {
+          stderr: '',
+        }) as ExecFileException;
+        cb?.(error, permissionError, '');
+        return {} as ChildProcess;
+      }) as unknown as typeof execFile);
+
+      const promise = executeCli(['--action', 'read-events']);
+      await expect(promise).rejects.toThrow(CliPermissionError);
+      await expect(promise).rejects.toThrow('Calendar permission denied.');
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+    });
+
     it('throws authorization error immediately', async () => {
       const permissionError = JSON.stringify({
         status: 'error',

@@ -566,12 +566,33 @@ class RemindersManager {
     }
 
     func requestAccess(completion: @escaping (Bool, Error?) -> Void) {
-        if #available(macOS 14.0, *) { eventStore.requestFullAccessToReminders(completion: completion) }
-        else { eventStore.requestAccess(to: .reminder, completion: completion) }
+        if #available(macOS 26.0, *) {
+            Task { @MainActor in
+                do {
+                    let granted = try await eventStore.requestFullAccessToReminders()
+                    completion(granted, nil)
+                } catch {
+                    completion(false, error)
+                }
+            }
+        } else if #available(macOS 14.0, *) {
+            eventStore.requestFullAccessToReminders(completion: completion)
+        } else {
+            eventStore.requestAccess(to: .reminder, completion: completion)
+        }
     }
-    
+
     func requestCalendarAccess(completion: @escaping (Bool, Error?) -> Void) {
-        if #available(macOS 14.0, *) {
+        if #available(macOS 26.0, *) {
+            Task { @MainActor in
+                do {
+                    let granted = try await eventStore.requestFullAccessToEvents()
+                    completion(granted, nil)
+                } catch {
+                    completion(false, error)
+                }
+            }
+        } else if #available(macOS 14.0, *) {
             eventStore.requestFullAccessToEvents(completion: completion)
         } else {
             eventStore.requestAccess(to: .event, completion: completion)
@@ -1452,7 +1473,7 @@ func main() {
                 manager.requestCalendarAccess { granted, error in
                     guard granted else {
                         let errorMsg = error?.localizedDescription ?? "Unknown error"
-                        outputError("Calendar permission denied. \(errorMsg)\n\nPlease grant Full Calendar Access in:\nSystem Settings > Privacy & Security > Calendars")
+                        outputError("Calendar permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Calendar' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Calendars\n3. Rebuild the server with 'pnpm build' to update code signing")
                         return
                     }
                     handleAction()
@@ -1477,7 +1498,7 @@ func main() {
                 manager.requestAccess { granted, error in
                     guard granted else {
                         let errorMsg = error?.localizedDescription ?? "Unknown error"
-                        outputError("Reminder permission denied. \(errorMsg)\n\nPlease grant reminder permissions in:\nSystem Settings > Privacy & Security > Reminders")
+                        outputError("Reminder permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Reminders' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Reminders\n3. Rebuild the server with 'pnpm build' to update code signing")
                         return
                     }
                     handleAction()
