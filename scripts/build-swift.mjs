@@ -86,7 +86,10 @@ async function main() {
     await fs.chmod(outputFile, '755');
     console.log('Binary is now executable.');
 
-    const codesignCommand = `codesign --force --sign - --entitlements "${entitlementsFile}" "${outputFile}"`;
+    // --options runtime enables Hardened Runtime, required on macOS 26+ for
+    // the TCC system to show calendar permission dialogs when the binary
+    // runs as a subprocess of a GUI application (e.g. Claude Desktop).
+    const codesignCommand = `codesign --force --sign - --options runtime --entitlements "${entitlementsFile}" "${outputFile}"`;
     const { stdout: csOut, stderr: csErr } = await execAsync(codesignCommand);
     if (csErr) {
       console.warn(`codesign warnings:\n${csErr}`);
@@ -94,7 +97,7 @@ async function main() {
     if (csOut) {
       console.log(csOut);
     }
-    console.log('Binary signed with entitlements.');
+    console.log('Binary signed with hardened runtime and entitlements.');
     console.log('Swift binary build complete!');
   } catch (error) {
     console.error('Compilation failed!');
