@@ -565,16 +565,21 @@ class RemindersManager {
         return EKEventStore.authorizationStatus(for: .event)
     }
 
+    @available(macOS 26.0, *)
+    private func requestAccessAsync(_ method: @escaping () async throws -> Bool, completion: @escaping (Bool, Error?) -> Void) {
+        Task { @MainActor in
+            do {
+                let granted = try await method()
+                completion(granted, nil)
+            } catch {
+                completion(false, error)
+            }
+        }
+    }
+
     func requestAccess(completion: @escaping (Bool, Error?) -> Void) {
         if #available(macOS 26.0, *) {
-            Task { @MainActor in
-                do {
-                    let granted = try await eventStore.requestFullAccessToReminders()
-                    completion(granted, nil)
-                } catch {
-                    completion(false, error)
-                }
-            }
+            requestAccessAsync(eventStore.requestFullAccessToReminders, completion: completion)
         } else if #available(macOS 14.0, *) {
             eventStore.requestFullAccessToReminders(completion: completion)
         } else {
@@ -584,14 +589,7 @@ class RemindersManager {
 
     func requestCalendarAccess(completion: @escaping (Bool, Error?) -> Void) {
         if #available(macOS 26.0, *) {
-            Task { @MainActor in
-                do {
-                    let granted = try await eventStore.requestFullAccessToEvents()
-                    completion(granted, nil)
-                } catch {
-                    completion(false, error)
-                }
-            }
+            requestAccessAsync(eventStore.requestFullAccessToEvents, completion: completion)
         } else if #available(macOS 14.0, *) {
             eventStore.requestFullAccessToEvents(completion: completion)
         } else {
@@ -1442,6 +1440,10 @@ struct ArgumentParser {
     }
 }
 
+func subprocessPermissionMessage(domain: String, tccService: String, errorMsg: String) -> String {
+    return "\(domain) permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset \(tccService)' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > \(tccService)\n3. If installed from source, rebuild with 'pnpm build' to update code signing"
+}
+
 func main() {
     let parser = ArgumentParser()
     let manager = RemindersManager()
@@ -1473,7 +1475,7 @@ func main() {
                 manager.requestCalendarAccess { granted, error in
                     guard granted else {
                         let errorMsg = error?.localizedDescription ?? "Unknown error"
-                        outputError("Calendar permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Calendar' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Calendars\n3. If installed from source, rebuild with 'pnpm build' to update code signing")
+                        outputError(subprocessPermissionMessage(domain: "Calendar", tccService: "Calendar", errorMsg: errorMsg))
                         return
                     }
                     handleAction()
@@ -1498,7 +1500,7 @@ func main() {
                 manager.requestAccess { granted, error in
                     guard granted else {
                         let errorMsg = error?.localizedDescription ?? "Unknown error"
-                        outputError("Reminder permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Reminders' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Reminders\n3. If installed from source, rebuild with 'pnpm build' to update code signing")
+                        outputError(subprocessPermissionMessage(domain: "Reminder", tccService: "Reminders", errorMsg: errorMsg))
                         return
                     }
                     handleAction()
