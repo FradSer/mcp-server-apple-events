@@ -1473,7 +1473,7 @@ func main() {
                 manager.requestCalendarAccess { granted, error in
                     guard granted else {
                         let errorMsg = error?.localizedDescription ?? "Unknown error"
-                        outputError("Calendar permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Calendar' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Calendars\n3. Rebuild the server with 'pnpm build' to update code signing")
+                        outputError("Calendar permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Calendar' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Calendars\n3. If installed from source, rebuild with 'pnpm build' to update code signing")
                         return
                     }
                     handleAction()
@@ -1498,7 +1498,7 @@ func main() {
                 manager.requestAccess { granted, error in
                     guard granted else {
                         let errorMsg = error?.localizedDescription ?? "Unknown error"
-                        outputError("Reminder permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Reminders' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Reminders\n3. Rebuild the server with 'pnpm build' to update code signing")
+                        outputError("Reminder permission denied. \(errorMsg)\n\nThe permission dialog may not appear when running as a subprocess.\nTo fix this on macOS 26+, try one of:\n1. Run 'tccutil reset Reminders' in Terminal, then retry\n2. Manually grant access in: System Settings > Privacy & Security > Reminders\n3. If installed from source, rebuild with 'pnpm build' to update code signing")
                         return
                     }
                     handleAction()
