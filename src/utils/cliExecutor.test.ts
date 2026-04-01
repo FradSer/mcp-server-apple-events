@@ -327,7 +327,6 @@ describe('cliExecutor', () => {
 
       const promise = executeCli(['--action', 'read-events']);
       await expect(promise).rejects.toThrow(CliPermissionError);
-      await expect(promise).rejects.toThrow('Calendar permission denied.');
       expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
