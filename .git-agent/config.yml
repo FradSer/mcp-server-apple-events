@@ -1,7 +1,27 @@
 scopes:
     - name: bin
-      description: Launch and runtime helper scripts
-    - name: scripts
-      description: Build, postinstall, and utility scripts
-    - name: src
-      description: Core application source code and libraries
+      description: Launch helper (run.cjs) and compiled Swift binary
+    - name: scr
+      description: Build and postinstall scripts (build-swift, postinstall)
+    - name: srv
+      description: MCP server setup, request handler registration, and stdio transport
+    - name: tools
+      description: Tool schema definitions, routing, and domain-specific CRUD handlers
+    - name: prompt
+      description: Prompt template definitions, builders, and abstractions
+    - name: utils
+      description: Shared utilities (CLI executor, helpers, date/time, error handling)
+    - name: rem
+      description: Reminder handlers, repository, subtask and tag utilities
+    - name: cal
+      description: Calendar event handlers and repository
+    - name: val
+      description: Zod input validation schemas
+    - name: types
+      description: TypeScript interfaces, type constants, and domain types
+    - name: swift
+      description: EventKitCLI Swift source, entitlements, and Info.plist
+    - name: deps
+      description: Dependency manifest and lockfile changes
+    - name: ci
+      description: CI configuration and entitlements for automated builds
