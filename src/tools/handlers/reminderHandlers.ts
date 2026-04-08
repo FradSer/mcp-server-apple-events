@@ -100,6 +100,12 @@ const formatRecurrence = (recurrence: RecurrenceRule): string => {
     recurrence.interval > 1 ? `every ${recurrence.interval} ` : '';
 
   switch (recurrence.frequency) {
+    case 'minutely':
+      parts.push(`${interval}minute${recurrence.interval > 1 ? 's' : ''}`);
+      break;
+    case 'hourly':
+      parts.push(`${interval}hour${recurrence.interval > 1 ? 's' : ''}`);
+      break;
     case 'daily':
       parts.push(`${interval}day${recurrence.interval > 1 ? 's' : ''}`);
       break;

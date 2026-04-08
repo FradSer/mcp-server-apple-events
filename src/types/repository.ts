@@ -7,7 +7,7 @@
  * Recurrence rule JSON interface matching EventKitCLI output
  */
 export interface RecurrenceRuleJSON {
-  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  frequency: 'minutely' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   interval?: number; // Defaults to 1 if not provided
   endDate?: string | null;
   occurrenceCount?: number | null;

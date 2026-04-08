@@ -22,7 +22,13 @@ export const PRIORITY_LABELS: Record<number, string> = {
 /**
  * Recurrence frequency types
  */
-export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type RecurrenceFrequency =
+  | 'minutely'
+  | 'hourly'
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly';
 
 /**
  * Recurrence rule interface for repeating reminders
