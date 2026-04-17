@@ -238,7 +238,7 @@ private func parseAlarms(from json: String, dateParser: (String) -> Date?) -> [E
 
 // MARK: - Recurrence Rule Models
 struct RecurrenceRuleJSON: Codable {
-    let frequency: String  // daily, weekly, monthly, yearly
+    let frequency: String  // minutely, hourly, daily, weekly, monthly, yearly
     let interval: Int
     let endDate: String?
     let occurrenceCount: Int?
@@ -254,6 +254,7 @@ private func recurrenceRuleFromJSON(_ rule: RecurrenceRuleJSON) -> EKRecurrenceR
     case "weekly": frequency = .weekly
     case "monthly": frequency = .monthly
     case "yearly": frequency = .yearly
+    // Note: "hourly" and "minutely" are not supported by EKRecurrenceFrequency
     default: return nil
     }
 
@@ -329,7 +330,14 @@ private func recurrenceRuleToJSON(_ ekRule: EKRecurrenceRule) -> RecurrenceRuleJ
     case .weekly: frequency = "weekly"
     case .monthly: frequency = "monthly"
     case .yearly: frequency = "yearly"
-    @unknown default: return nil
+    @unknown default:
+        // Forward-compatible: handle potential future frequency values
+        // by mapping their raw integer to a string
+        switch ekRule.frequency.rawValue {
+        case 4: frequency = "hourly"
+        case 5: frequency = "minutely"
+        default: return nil
+        }
     }
 
     let daysOfWeek = ekRule.daysOfTheWeek?.map { $0.dayOfTheWeek.rawValue }

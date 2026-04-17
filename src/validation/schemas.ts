@@ -287,7 +287,14 @@ const PriorityValueSchema = z
  * Recurrence rule schema for repeating reminders
  */
 const RecurrenceRuleObjectSchema = z.object({
-  frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  frequency: z.enum([
+    'minutely',
+    'hourly',
+    'daily',
+    'weekly',
+    'monthly',
+    'yearly',
+  ]),
   interval: z.number().int().positive().default(1),
   endDate: SafeDateSchema,
   occurrenceCount: z.number().int().positive().optional(),

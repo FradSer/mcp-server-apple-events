@@ -177,7 +177,14 @@ export const TOOLS: Tool[] = [
           properties: {
             frequency: {
               type: 'string',
-              enum: ['daily', 'weekly', 'monthly', 'yearly'],
+              enum: [
+                'minutely',
+                'hourly',
+                'daily',
+                'weekly',
+                'monthly',
+                'yearly',
+              ],
               description: 'How often the reminder repeats.',
             },
             interval: {
@@ -225,7 +232,14 @@ export const TOOLS: Tool[] = [
             properties: {
               frequency: {
                 type: 'string',
-                enum: ['daily', 'weekly', 'monthly', 'yearly'],
+                enum: [
+                  'minutely',
+                  'hourly',
+                  'daily',
+                  'weekly',
+                  'monthly',
+                  'yearly',
+                ],
                 description: 'How often the reminder repeats.',
               },
               interval: {
@@ -532,7 +546,14 @@ export const TOOLS: Tool[] = [
             properties: {
               frequency: {
                 type: 'string',
-                enum: ['daily', 'weekly', 'monthly', 'yearly'],
+                enum: [
+                  'minutely',
+                  'hourly',
+                  'daily',
+                  'weekly',
+                  'monthly',
+                  'yearly',
+                ],
                 description: 'How often the event repeats.',
               },
               interval: {
