@@ -29,7 +29,11 @@ const formatDateOnly = (date: Date): string => {
 };
 
 const parseDateInput = (value: string): Date | undefined => {
-  const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+  const normalized = value.includes(' ')
+    ? value.replace(' ', 'T')
+    : /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? `${value}T00:00:00`
+      : value;
   const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
