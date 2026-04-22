@@ -5,29 +5,35 @@ const swiftPath = path.resolve(process.cwd(), 'src/swift/EventKitCLI.swift');
 const swiftSource = readFileSync(swiftPath, 'utf8');
 
 describe('EventKitCLI cross-list move fallback', () => {
-  it('exposes a moveReminderAcrossLists helper', () => {
+  it('exposes a moveReminderAcrossLists helper that returns the moved EKReminder', () => {
     expect(swiftSource).toMatch(
-      /private func moveReminderAcrossLists\(_ reminder: EKReminder, toListNamed targetListName: String\) throws -> ReminderJSON/,
+      /private func moveReminderAcrossLists\(_ reminder: EKReminder, toListNamed targetListName: String\) throws -> EKReminder/,
     );
   });
 
   it('tries EventKit reassignment before falling back', () => {
     expect(swiftSource).toMatch(
-      /reminder\.calendar = targetList\s+do \{\s+try eventStore\.save\(reminder, commit: true\)/,
+      /reminder\.calendar = targetList\s+do \{\s+try eventStore\.save\(reminder, commit: true\)\s+return reminder/,
     );
   });
 
   it('falls back to AppleScript move on save error', () => {
     expect(swiftSource).toMatch(
-      /try runAppleScriptMove\(reminderUUID: originalUUID, toListNamed: targetListName\)/,
+      /try runAppleScriptMove\(reminderUUID: originalUUID, toListNamed: targetList\.title\)/,
     );
   });
 
-  it('invokes osascript via Process for the AppleScript fallback', () => {
+  it('invokes osascript via Process using executableURL (non-deprecated API)', () => {
     expect(swiftSource).toMatch(
-      /process\.launchPath = "\/usr\/bin\/osascript"/,
+      /process\.executableURL = URL\(fileURLWithPath: "\/usr\/bin\/osascript"\)/,
     );
     expect(swiftSource).toMatch(/move src to list/);
+  });
+
+  it('discards AppleScript stdout via FileHandle.nullDevice to avoid pipe-buffer deadlock', () => {
+    expect(swiftSource).toMatch(
+      /process\.standardOutput = FileHandle\.nullDevice/,
+    );
   });
 
   it('escapes backslashes and quotes in the target list name', () => {
@@ -42,15 +48,21 @@ describe('EventKitCLI cross-list move fallback', () => {
     );
   });
 
-  it('validates target list exists upfront to preserve update atomicity', () => {
-    expect(swiftSource).toMatch(
-      /\/\/ Validate target list exists upfront so a bad list name doesn't cause a[\s\S]*?if let targetListName = listName, targetListName != reminder\.calendar\.title \{\s+_ = try findList\(named: targetListName\)/,
+  it('performs the move before any field mutations to keep the update atomic', () => {
+    // The move must resolve before any `reminder.title =`, `reminder.notes =`, etc.
+    const moveIndex = swiftSource.indexOf(
+      'let reminder = needsMove ? try moveReminderAcrossLists',
     );
+    const firstFieldMutationIndex = swiftSource.indexOf(
+      'if let newTitle = newTitle { reminder.title = newTitle }',
+    );
+    expect(moveIndex).toBeGreaterThan(-1);
+    expect(firstFieldMutationIndex).toBeGreaterThan(moveIndex);
   });
 
-  it('triggers the move path only when target list differs from current', () => {
+  it('treats empty or whitespace-only targetList as a no-op instead of routing through the default list', () => {
     expect(swiftSource).toMatch(
-      /if let targetListName = listName, targetListName != reminder\.calendar\.title \{\s+return try moveReminderAcrossLists\(reminder, toListNamed: targetListName\)/,
+      /let trimmedListName = listName\?\.trimmingCharacters\(in: \.whitespacesAndNewlines\)\s+let needsMove = trimmedListName\.map \{ !\$0\.isEmpty && \$0 != original\.calendar\.title \} \?\? false/,
     );
   });
 });

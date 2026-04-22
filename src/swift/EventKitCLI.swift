@@ -747,12 +747,21 @@ class RemindersManager {
     }
 
     func updateReminder(id: String, newTitle: String?, listName: String?, notes: String?, location: String?, urlString: String?, isCompleted: Bool?, completionDateString: String?, startDateString: String?, dueDateString: String?, priority: Int?, alarmsJSON: String?, clearAlarms: Bool?, recurrenceRulesJSON: String?, clearRecurrence: Bool?, locationTriggerJSON: String?, clearLocationTrigger: Bool?) throws -> ReminderJSON {
-        guard let reminder = findReminder(withId: id) else { throw NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "ID '\(id)' not found."]) }
-        // Validate target list exists upfront so a bad list name doesn't cause a
-        // partial update where other fields commit before the move error surfaces.
-        if let targetListName = listName, targetListName != reminder.calendar.title {
-            _ = try findList(named: targetListName)
-        }
+        guard let original = findReminder(withId: id) else { throw NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "ID '\(id)' not found."]) }
+
+        // Perform cross-list move first, before any field mutations. Fast path uses
+        // EventKit direct reassignment; on save failure (e.g., com.apple.reminderkit
+        // error -3002 on cross-source moves) we fall back to AppleScript's `move`,
+        // which internally copy-and-deletes while preserving all metadata including
+        // creationDate. If the move throws, no field updates are attempted, so the
+        // overall update stays atomic: either the reminder ends up in the target
+        // list with the requested field changes, or nothing changes at all.
+        // Empty/whitespace targetList is treated as no-op to avoid routing through
+        // findList's default-list fallback when the caller did not intend a move.
+        let trimmedListName = listName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needsMove = trimmedListName.map { !$0.isEmpty && $0 != original.calendar.title } ?? false
+        let reminder = needsMove ? try moveReminderAcrossLists(original, toListNamed: trimmedListName!) : original
+
         if let newTitle = newTitle { reminder.title = newTitle }
         if let location = location {
             reminder.location = location.isEmpty ? nil : location
@@ -881,25 +890,16 @@ class RemindersManager {
         }
 
         try eventStore.save(reminder, commit: true)
-
-        // Handle cross-list move separately. EventKit cannot reassign `calendar`
-        // on a saved reminder across sources (raises com.apple.reminderkit error
-        // -3002), so we fall back to AppleScript's `move` command which preserves
-        // all metadata including creationDate. See moveReminderAcrossLists.
-        if let targetListName = listName, targetListName != reminder.calendar.title {
-            return try moveReminderAcrossLists(reminder, toListNamed: targetListName)
-        }
-
         return reminder.toJSON()
     }
 
-    /// Moves a reminder to a different list. Tries EventKit direct reassignment
-    /// first; on failure (e.g., cross-source moves that raise error -3002), falls
-    /// back to AppleScript's `move` command. AppleScript internally copy-and-deletes
-    /// while preserving metadata (title, notes, alarms, recurrence, creationDate),
-    /// mirroring Apple's own Reminders.app behavior. The returned JSON reflects
-    /// the reminder's new identifier in the target list.
-    private func moveReminderAcrossLists(_ reminder: EKReminder, toListNamed targetListName: String) throws -> ReminderJSON {
+    /// Moves a reminder to a different list and returns the (possibly new) EKReminder
+    /// in the target list. Tries EventKit direct reassignment first; on failure (e.g.,
+    /// cross-source moves that raise com.apple.reminderkit error -3002), falls back
+    /// to AppleScript's `move` command. AppleScript internally copy-and-deletes while
+    /// preserving all metadata including creationDate, mirroring Apple's own
+    /// Reminders.app behavior when a user drags a reminder between lists.
+    private func moveReminderAcrossLists(_ reminder: EKReminder, toListNamed targetListName: String) throws -> EKReminder {
         let targetList = try findList(named: targetListName)
         let originalTitle = reminder.title ?? ""
         let originalCreationDate = reminder.creationDate
@@ -908,14 +908,14 @@ class RemindersManager {
         reminder.calendar = targetList
         do {
             try eventStore.save(reminder, commit: true)
-            return reminder.toJSON()
+            return reminder
         } catch {
-            try runAppleScriptMove(reminderUUID: originalUUID, toListNamed: targetListName)
+            try runAppleScriptMove(reminderUUID: originalUUID, toListNamed: targetList.title)
             eventStore.refreshSourcesIfNecessary()
             if let moved = findReminderInList(targetList, matchingTitle: originalTitle, creationDate: originalCreationDate) {
-                return moved.toJSON()
+                return moved
             }
-            throw NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Cross-list move completed via AppleScript but the moved reminder could not be located in '\(targetListName)'. The underlying error from EventKit was: \(error.localizedDescription)"])
+            throw NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Cross-list move completed via AppleScript but the moved reminder could not be located in '\(targetList.title)'. The underlying error from EventKit was: \(error.localizedDescription)"])
         }
     }
 
@@ -928,11 +928,14 @@ class RemindersManager {
         end tell
         """
         let process = Process()
-        process.launchPath = "/usr/bin/osascript"
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
         let errPipe = Pipe()
         process.standardError = errPipe
-        process.standardOutput = Pipe()
+        // Discard stdout; not reading from a Pipe can deadlock if output exceeds the
+        // pipe buffer (~64 KB). `osascript move` normally emits nothing, but using
+        // the null device is safer than a Pipe we never drain.
+        process.standardOutput = FileHandle.nullDevice
         try process.run()
         process.waitUntilExit()
         if process.terminationStatus != 0 {
