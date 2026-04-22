@@ -748,6 +748,11 @@ class RemindersManager {
 
     func updateReminder(id: String, newTitle: String?, listName: String?, notes: String?, location: String?, urlString: String?, isCompleted: Bool?, completionDateString: String?, startDateString: String?, dueDateString: String?, priority: Int?, alarmsJSON: String?, clearAlarms: Bool?, recurrenceRulesJSON: String?, clearRecurrence: Bool?, locationTriggerJSON: String?, clearLocationTrigger: Bool?) throws -> ReminderJSON {
         guard let reminder = findReminder(withId: id) else { throw NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "ID '\(id)' not found."]) }
+        // Validate target list exists upfront so a bad list name doesn't cause a
+        // partial update where other fields commit before the move error surfaces.
+        if let targetListName = listName, targetListName != reminder.calendar.title {
+            _ = try findList(named: targetListName)
+        }
         if let newTitle = newTitle { reminder.title = newTitle }
         if let location = location {
             reminder.location = location.isEmpty ? nil : location
@@ -848,8 +853,6 @@ class RemindersManager {
             reminder.addAlarm(alarm)
         }
 
-        if let listName = listName { reminder.calendar = try findList(named: listName) }
-
         var startTz: TimeZone?
         if let startStr = startDateString {
             if let parsedComponents = parseDateComponents(from: startStr) {
@@ -878,7 +881,87 @@ class RemindersManager {
         }
 
         try eventStore.save(reminder, commit: true)
+
+        // Handle cross-list move separately. EventKit cannot reassign `calendar`
+        // on a saved reminder across sources (raises com.apple.reminderkit error
+        // -3002), so we fall back to AppleScript's `move` command which preserves
+        // all metadata including creationDate. See moveReminderAcrossLists.
+        if let targetListName = listName, targetListName != reminder.calendar.title {
+            return try moveReminderAcrossLists(reminder, toListNamed: targetListName)
+        }
+
         return reminder.toJSON()
+    }
+
+    /// Moves a reminder to a different list. Tries EventKit direct reassignment
+    /// first; on failure (e.g., cross-source moves that raise error -3002), falls
+    /// back to AppleScript's `move` command. AppleScript internally copy-and-deletes
+    /// while preserving metadata (title, notes, alarms, recurrence, creationDate),
+    /// mirroring Apple's own Reminders.app behavior. The returned JSON reflects
+    /// the reminder's new identifier in the target list.
+    private func moveReminderAcrossLists(_ reminder: EKReminder, toListNamed targetListName: String) throws -> ReminderJSON {
+        let targetList = try findList(named: targetListName)
+        let originalTitle = reminder.title ?? ""
+        let originalCreationDate = reminder.creationDate
+        let originalUUID = reminder.calendarItemIdentifier
+
+        reminder.calendar = targetList
+        do {
+            try eventStore.save(reminder, commit: true)
+            return reminder.toJSON()
+        } catch {
+            try runAppleScriptMove(reminderUUID: originalUUID, toListNamed: targetListName)
+            eventStore.refreshSourcesIfNecessary()
+            if let moved = findReminderInList(targetList, matchingTitle: originalTitle, creationDate: originalCreationDate) {
+                return moved.toJSON()
+            }
+            throw NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Cross-list move completed via AppleScript but the moved reminder could not be located in '\(targetListName)'. The underlying error from EventKit was: \(error.localizedDescription)"])
+        }
+    }
+
+    private func runAppleScriptMove(reminderUUID: String, toListNamed targetListName: String) throws {
+        let escapedList = targetListName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let script = """
+        tell application "Reminders"
+            set src to first reminder whose id contains "\(reminderUUID)"
+            move src to list "\(escapedList)"
+        end tell
+        """
+        let process = Process()
+        process.launchPath = "/usr/bin/osascript"
+        process.arguments = ["-e", script]
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        process.standardOutput = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errString = String(data: errData, encoding: .utf8) ?? "unknown"
+            throw NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: "AppleScript move failed: \(errString.trimmingCharacters(in: .whitespacesAndNewlines))"])
+        }
+    }
+
+    private func findReminderInList(_ list: EKCalendar, matchingTitle title: String, creationDate: Date?) -> EKReminder? {
+        let predicate = eventStore.predicateForReminders(in: [list])
+        var found: EKReminder?
+        let semaphore = DispatchSemaphore(value: 0)
+        eventStore.fetchReminders(matching: predicate) { reminders in
+            defer { semaphore.signal() }
+            guard let reminders = reminders else { return }
+            if let creationDate = creationDate {
+                found = reminders.first { reminder in
+                    guard (reminder.title ?? "") == title else { return false }
+                    guard let otherDate = reminder.creationDate else { return false }
+                    return abs(otherDate.timeIntervalSince(creationDate)) < 1.0
+                }
+            }
+            if found == nil {
+                found = reminders.first { ($0.title ?? "") == title }
+            }
+        }
+        semaphore.wait()
+        return found
     }
 
     func deleteReminder(id: String) throws {
