@@ -607,6 +607,10 @@ class RemindersManager {
     
     private func findReminder(withId id: String) -> EKReminder? { eventStore.calendarItem(withIdentifier: id) as? EKReminder }
 
+    private func cliError(_ message: String) -> NSError {
+        NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
     func getReminderById(id: String) throws -> ReminderJSON {
         guard let reminder = findReminder(withId: id) else {
             throw NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "Reminder with ID '\(id)' not found."])
@@ -754,8 +758,9 @@ class RemindersManager {
         // error -3002 on cross-source moves) we fall back to AppleScript's `move`,
         // which internally copy-and-deletes while preserving all metadata including
         // creationDate. If the move throws, no field updates are attempted, so the
-        // overall update stays atomic: either the reminder ends up in the target
-        // list with the requested field changes, or nothing changes at all.
+        // reminder is untouched. The subsequent field-update save can still fail on
+        // its own; we wrap it below so callers can distinguish "nothing happened"
+        // from "moved successfully but field update failed".
         // Empty/whitespace targetList is treated as no-op to avoid routing through
         // findList's default-list fallback when the caller did not intend a move.
         let trimmedListName = listName?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -889,7 +894,14 @@ class RemindersManager {
             reminder.timeZone = startTz ?? dueTz
         }
 
-        try eventStore.save(reminder, commit: true)
+        do {
+            try eventStore.save(reminder, commit: true)
+        } catch {
+            if needsMove {
+                throw cliError("Cross-list move to '\(trimmedListName!)' succeeded but applying field updates failed: \(error.localizedDescription). The reminder is now in the target list with its pre-update field values.")
+            }
+            throw error
+        }
         return reminder.toJSON()
     }
 
@@ -912,10 +924,17 @@ class RemindersManager {
         } catch {
             try runAppleScriptMove(reminderUUID: originalUUID, toListNamed: targetList.title)
             eventStore.refreshSourcesIfNecessary()
+            // AppleScript's `move` often preserves calendarItemIdentifier; try the
+            // exact UUID lookup first and fall back to title + creationDate only if
+            // that misses. This narrows the false-positive window when multiple
+            // reminders in the target list share a title.
+            if let moved = findReminder(withId: originalUUID), moved.calendar.title == targetList.title {
+                return moved
+            }
             if let moved = findReminderInList(targetList, matchingTitle: originalTitle, creationDate: originalCreationDate) {
                 return moved
             }
-            throw NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Cross-list move completed via AppleScript but the moved reminder could not be located in '\(targetList.title)'. The underlying error from EventKit was: \(error.localizedDescription)"])
+            throw cliError("Cross-list move completed via AppleScript but the moved reminder could not be located in '\(targetList.title)'. The underlying error from EventKit was: \(error.localizedDescription)")
         }
     }
 
@@ -941,7 +960,12 @@ class RemindersManager {
         if process.terminationStatus != 0 {
             let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
             let errString = String(data: errData, encoding: .utf8) ?? "unknown"
-            throw NSError(domain: "EventKitCLI", code: 500, userInfo: [NSLocalizedDescriptionKey: "AppleScript move failed: \(errString.trimmingCharacters(in: .whitespacesAndNewlines))"])
+            let trimmed = errString.trimmingCharacters(in: .whitespacesAndNewlines)
+            // errAEEventNotPermitted: TCC denied Automation access to Reminders.
+            if process.terminationStatus == -1743 || trimmed.contains("-1743") {
+                throw cliError("AppleScript move to '\(targetListName)' was blocked by macOS Automation privacy. Grant this app access under System Settings → Privacy & Security → Automation → (this app) → Reminders, then retry.")
+            }
+            throw cliError("AppleScript move failed: \(trimmed)")
         }
     }
 

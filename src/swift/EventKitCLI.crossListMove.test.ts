@@ -65,4 +65,29 @@ describe('EventKitCLI cross-list move fallback', () => {
       /let trimmedListName = listName\?\.trimmingCharacters\(in: \.whitespacesAndNewlines\)\s+let needsMove = trimmedListName\.map \{ !\$0\.isEmpty && \$0 != original\.calendar\.title \} \?\? false/,
     );
   });
+
+  it('prefers the original UUID when re-fetching the moved reminder, then falls back to title + creationDate', () => {
+    const uuidLookupIndex = swiftSource.indexOf(
+      'if let moved = findReminder(withId: originalUUID), moved.calendar.title == targetList.title',
+    );
+    const titleDateLookupIndex = swiftSource.indexOf(
+      'if let moved = findReminderInList(targetList, matchingTitle: originalTitle, creationDate: originalCreationDate)',
+    );
+    expect(uuidLookupIndex).toBeGreaterThan(-1);
+    expect(titleDateLookupIndex).toBeGreaterThan(uuidLookupIndex);
+  });
+
+  it('surfaces an actionable error when macOS Automation (TCC) blocks the osascript move', () => {
+    // Primary signal is the typed process exit code; stderr match is a locale-safe fallback.
+    expect(swiftSource).toMatch(/process\.terminationStatus == -1743/);
+    expect(swiftSource).toMatch(/Privacy & Security/);
+    expect(swiftSource).toMatch(/Automation/);
+    expect(swiftSource).toMatch(/Reminders/);
+  });
+
+  it('flags a partial-failure when the field-update save fails after a successful cross-list move', () => {
+    expect(swiftSource).toMatch(
+      /Cross-list move to '\\\(trimmedListName!\)' succeeded but applying field updates failed/,
+    );
+  });
 });
