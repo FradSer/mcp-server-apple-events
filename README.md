@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/fradser-mcp-server-apple-events-badge.png)](https://mseep.ai/app/fradser-mcp-server-apple-events)
+
 # Apple Events MCP Server ![Version 1.3.0](https://img.shields.io/badge/version-1.3.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 [![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
