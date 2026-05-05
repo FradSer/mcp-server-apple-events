@@ -117,5 +117,16 @@ describe('Tools Definitions', () => {
       expect(startDateDescription).toContain('defaults to today');
       expect(endDateDescription).toContain('defaults to today + 14 days');
     });
+
+    it('should expose optional date range filters for calendar collections', () => {
+      const calendarsTool = TOOLS.find(
+        (tool) => tool.name === 'calendar_calendars',
+      );
+      const calendarProps = calendarsTool?.inputSchema.properties ?? {};
+
+      expect(calendarProps).toHaveProperty('startDate');
+      expect(calendarProps).toHaveProperty('endDate');
+      expect(calendarProps).toHaveProperty('filterAccount');
+    });
   });
 });

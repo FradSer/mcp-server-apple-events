@@ -671,7 +671,7 @@ describe('Tool Handlers', () => {
           accountType: 'caldav',
         },
       ];
-      mockCalendarRepository.findAllCalendars.mockResolvedValue(mockCalendars);
+      mockCalendarRepository.findCalendars.mockResolvedValue(mockCalendars);
       const result = await handleReadCalendars({ action: 'read' });
       const content = getTextContent(result.content);
       expect(content).toContain('### Calendars (Total: 2)');
@@ -680,11 +680,38 @@ describe('Tool Handlers', () => {
     });
 
     it('should support being called without args', async () => {
-      mockCalendarRepository.findAllCalendars.mockResolvedValue([]);
+      mockCalendarRepository.findCalendars.mockResolvedValue([]);
       const result = await handleReadCalendars();
       const content = getTextContent(result.content);
       expect(content).toContain('### Calendars (Total: 0)');
       expect(content).toContain('No calendars found.');
+    });
+
+    it('should support date-scoped calendar discovery', async () => {
+      mockCalendarRepository.findCalendars.mockResolvedValue([
+        {
+          id: 'cal-1',
+          title: 'Activity',
+          account: 'Google',
+          accountType: 'caldav',
+          eventCount: 7,
+        },
+      ]);
+
+      const result = await handleReadCalendars({
+        action: 'read',
+        startDate: '2026-05-04',
+        endDate: '2026-05-11',
+        filterAccount: 'Google',
+      });
+      const content = getTextContent(result.content);
+
+      expect(mockCalendarRepository.findCalendars).toHaveBeenCalledWith({
+        startDate: '2026-05-04',
+        endDate: '2026-05-11',
+        accountName: 'Google',
+      });
+      expect(content).toContain('- Activity (Google) (ID: cal-1) - 7 events');
     });
   });
 });

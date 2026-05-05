@@ -681,19 +681,34 @@ Handles EventKit calendar events (time blocks) with CRUD capabilities.
 
 **Tool Name**: `calendar_calendars`
 
-Returns the available calendars from EventKit. This is useful before creating or updating events to confirm calendar identifiers.
+Returns the available calendars from EventKit. This is useful before creating or updating events to confirm calendar identifiers. Optional date range filters return only calendars that have events in the range and include event counts.
 
 **Actions**: `read`
 
+**Optional Parameters**:
+
+- `startDate`: Range start for scoped calendar discovery
+- `endDate`: Range end for scoped calendar discovery
+- `filterAccount`: Account name such as `"Google"` or `"Exchange"`
+
 **Main Handler Function**:
 
-- `handleReadCalendars()` - List all calendars with IDs and titles
+- `handleReadCalendars()` - List all calendars with IDs and titles, or scoped active calendars when a date range is supplied
 
 **Example Usage**
 
 ```json
 {
   "action": "read"
+}
+```
+
+```json
+{
+  "action": "read",
+  "startDate": "2026-05-04",
+  "endDate": "2026-05-11",
+  "filterAccount": "Google"
 }
 ```
 

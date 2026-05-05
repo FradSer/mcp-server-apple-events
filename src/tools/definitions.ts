@@ -630,7 +630,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'calendar_calendars',
     description:
-      'Reads calendar collections. Use to inspect available calendars before creating or updating events.',
+      'Reads calendar collections. Use to inspect available calendars before creating or updating events. Optional date range filters return only calendars with events in that range.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -638,6 +638,21 @@ export const TOOLS: Tool[] = [
           type: 'string',
           enum: ['read'],
           description: 'The operation to perform on calendars.',
+        },
+        startDate: {
+          type: 'string',
+          description:
+            "Optional range start for scoped calendar discovery. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601.",
+        },
+        endDate: {
+          type: 'string',
+          description:
+            'Optional range end for scoped calendar discovery. When used with startDate, only calendars with events in the range are returned.',
+        },
+        filterAccount: {
+          type: 'string',
+          description:
+            'Filter calendars by account name (e.g., "Google", "Exchange").',
         },
       },
       required: ['action'],

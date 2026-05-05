@@ -300,6 +300,81 @@ describe('CalendarRepository', () => {
     });
   });
 
+  describe('findCalendars', () => {
+    it('should return all calendars when no filters are provided', async () => {
+      const mockCalendars: Calendar[] = [
+        { id: '1', title: 'Work', account: 'Google', accountType: 'caldav' },
+      ];
+      mockExecuteCli.mockResolvedValue(mockCalendars);
+
+      const result = await repository.findCalendars({});
+
+      expect(mockExecuteCli).toHaveBeenCalledWith([
+        '--action',
+        'read-calendars',
+      ]);
+      expect(result).toEqual(mockCalendars);
+    });
+
+    it('should return calendars with events in a date range', async () => {
+      mockExecuteCli.mockResolvedValue({
+        calendars: [
+          { id: '1', title: 'Work', account: 'Google', accountType: 'caldav' },
+          {
+            id: '2',
+            title: 'Personal',
+            account: 'iCloud',
+            accountType: 'caldav',
+          },
+        ],
+        events: [
+          {
+            id: 'event-1',
+            title: 'Meeting',
+            calendar: 'Work',
+            startDate: '2026-05-04T09:00:00-05:00',
+            endDate: '2026-05-04T10:00:00-05:00',
+            isAllDay: false,
+          },
+          {
+            id: 'event-2',
+            title: 'Review',
+            calendar: 'Work',
+            startDate: '2026-05-05T09:00:00-05:00',
+            endDate: '2026-05-05T10:00:00-05:00',
+            isAllDay: false,
+          },
+        ],
+      });
+
+      const result = await repository.findCalendars({
+        startDate: '2026-05-04',
+        endDate: '2026-05-11',
+        accountName: 'Google',
+      });
+
+      expect(mockExecuteCli).toHaveBeenCalledWith([
+        '--action',
+        'read-events',
+        '--startDate',
+        '2026-05-04',
+        '--endDate',
+        '2026-05-11',
+        '--filterAccount',
+        'Google',
+      ]);
+      expect(result).toEqual([
+        {
+          id: '1',
+          title: 'Work',
+          account: 'Google',
+          accountType: 'caldav',
+          eventCount: 2,
+        },
+      ]);
+    });
+  });
+
   describe('findEvents with filterAccount', () => {
     afterEach(() => {
       jest.useRealTimers();

@@ -178,6 +178,46 @@ class CalendarRepository {
     return executeCli<CalendarJSON[]>(['--action', 'read-calendars']);
   }
 
+  async findCalendars(filters: {
+    startDate?: string;
+    endDate?: string;
+    accountName?: string;
+  }): Promise<Calendar[]> {
+    if (!filters.startDate && !filters.endDate) {
+      const calendars = await this.findAllCalendars();
+      if (!filters.accountName) return calendars;
+      return calendars.filter(
+        (calendar) => calendar.account === filters.accountName,
+      );
+    }
+
+    const dateRange = resolveReadDateRange({
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
+    const { calendars, events } = await this.readEvents(
+      dateRange.startDate,
+      dateRange.endDate,
+      undefined,
+      undefined,
+      filters.accountName,
+    );
+    const eventCountByTitle = new Map<string, number>();
+    for (const event of events) {
+      eventCountByTitle.set(
+        event.calendar,
+        (eventCountByTitle.get(event.calendar) ?? 0) + 1,
+      );
+    }
+
+    return calendars
+      .filter((calendar) => eventCountByTitle.has(calendar.title))
+      .map((calendar) => ({
+        ...calendar,
+        eventCount: eventCountByTitle.get(calendar.title) ?? 0,
+      }));
+  }
+
   async createEvent(data: CreateEventData): Promise<EventJSON> {
     const args = [
       '--action',
