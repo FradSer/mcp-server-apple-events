@@ -14,7 +14,7 @@ import { VALIDATION } from '../utils/constants.js';
 // Blocks: bidirectional control characters (U+202A-U+202E, U+2066-U+2069) to prevent visual spoofing
 // This keeps Chinese/Unicode names working while remaining safe with AppleScript quoting.
 const SAFE_TEXT_PATTERN =
-  /^[\u0020-\u007E\u00A0-\u2029\u202F-\u2065\u206A-\uFFFF\n\r\t]*$/u;
+  /^[\u0020-\u007E\u00A0-\u2029\u202F-\u2065\u206A-\u{10FFFF}\n\r\t]*$/u;
 // Support multiple date formats: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, or ISO 8601
 // Basic validation - detailed parsing handled by Swift
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}.*$/;
