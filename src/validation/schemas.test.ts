@@ -56,6 +56,27 @@ describe('ValidationSchemas', () => {
         ).toThrow();
         // Note: \u200E (Right-to-left mark) is allowed by SAFE_TEXT_PATTERN as it's in the Unicode range
       });
+
+      it('should accept emoji in titles', () => {
+        // Emoji live above U+FFFF (supplementary planes) and must be accepted
+        expect(() => SafeTextSchema.parse('\uD83D\uDCBC Remote Job Hunt')).not.toThrow();
+        expect(() => SafeTextSchema.parse('\uD83D\uDCCB Tasks')).not.toThrow();
+        expect(() => SafeTextSchema.parse('\uD83D\uDED2 Buy List')).not.toThrow();
+        expect(() => SafeTextSchema.parse('\uD83C\uDF93 Graduation')).not.toThrow();
+      });
+
+      it('should accept supplementary-plane non-emoji characters', () => {
+        // U+20000 is a supplementary CJK character \u2014 also above U+FFFF
+        expect(() => SafeTextSchema.parse('\u{20000}')).not.toThrow();
+      });
+
+      it('should still reject bidirectional control characters', () => {
+        // These are used in visual spoofing attacks and must stay blocked
+        expect(() => SafeTextSchema.parse('\u202A')).toThrow(); // Left-to-right embedding
+        expect(() => SafeTextSchema.parse('\u202E')).toThrow(); // Right-to-left override
+        expect(() => SafeTextSchema.parse('\u2066')).toThrow(); // Left-to-right isolate
+        expect(() => SafeTextSchema.parse('\u2069')).toThrow(); // Pop directional isolate
+      });
     });
 
     describe('SafeNoteSchema', () => {
@@ -72,6 +93,19 @@ describe('ValidationSchemas', () => {
       it('should allow multiline notes', () => {
         const multilineNote = 'Line 1\nLine 2\r\nLine 3';
         expect(() => SafeNoteSchema.parse(multilineNote)).not.toThrow();
+      });
+
+      it('should accept emoji and special symbols in notes', () => {
+        // Previously blocked by the U+FFFF cutoff or overly strict ASCII pattern
+        expect(() =>
+          SafeNoteSchema.parse('Email: user@example.com'),
+        ).not.toThrow();
+        expect(() =>
+          SafeNoteSchema.parse('Skills: A+, Network+'),
+        ).not.toThrow();
+        expect(() =>
+          SafeNoteSchema.parse('Testing patched build with emoji. Skills: A+, Network+.'),
+        ).not.toThrow();
       });
 
       it('should use custom fieldName in error messages', () => {
@@ -100,6 +134,15 @@ describe('ValidationSchemas', () => {
       it('should reject list names that are too long', () => {
         const longName = 'a'.repeat(101);
         expect(() => RequiredListNameSchema.parse(longName)).toThrow();
+      });
+
+      it('should accept emoji-prefixed list names', () => {
+        // Real-world Apple Reminders list names that were previously unreachable
+        expect(() => RequiredListNameSchema.parse('💼 Remote Job Hunt')).not.toThrow();
+        expect(() => RequiredListNameSchema.parse('📋 Tasks')).not.toThrow();
+        expect(() => RequiredListNameSchema.parse('🛒 Buy List')).not.toThrow();
+        expect(() => RequiredListNameSchema.parse('🥦 Groceries')).not.toThrow();
+        expect(() => RequiredListNameSchema.parse('💍 Wedding')).not.toThrow();
       });
     });
 
