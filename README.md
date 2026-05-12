@@ -81,6 +81,30 @@ pnpm test -- src/swift/Info.plist.test.ts
 
 The test suite ensures all required usage-description strings are present before shipping the binary.
 
+### Troubleshooting `could not build module 'Foundation'` on macOS 26 (Tahoe)
+
+If `pnpm build` fails with `could not build module 'Foundation'` (or `SDK is not supported by the compiler`), your Swift toolchain is older than the macOS 26 SDK requires. The macOS 26+ SDK ships a `Foundation.swiftinterface` that needs **Swift 6.3 or newer**; the Command Line Tools that shipped with the first macOS 26 point releases include Swift 6.2.x, which cannot parse it. See [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85).
+
+`pnpm build:swift` now detects this mismatch and prints the same remediation, but if you hit it manually:
+
+1. Install Xcode 26.x from the App Store (ships Swift 6.3+), or
+2. Update Command Line Tools to a version that ships Swift 6.3+:
+   ```bash
+   softwareupdate --list
+   sudo softwareupdate -i "Command Line Tools for Xcode-<latest>"
+   ```
+3. If both are installed, point `xcode-select` at the full Xcode:
+   ```bash
+   sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+   ```
+
+Verify with:
+
+```bash
+xcrun swiftc --version          # should report Apple Swift version 6.3 or newer
+xcrun --show-sdk-version        # should match your macOS major version
+```
+
 ## Quick Start
 
 You can run the server directly using `npx`:
