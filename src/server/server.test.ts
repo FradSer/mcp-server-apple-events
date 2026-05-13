@@ -31,6 +31,7 @@ describe('Server Module', () => {
     // Mock server instance
     mockServerInstance = {
       connect: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<Server>;
 
     // Mock transport instance
@@ -56,14 +57,22 @@ describe('Server Module', () => {
           name: config.name,
           version: config.version,
         },
-        {
+        expect.objectContaining({
           capabilities: {
-            resources: {},
             tools: {},
             prompts: {},
           },
-        },
+          instructions: expect.any(String),
+        }),
       );
+
+      // We deliberately do NOT advertise `resources: {}` any more — no
+      // resource handlers are registered, so declaring the capability
+      // misled clients into trying to enumerate them.
+      const callOptions = mockServer.mock.calls[0]?.[1] as {
+        capabilities: Record<string, unknown>;
+      };
+      expect(callOptions.capabilities).not.toHaveProperty('resources');
 
       expect(registerHandlers).toHaveBeenCalledWith(mockServerInstance);
       expect(_server).toBe(mockServerInstance);
@@ -124,13 +133,25 @@ describe('Server Module', () => {
         const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
           throw new Error('process.exit called');
         });
+        const mockStderr = jest
+          .spyOn(process.stderr, 'write')
+          .mockImplementation(() => true);
 
         await expect(startServer(config)).rejects.toThrow(
           'process.exit called',
         );
+        // Startup errors still throw (test mock throws on first exit). The
+        // signal-handler shutdown path is exercised separately below; here
+        // we just want to confirm the failure exit code.
         expect(mockExit).toHaveBeenCalledWith(1);
+        // Startup failures should surface on stderr so MCP clients spawning
+        // the binary can see what went wrong.
+        expect(mockStderr).toHaveBeenCalledWith(
+          expect.stringContaining('MCP server startup failed:'),
+        );
 
         mockExit.mockRestore();
+        mockStderr.mockRestore();
       });
     });
 
@@ -150,31 +171,45 @@ describe('Server Module', () => {
     });
 
     describe('signal handlers', () => {
-      it.each([
-        ['SIGINT', 0],
-        ['SIGTERM', 0],
+      // Shutdown is async and drains the transport before exiting; we wait
+      // for `process.exit` to be invoked and assert the conventional
+      // 128 + signal-number exit code. Bare `process.exit(0)` would truncate
+      // in-flight JSON-RPC responses, so the assertion guards that.
+      // The mock resolves a promise rather than throwing so the async
+      // shutdown callback doesn't trip Jest's unhandled-rejection guard.
+      it.each<[NodeJS.Signals, number]>([
+        ['SIGINT', 130],
+        ['SIGTERM', 143],
       ])('should register %s signal handler and exit with code %d', async (signal, exitCode) => {
         const config: ServerConfig = {
           name: 'test-server',
           version: '1.0.0',
         };
 
-        const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
-          throw new Error('process.exit called');
+        let observedExitCode: number | undefined;
+        let resolveExit!: () => void;
+        const exitPromise = new Promise<void>((resolve) => {
+          resolveExit = resolve;
         });
+        const mockExit = jest.spyOn(process, 'exit').mockImplementation(((
+          code?: number,
+        ) => {
+          observedExitCode = Number(code);
+          resolveExit();
+          return undefined as never;
+        }) as typeof process.exit);
+
         const mockOn = jest.spyOn(process, 'on');
 
-        mockServerInstance.connect.mockImplementation(() => {
-          process.emit(signal as NodeJS.Signals);
-          return Promise.resolve(undefined);
-        });
+        mockServerInstance.connect.mockResolvedValue(undefined);
 
-        await expect(startServer(config)).rejects.toThrow(
-          'process.exit called',
-        );
+        await startServer(config);
+        process.emit(signal);
+        await exitPromise;
 
         expect(mockOn).toHaveBeenCalledWith(signal, expect.any(Function));
-        expect(mockExit).toHaveBeenCalledWith(exitCode);
+        expect(observedExitCode).toBe(exitCode);
+        expect(mockServerInstance.close).toHaveBeenCalledTimes(1);
 
         mockExit.mockRestore();
         mockOn.mockRestore();
