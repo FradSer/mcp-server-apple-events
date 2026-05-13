@@ -1,192 +1,252 @@
-// Use global Jest functions to avoid extra dependencies
+/**
+ * reminders_subtasks.test.ts
+ *
+ * Exercises the `reminders_subtasks` tool end-to-end through `handleToolCall`,
+ * with only the repository (CLI boundary) mocked. The previous version of
+ * this file mocked every handler — including all subtask handlers — and so
+ * the actual handler functions in `handlers/subtaskHandlers.ts` were never
+ * executed, leaving them at 0% function/branch coverage even though the
+ * suite was green.
+ */
 
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { SubtasksToolArgs } from '../types/index.js';
+import { reminderRepository } from '../utils/reminderRepository.js';
 import { handleToolCall } from './index.js';
 
-// Mock all subtask handler functions
-jest.mock('./handlers/index.js', () => ({
-  handleCreateReminder: jest.fn(),
-  handleReadReminderLists: jest.fn(),
-  handleReadReminders: jest.fn(),
-  handleUpdateReminder: jest.fn(),
-  handleDeleteReminder: jest.fn(),
-  handleCreateReminderList: jest.fn(),
-  handleUpdateReminderList: jest.fn(),
-  handleDeleteReminderList: jest.fn(),
-  handleCreateCalendarEvent: jest.fn(),
-  handleReadCalendarEvents: jest.fn(),
-  handleUpdateCalendarEvent: jest.fn(),
-  handleDeleteCalendarEvent: jest.fn(),
-  handleReadCalendars: jest.fn(),
-  handleReadSubtasks: jest.fn(),
-  handleCreateSubtask: jest.fn(),
-  handleUpdateSubtask: jest.fn(),
-  handleDeleteSubtask: jest.fn(),
-  handleToggleSubtask: jest.fn(),
-  handleReorderSubtasks: jest.fn(),
+// `projectUtils.ts` reaches for `import.meta.url`, which Jest's CommonJS
+// transformer cannot represent. Stub it out so the import chain that pulls
+// `tools/index.ts → handlers → cliExecutor → projectUtils` stays parseable.
+jest.mock('../utils/projectUtils.js', () => ({
+  findProjectRoot: jest.fn(() => '/test/project'),
 }));
 
-jest.mock('./definitions.js', () => ({
-  TOOLS: [
-    { name: 'reminders_tasks', description: 'Reminder tasks tool' },
-    { name: 'reminders_lists', description: 'Reminder lists tool' },
-    { name: 'reminders_subtasks', description: 'Reminder subtasks tool' },
-    { name: 'calendar_events', description: 'Calendar events tool' },
-    { name: 'calendar_calendars', description: 'Calendar collections tool' },
-  ],
+jest.mock('../utils/reminderRepository.js', () => ({
+  reminderRepository: {
+    findReminderById: jest.fn(),
+    updateReminder: jest.fn(),
+  },
 }));
 
-import {
-  handleCreateSubtask,
-  handleDeleteSubtask,
-  handleReadSubtasks,
-  handleReorderSubtasks,
-  handleToggleSubtask,
-  handleUpdateSubtask,
-} from './handlers/index.js';
+const mockRepo = reminderRepository as unknown as {
+  findReminderById: jest.Mock;
+  updateReminder: jest.Mock;
+};
 
-const mockHandleReadSubtasks = handleReadSubtasks as jest.MockedFunction<
-  typeof handleReadSubtasks
->;
-const mockHandleCreateSubtask = handleCreateSubtask as jest.MockedFunction<
-  typeof handleCreateSubtask
->;
-const mockHandleUpdateSubtask = handleUpdateSubtask as jest.MockedFunction<
-  typeof handleUpdateSubtask
->;
-const mockHandleDeleteSubtask = handleDeleteSubtask as jest.MockedFunction<
-  typeof handleDeleteSubtask
->;
-const mockHandleToggleSubtask = handleToggleSubtask as jest.MockedFunction<
-  typeof handleToggleSubtask
->;
-const mockHandleReorderSubtasks = handleReorderSubtasks as jest.MockedFunction<
-  typeof handleReorderSubtasks
->;
+const reminderWithoutSubtasks = {
+  id: 'reminder-123',
+  title: 'Parent reminder',
+  list: 'Default',
+  isCompleted: false,
+  priority: 0,
+  notes: 'Some user notes',
+};
 
-describe('Tools Index - reminders_subtests', () => {
+const reminderWithTwoSubtasks = {
+  ...reminderWithoutSubtasks,
+  notes:
+    'Some user notes\n\n---SUBTASKS---\n[ ] {aabbccdd} First subtask\n[x] {eeff0011} Second subtask\n---END SUBTASKS---',
+};
+
+const textOf = (result: Awaited<ReturnType<typeof handleToolCall>>): string => {
+  const first = result.content?.[0];
+  return first && 'text' in first ? (first.text as string) : '';
+};
+
+describe('reminders_subtasks tool', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('reminders_subtasks tool routing', () => {
-    const baseArgs = { reminderId: 'reminder-123' };
+  describe('read', () => {
+    it('formats subtasks list with progress for a reminder that has subtasks', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
 
-    it.each([
-      [
-        'read',
-        mockHandleReadSubtasks,
-        { ...baseArgs, action: 'read' as const },
-      ],
-      [
-        'create',
-        mockHandleCreateSubtask,
-        { ...baseArgs, action: 'create' as const, title: 'New subtask' },
-      ],
-      [
-        'update',
-        mockHandleUpdateSubtask,
-        {
-          ...baseArgs,
-          action: 'update' as const,
-          subtaskId: 'subtask-456',
-          title: 'Updated subtask',
-        },
-      ],
-      [
-        'delete',
-        mockHandleDeleteSubtask,
-        {
-          ...baseArgs,
-          action: 'delete' as const,
-          subtaskId: 'subtask-456',
-        },
-      ],
-      [
-        'toggle',
-        mockHandleToggleSubtask,
-        {
-          ...baseArgs,
-          action: 'toggle' as const,
-          subtaskId: 'subtask-456',
-        },
-      ],
-      [
-        'reorder',
-        mockHandleReorderSubtasks,
-        {
-          ...baseArgs,
-          action: 'reorder' as const,
-          order: ['subtask-1', 'subtask-2', 'subtask-3'],
-        },
-      ],
-    ])('should route reminders_subtasks action=%s correctly', async (_action, mockHandler, args) => {
-      const expectedResult: CallToolResult = {
-        content: [{ type: 'text', text: 'Success' }],
-        isError: false,
-      };
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'read',
+        reminderId: 'reminder-123',
+      } as SubtasksToolArgs);
 
-      mockHandler.mockResolvedValue(expectedResult);
+      expect(mockRepo.findReminderById).toHaveBeenCalledWith('reminder-123');
+      const text = textOf(result);
+      expect(text).toContain('### Subtasks for "Parent reminder"');
+      expect(text).toContain('Progress:** 1/2 (50%)');
+      expect(text).toContain('[ ] First subtask');
+      expect(text).toContain('[x] Second subtask');
+      expect(result.isError).not.toBe(true);
+    });
 
-      const result = await handleToolCall(
-        'reminders_subtasks',
-        args as SubtasksToolArgs,
-      );
+    it('reports an empty list when the reminder has no subtasks', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithoutSubtasks);
 
-      expect(mockHandler).toHaveBeenCalledWith(args);
-      expect(result).toEqual(expectedResult);
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'read',
+        reminderId: 'reminder-123',
+      } as SubtasksToolArgs);
+
+      const text = textOf(result);
+      expect(text).toContain('Progress:** 0/0 (100%)');
+      expect(text).toContain('No subtasks found.');
     });
   });
 
-  describe('reminders_subtasks tool error handling', () => {
-    it('should return error for missing reminderId', async () => {
-      await handleToolCall('reminders_subtasks', {
-        action: 'read',
-        reminderId: '',
+  describe('create', () => {
+    it('appends a new subtask to existing notes and saves the updated notes', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithoutSubtasks);
+      mockRepo.updateReminder.mockResolvedValue(undefined);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'create',
+        reminderId: 'reminder-123',
+        title: 'New subtask',
       } as SubtasksToolArgs);
 
-      // The handler should be called and return validation error
-      expect(mockHandleReadSubtasks).toHaveBeenCalled();
+      expect(mockRepo.updateReminder).toHaveBeenCalledTimes(1);
+      const update = mockRepo.updateReminder.mock.calls[0][0];
+      expect(update.id).toBe('reminder-123');
+      expect(update.notes).toContain('---SUBTASKS---');
+      expect(update.notes).toContain('New subtask');
+      expect(textOf(result)).toContain('Successfully created subtask');
     });
 
-    it('should return error for unknown reminders_subtasks action', async () => {
+    it('rejects subtask titles that contain newlines (forging defense)', async () => {
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'create',
+        reminderId: 'reminder-123',
+        title: 'Real\n[x] {ffffffff} Pwned',
+      } as SubtasksToolArgs);
+
+      expect(result.isError).toBe(true);
+      expect(mockRepo.updateReminder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    it('updates an existing subtask title and persists the notes', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
+      mockRepo.updateReminder.mockResolvedValue(undefined);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'update',
+        reminderId: 'reminder-123',
+        subtaskId: 'aabbccdd',
+        title: 'Renamed first subtask',
+      } as SubtasksToolArgs);
+
+      expect(mockRepo.updateReminder).toHaveBeenCalledTimes(1);
+      const update = mockRepo.updateReminder.mock.calls[0][0];
+      expect(update.notes).toContain('Renamed first subtask');
+      expect(textOf(result)).toContain('Successfully updated subtask');
+    });
+
+    it('returns an error when the subtask ID does not exist', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'update',
+        reminderId: 'reminder-123',
+        subtaskId: 'deadbeef',
+        title: 'Whatever',
+      } as SubtasksToolArgs);
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain("Subtask with ID 'deadbeef' not found");
+    });
+  });
+
+  describe('toggle', () => {
+    it('flips completion state and reports the new status', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
+      mockRepo.updateReminder.mockResolvedValue(undefined);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'toggle',
+        reminderId: 'reminder-123',
+        subtaskId: 'aabbccdd',
+      } as SubtasksToolArgs);
+
+      const text = textOf(result);
+      expect(text).toContain('Successfully marked subtask "First subtask"');
+      expect(text).toContain('completed');
+    });
+  });
+
+  describe('delete', () => {
+    it('removes the subtask and saves the trimmed notes', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
+      mockRepo.updateReminder.mockResolvedValue(undefined);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'delete',
+        reminderId: 'reminder-123',
+        subtaskId: 'aabbccdd',
+      } as SubtasksToolArgs);
+
+      const update = mockRepo.updateReminder.mock.calls[0][0];
+      expect(update.notes).not.toContain('First subtask');
+      expect(update.notes).toContain('Second subtask');
+      expect(textOf(result)).toContain('Successfully deleted subtask');
+    });
+  });
+
+  describe('reorder', () => {
+    it('reorders subtasks to match the supplied order', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
+      mockRepo.updateReminder.mockResolvedValue(undefined);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'reorder',
+        reminderId: 'reminder-123',
+        order: ['eeff0011', 'aabbccdd'],
+      } as SubtasksToolArgs);
+
+      const update = mockRepo.updateReminder.mock.calls[0][0];
+      const text = update.notes as string;
+      const idxSecond = text.indexOf('Second subtask');
+      const idxFirst = text.indexOf('First subtask');
+      expect(idxSecond).toBeLessThan(idxFirst);
+      expect(textOf(result)).toContain('Successfully reordered 2 subtasks');
+    });
+
+    it('rejects a reorder list that omits an existing subtask ID', async () => {
+      mockRepo.findReminderById.mockResolvedValue(reminderWithTwoSubtasks);
+
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'reorder',
+        reminderId: 'reminder-123',
+        order: ['aabbccdd'],
+      } as SubtasksToolArgs);
+
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('Reorder array is missing');
+    });
+  });
+
+  describe('routing and validation', () => {
+    it('returns an error for an unknown subtasks action', async () => {
       const result = await handleToolCall('reminders_subtasks', {
         action: 'unknown',
         reminderId: 'reminder-123',
       } as unknown as SubtasksToolArgs);
 
-      expect(result).toEqual({
-        content: [
-          {
-            type: 'text',
-            text: 'Unknown reminders_subtasks action: unknown',
-          },
-        ],
-        isError: true,
-      });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toBe('Unknown reminders_subtasks action: unknown');
     });
 
-    it('should return error when args are missing', async () => {
+    it('returns an error when no arguments are supplied', async () => {
       const result = await handleToolCall('reminders_subtasks', undefined);
 
-      expect(result).toEqual({
-        content: [{ type: 'text', text: 'No arguments provided' }],
-        isError: true,
-      });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toBe('No arguments provided');
     });
 
-    it('should propagate handler errors', async () => {
-      const error = new Error('Subtask handler failed');
-      mockHandleCreateSubtask.mockRejectedValue(error);
+    it('rejects an empty reminderId at the validation layer', async () => {
+      const result = await handleToolCall('reminders_subtasks', {
+        action: 'read',
+        reminderId: '',
+      } as SubtasksToolArgs);
 
-      await expect(
-        handleToolCall('reminders_subtasks', {
-          action: 'create',
-          reminderId: 'reminder-123',
-          title: 'Test subtask',
-        } as SubtasksToolArgs),
-      ).rejects.toThrow('Subtask handler failed');
+      expect(result.isError).toBe(true);
+      expect(mockRepo.findReminderById).not.toHaveBeenCalled();
     });
   });
 });

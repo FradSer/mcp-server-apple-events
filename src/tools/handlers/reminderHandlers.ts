@@ -35,6 +35,11 @@ import {
   UpdateReminderSchema,
 } from '../../validation/schemas.js';
 import {
+  formatAlarm,
+  formatLocationTrigger,
+  formatRecurrenceRules,
+} from './formatters.js';
+import {
   extractAndValidateArgs,
   formatDeleteMessage,
   formatListMarkdown,
@@ -90,107 +95,6 @@ function rebuildNotesForUpdate(
   // Recombine with subtasks
   return combineSubtasksAndNotes(existingSubtasks, notesWithTags);
 }
-
-/**
- * Formats a recurrence rule for display
- */
-const formatRecurrence = (recurrence: RecurrenceRule): string => {
-  const parts: string[] = [];
-  const interval =
-    recurrence.interval > 1 ? `every ${recurrence.interval} ` : '';
-
-  switch (recurrence.frequency) {
-    case 'minutely':
-      parts.push(`${interval}minute${recurrence.interval > 1 ? 's' : ''}`);
-      break;
-    case 'hourly':
-      parts.push(`${interval}hour${recurrence.interval > 1 ? 's' : ''}`);
-      break;
-    case 'daily':
-      parts.push(`${interval}day${recurrence.interval > 1 ? 's' : ''}`);
-      break;
-    case 'weekly':
-      parts.push(`${interval}week${recurrence.interval > 1 ? 's' : ''}`);
-      if (recurrence.daysOfWeek?.length) {
-        const dayNames = ['', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const days = recurrence.daysOfWeek.map((d) => dayNames[d]).join(', ');
-        parts.push(`on ${days}`);
-      }
-      break;
-    case 'monthly':
-      parts.push(`${interval}month${recurrence.interval > 1 ? 's' : ''}`);
-      if (recurrence.daysOfMonth?.length) {
-        parts.push(
-          `on day${recurrence.daysOfMonth.length > 1 ? 's' : ''} ${recurrence.daysOfMonth.join(', ')}`,
-        );
-      }
-      break;
-    case 'yearly':
-      parts.push(`${interval}year${recurrence.interval > 1 ? 's' : ''}`);
-      if (recurrence.monthsOfYear?.length) {
-        const monthNames = [
-          '',
-          'Jan',
-          'Feb',
-          'Mar',
-          'Apr',
-          'May',
-          'Jun',
-          'Jul',
-          'Aug',
-          'Sep',
-          'Oct',
-          'Nov',
-          'Dec',
-        ];
-        const months = recurrence.monthsOfYear
-          .map((m) => monthNames[m])
-          .join(', ');
-        parts.push(`in ${months}`);
-      }
-      break;
-    default: {
-      const exhaustiveCheck: never = recurrence.frequency;
-      throw new Error(`Unknown recurrence frequency: ${exhaustiveCheck}`);
-    }
-  }
-
-  if (recurrence.endDate) {
-    parts.push(`until ${recurrence.endDate}`);
-  } else if (recurrence.occurrenceCount) {
-    parts.push(`(${recurrence.occurrenceCount} times)`);
-  }
-
-  return parts.join(' ');
-};
-
-const formatRecurrenceRules = (rules: RecurrenceRule[]): string => {
-  if (rules.length === 1) return formatRecurrence(rules[0]);
-  return rules.map((rule) => formatRecurrence(rule)).join('; ');
-};
-
-const formatAlarm = (alarm: Alarm): string => {
-  let typeStr = '';
-  if (alarm.alarmType) {
-    typeStr = ` (${alarm.alarmType})`;
-  }
-  if (alarm.absoluteDate) return `at ${alarm.absoluteDate}${typeStr}`;
-  if (alarm.relativeOffset !== undefined)
-    return `${alarm.relativeOffset}s from due/start${typeStr}`;
-  if (alarm.locationTrigger)
-    return `on ${formatLocationTrigger(alarm.locationTrigger)}${typeStr}`;
-  return 'unknown';
-};
-
-/**
- * Formats a location trigger for display
- */
-const formatLocationTrigger = (location: LocationTrigger): string => {
-  const proximityText =
-    location.proximity === 'enter' ? 'Arriving at' : 'Leaving';
-  const radiusText = location.radius ? ` (${location.radius}m radius)` : '';
-  return `${proximityText} "${location.title}"${radiusText}`;
-};
 
 /**
  * Builds icon string based on reminder properties
@@ -408,8 +312,10 @@ export const handleReadReminders = async (
   return handleAsyncOperation(async () => {
     const validatedArgs = extractAndValidateArgs(args, ReadRemindersSchema);
 
-    if (args.id) {
-      const reminder = await reminderRepository.findReminderById(args.id);
+    if (validatedArgs.id) {
+      const reminder = await reminderRepository.findReminderById(
+        validatedArgs.id,
+      );
       const markdownLines: string[] = [
         '### Reminder',
         '',

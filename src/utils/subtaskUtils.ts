@@ -21,8 +21,11 @@ import type { Subtask, SubtaskProgress } from '../types/index.js';
 const SUBTASK_START = '---SUBTASKS---';
 const SUBTASK_END = '---END SUBTASKS---';
 
-// Regex to match the subtask section
-const SUBTASK_SECTION_REGEX = /---SUBTASKS---\n([\s\S]*?)---END SUBTASKS---/;
+// Regex to match the subtask section. Both markers are anchored to line
+// boundaries so that user-supplied content that happens to contain the marker
+// text mid-line cannot forge or truncate the structured section.
+const SUBTASK_SECTION_REGEX =
+  /(?:^|\n)---SUBTASKS---\n([\s\S]*?)\n---END SUBTASKS---(?=\n|$)/;
 
 // Regex to match individual subtask lines: [ ] {id} title or [x] {id} title
 const SUBTASK_LINE_REGEX = /^\[([ x])\]\s*\{([a-f0-9]+)\}\s*(.+)$/;
