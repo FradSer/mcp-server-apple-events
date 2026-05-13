@@ -59,10 +59,16 @@ describe('ValidationSchemas', () => {
 
       it('should accept emoji in titles', () => {
         // Emoji live above U+FFFF (supplementary planes) and must be accepted
-        expect(() => SafeTextSchema.parse('\uD83D\uDCBC Remote Job Hunt')).not.toThrow();
+        expect(() =>
+          SafeTextSchema.parse('\uD83D\uDCBC Remote Job Hunt'),
+        ).not.toThrow();
         expect(() => SafeTextSchema.parse('\uD83D\uDCCB Tasks')).not.toThrow();
-        expect(() => SafeTextSchema.parse('\uD83D\uDED2 Buy List')).not.toThrow();
-        expect(() => SafeTextSchema.parse('\uD83C\uDF93 Graduation')).not.toThrow();
+        expect(() =>
+          SafeTextSchema.parse('\uD83D\uDED2 Buy List'),
+        ).not.toThrow();
+        expect(() =>
+          SafeTextSchema.parse('\uD83C\uDF93 Graduation'),
+        ).not.toThrow();
       });
 
       it('should accept supplementary-plane non-emoji characters', () => {
@@ -104,7 +110,9 @@ describe('ValidationSchemas', () => {
           SafeNoteSchema.parse('Skills: A+, Network+'),
         ).not.toThrow();
         expect(() =>
-          SafeNoteSchema.parse('Testing patched build with emoji. Skills: A+, Network+.'),
+          SafeNoteSchema.parse(
+            'Testing patched build with emoji. Skills: A+, Network+.',
+          ),
         ).not.toThrow();
       });
 
@@ -138,10 +146,14 @@ describe('ValidationSchemas', () => {
 
       it('should accept emoji-prefixed list names', () => {
         // Real-world Apple Reminders list names that were previously unreachable
-        expect(() => RequiredListNameSchema.parse('💼 Remote Job Hunt')).not.toThrow();
+        expect(() =>
+          RequiredListNameSchema.parse('💼 Remote Job Hunt'),
+        ).not.toThrow();
         expect(() => RequiredListNameSchema.parse('📋 Tasks')).not.toThrow();
         expect(() => RequiredListNameSchema.parse('🛒 Buy List')).not.toThrow();
-        expect(() => RequiredListNameSchema.parse('🥦 Groceries')).not.toThrow();
+        expect(() =>
+          RequiredListNameSchema.parse('🥦 Groceries'),
+        ).not.toThrow();
         expect(() => RequiredListNameSchema.parse('💍 Wedding')).not.toThrow();
       });
     });
