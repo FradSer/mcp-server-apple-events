@@ -79,24 +79,6 @@ export function nullToUndefined<T>(obj: T, fields: (keyof T)[]): T {
 }
 
 /**
- * Converts all null values to undefined in an object (shallow)
- * Useful for converting JSON objects with null to TypeScript objects with undefined
- */
-export function nullsToUndefined<T extends object>(
-  obj: T,
-): {
-  [K in keyof T]: T[K] extends null ? undefined : T[K];
-} {
-  const result = { ...obj } as Record<string, unknown>;
-  for (const key of Object.keys(result)) {
-    if (result[key] === null) {
-      result[key] = undefined;
-    }
-  }
-  return result as { [K in keyof T]: T[K] extends null ? undefined : T[K] };
-}
-
-/**
  * String manipulation utilities
  */
 

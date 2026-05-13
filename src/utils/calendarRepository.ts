@@ -9,6 +9,7 @@ import type {
   CreateEventData,
   EventJSON,
   EventsReadResult,
+  ICalendarRepository,
   UpdateEventData,
 } from '../types/repository.js';
 import { executeCli } from './cliExecutor.js';
@@ -20,6 +21,15 @@ import {
 } from './helpers.js';
 
 const DEFAULT_READ_WINDOW_DAYS = 14;
+
+/**
+ * When looking up a single event by ID, expand the read window aggressively
+ * so events scheduled years away (e.g. recurring annual reservations) can
+ * still be located without requiring the caller to know the date in advance.
+ * EventKit only supports a maximum 4-year predicate window — bound at
+ * roughly that to stay within Apple's limits.
+ */
+const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
 
 const formatDateOnly = (date: Date): string => {
   const year = date.getFullYear();
@@ -81,7 +91,38 @@ const resolveReadDateRange = (filters: {
   return {};
 };
 
-class CalendarRepository {
+// Centralized list of nullable EventJSON fields — duplicated in two callsites
+// previously, which made it easy to forget to keep them in sync as the JSON
+// schema evolved.
+const EVENT_NULLABLE_FIELDS = [
+  'notes',
+  'location',
+  'structuredLocation',
+  'url',
+  'availability',
+  'alarms',
+  'recurrenceRules',
+  'organizer',
+  'attendees',
+  'status',
+  'isDetached',
+  'occurrenceDate',
+  'creationDate',
+  'lastModifiedDate',
+  'externalId',
+] as const;
+
+const mapEvent = (event: EventJSON): CalendarEvent =>
+  nullToUndefined(event, [...EVENT_NULLABLE_FIELDS]) as CalendarEvent;
+
+const mapCalendar = (calendar: CalendarJSON): Calendar => ({
+  id: calendar.id,
+  title: calendar.title,
+  account: calendar.account,
+  accountType: calendar.accountType,
+});
+
+class CalendarRepository implements ICalendarRepository {
   private async readEvents(
     startDate?: string,
     endDate?: string,
@@ -100,28 +141,20 @@ class CalendarRepository {
   }
 
   async findEventById(id: string): Promise<CalendarEvent> {
-    const { events } = await this.readEvents();
+    // The Swift CLI does not expose an event-by-id action, so we widen the
+    // predicate window aggressively before falling back to a linear scan. The
+    // previous implementation used the default 14-day window, which silently
+    // hid any event outside that range from id-based lookups.
+    const today = new Date();
+    const { events } = await this.readEvents(
+      formatDateOnly(shiftDays(today, -FIND_BY_ID_WINDOW_DAYS)),
+      formatDateOnly(shiftDays(today, FIND_BY_ID_WINDOW_DAYS)),
+    );
     const event = events.find((e) => e.id === id);
     if (!event) {
       throw new Error(`Event with ID '${id}' not found.`);
     }
-    return nullToUndefined(event, [
-      'notes',
-      'location',
-      'structuredLocation',
-      'url',
-      'availability',
-      'alarms',
-      'recurrenceRules',
-      'organizer',
-      'attendees',
-      'status',
-      'isDetached',
-      'occurrenceDate',
-      'creationDate',
-      'lastModifiedDate',
-      'externalId',
-    ]) as CalendarEvent;
+    return mapEvent(event);
   }
 
   async findEvents(
@@ -145,25 +178,7 @@ class CalendarRepository {
       filters.search,
       filters.accountName,
     );
-    const normalized = events.map((e) =>
-      nullToUndefined(e, [
-        'notes',
-        'location',
-        'structuredLocation',
-        'url',
-        'availability',
-        'alarms',
-        'recurrenceRules',
-        'organizer',
-        'attendees',
-        'status',
-        'isDetached',
-        'occurrenceDate',
-        'creationDate',
-        'lastModifiedDate',
-        'externalId',
-      ]),
-    ) as CalendarEvent[];
+    const normalized = events.map(mapEvent);
 
     if (filters.availability) {
       return normalized.filter(
@@ -175,7 +190,11 @@ class CalendarRepository {
   }
 
   async findAllCalendars(): Promise<Calendar[]> {
-    return executeCli<CalendarJSON[]>(['--action', 'read-calendars']);
+    const calendars = await executeCli<CalendarJSON[]>([
+      '--action',
+      'read-calendars',
+    ]);
+    return calendars.map(mapCalendar);
   }
 
   async createEvent(data: CreateEventData): Promise<EventJSON> {

@@ -6,6 +6,7 @@
 
 import type { ExecFileException } from 'node:child_process';
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import {
   findSecureBinaryPath,
@@ -17,17 +18,48 @@ import { bufferToString } from './helpers.js';
 import { findProjectRoot } from './projectUtils.js';
 
 /**
- * Cached binary path after successful validation
- * Eliminates repeated validation overhead (~1-3ms per call)
+ * Cached binary path plus a fingerprint of the file at validation time. The
+ * fingerprint lets us short-circuit the (cheap but TOCTOU-prone) re-validation
+ * on subsequent calls only when the on-disk binary is byte-identical to the
+ * one we already vetted; if it changed (inode/mtime/size differ), we drop the
+ * cache and re-run full validation. This keeps the original ~1-3 ms savings
+ * for the common case while preventing a swapped binary between calls from
+ * silently being executed.
  */
+interface BinaryFingerprint {
+  ino: number;
+  mtimeMs: number;
+  size: number;
+}
 let cachedBinaryPath: string | null = null;
+let cachedBinaryFingerprint: BinaryFingerprint | null = null;
 
 /**
  * Clears the cached binary path (for testing)
  */
 export function clearBinaryPathCache(): void {
   cachedBinaryPath = null;
+  cachedBinaryFingerprint = null;
 }
+
+const fingerprintFor = (filePath: string): BinaryFingerprint | null => {
+  try {
+    const stat = fs.statSync(filePath);
+    return { ino: stat.ino, mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+};
+
+const fingerprintMatches = (
+  a: BinaryFingerprint | null,
+  b: BinaryFingerprint | null,
+): boolean =>
+  a !== null &&
+  b !== null &&
+  a.ino === b.ino &&
+  a.mtimeMs === b.mtimeMs &&
+  a.size === b.size;
 
 const execFilePromise = (
   cliPath: string,
@@ -139,7 +171,35 @@ const parseCliOutput = <T>(output: string): T => {
   throw new CliUserError(parsed.message);
 };
 
+/**
+ * Defense-in-depth: refuse to spawn the Swift binary if a value position
+ * (the token following any `--flag`) itself starts with `--`. A malformed or
+ * outdated Swift argument parser could otherwise mistake the user-supplied
+ * value for a new flag and silently flip unrelated reminder/event state.
+ *
+ * Legitimate CLI values never start with `--`: dates, numbers, JSON payloads
+ * (start with `{`/`[`), booleans (`true`/`false`), and free-form text after
+ * Zod validation are all incompatible with a leading `--`.
+ */
+const assertNoFlagShapedValues = (args: string[]): void => {
+  for (let i = 0; i < args.length - 1; i++) {
+    const token = args[i];
+    const next = args[i + 1];
+    if (
+      typeof token === 'string' &&
+      token.startsWith('--') &&
+      typeof next === 'string' &&
+      next.startsWith('--')
+    ) {
+      throw new Error(
+        `EventKitCLI execution refused: value for flag ${token} cannot start with '--' (got: ${JSON.stringify(next.slice(0, 32))})`,
+      );
+    }
+  }
+};
+
 const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
+  assertNoFlagShapedValues(args);
   try {
     const { stdout } = await execFilePromise(cliPath, args);
     const normalized = bufferToString(stdout);
@@ -202,22 +262,41 @@ const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
  * const result = await executeCli<Reminder[]>(['--action', 'read', '--showCompleted', 'true']);
  */
 export async function executeCli<T>(args: string[]): Promise<T> {
-  // Use cached binary path if available
-  if (cachedBinaryPath) {
+  // Use cached binary path only if the on-disk file is byte-identical to the
+  // one we previously validated. Any mismatch invalidates the cache and
+  // forces a full re-resolve + re-validate, which closes the TOCTOU window
+  // between calls.
+  if (
+    cachedBinaryPath &&
+    fingerprintMatches(
+      cachedBinaryFingerprint,
+      fingerprintFor(cachedBinaryPath),
+    )
+  ) {
     return await runCli<T>(cachedBinaryPath, args);
   }
+  cachedBinaryPath = null;
+  cachedBinaryFingerprint = null;
 
   const projectRoot = findProjectRoot();
   const binaryName = FILE_SYSTEM.SWIFT_BINARY_NAME;
   const possiblePaths = [path.join(projectRoot, 'bin', binaryName)];
 
+  // Allowed paths are interpreted as suffixes of either the binary's full
+  // path or its parent directory. The Swift binary ships at
+  // `<projectRoot>/bin/EventKitCLI`, so `bin/EventKitCLI` is the canonical
+  // (filename-anchored) production entry — that is strict enough to reject
+  // `/usr/local/bin/<anything-else>` while still matching the install
+  // location regardless of where the package is unpacked. The remaining
+  // entries cover source-tree dev builds. See `binaryValidator.ts` for
+  // matching semantics.
   const config = {
     ...getEnvironmentBinaryConfig(),
     allowedPaths: [
-      '/bin/EventKitCLI',
-      '/dist/swift/bin/',
-      '/src/swift/bin/',
-      '/swift/bin/',
+      'bin/EventKitCLI',
+      'dist/swift/bin/EventKitCLI',
+      'src/swift/bin/EventKitCLI',
+      'swift/bin/EventKitCLI',
     ],
   };
 
@@ -225,16 +304,14 @@ export async function executeCli<T>(args: string[]): Promise<T> {
 
   if (!cliPath) {
     throw new CliUserError(
-      `EventKitCLI binary not found. When installed via npx, the Swift binary must be built manually:
+      `EventKitCLI binary not found at ${possiblePaths[0]}.
 
-1. Find the npx cache location:
-   pnpm store path
+The Swift binary is normally built automatically by the postinstall script,
+but that step may have been skipped or failed (for example when the package
+was installed without devDependencies, on a non-macOS host, or before Xcode
+Command Line Tools were available).
 
-2. Navigate to the package and build:
-   cd $(pnpm store path)/.pnpm/mcp-server-apple-events@*
-   pnpm run build
-
-Alternatively, clone the repository and build locally:
+To build it manually, clone the repository and run a local build:
    git clone https://github.com/fradser/mcp-server-apple-events.git
    cd mcp-server-apple-events
    pnpm install
@@ -246,8 +323,10 @@ Then use the local path in your Claude Desktop config:
     );
   }
 
-  // Cache the validated path for subsequent calls
+  // Cache the validated path AND a fingerprint of the file so subsequent
+  // calls can confirm the binary has not been swapped on disk.
   cachedBinaryPath = cliPath;
+  cachedBinaryFingerprint = fingerprintFor(cliPath);
 
   return await runCli<T>(cliPath, args);
 }

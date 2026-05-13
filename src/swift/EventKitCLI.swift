@@ -619,11 +619,46 @@ class RemindersManager {
     }
 
     private func findList(named name: String?) throws -> EKCalendar {
-        guard let listName = name, !listName.isEmpty else { return eventStore.defaultCalendarForNewReminders()! }
+        guard let listName = name, !listName.isEmpty else {
+            // `defaultCalendarForNewReminders()` returns nil when no reminders
+            // account is configured (e.g. iCloud reminders disabled with no
+            // local source). Force-unwrapping crashed the binary with a
+            // SIGABRT, leaving the Node side with an empty stdout and no JSON
+            // error to surface; throw a descriptive error instead.
+            guard let defaultList = eventStore.defaultCalendarForNewReminders() else {
+                throw NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "No default reminders list is configured. Open Reminders.app to enable a list, or pass --targetList explicitly."])
+            }
+            return defaultList
+        }
         guard let list = eventStore.calendars(for: .reminder).first(where: { $0.title == listName }) else {
             throw NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "List '\(listName)' not found."])
         }
         return list
+    }
+
+    /// Returns true for the narrow set of EventKit errors that indicate a
+    /// reminder cannot be saved to a different list via direct reassignment
+    /// and that the documented AppleScript `move` workaround is appropriate.
+    /// Limiting the fallback to these codes avoids invoking AppleScript on
+    /// unrelated save failures (network, mid-run permission changes), which
+    /// could otherwise create duplicates if AppleScript partially succeeded.
+    private func isCrossListMoveError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        // Private reminderkit code observed on iCloud↔Local / cross-source moves.
+        if nsError.domain == "com.apple.reminderkit" && nsError.code == -3002 {
+            return true
+        }
+        // macOS 15.4+ / iOS 18.4+ regression: "Access denied" on cross-account saves.
+        // See: developer.apple.com/forums/thread/782282
+        if nsError.domain == "EKCADErrorDomain" && nsError.code == 1013 {
+            return true
+        }
+        // EKErrorDomain: calendarSourceCannotBeModified (15), calendarIsImmutable (16),
+        // sourceDoesNotAllowReminders (24).
+        if nsError.domain == "EKErrorDomain" && [15, 16, 24].contains(nsError.code) {
+            return true
+        }
+        return false
     }
 
     // MARK: Actions
@@ -922,6 +957,12 @@ class RemindersManager {
             try eventStore.save(reminder, commit: true)
             return reminder
         } catch {
+            // Only fall back to AppleScript for the known cross-source error
+            // codes; rethrow everything else so transient or permission
+            // failures don't trigger a duplicate via the script-based path.
+            guard isCrossListMoveError(error) else {
+                throw error
+            }
             try runAppleScriptMove(reminderUUID: originalUUID, toListNamed: targetList.title)
             eventStore.refreshSourcesIfNecessary()
             // AppleScript's `move` often preserves calendarItemIdentifier; try the
@@ -939,10 +980,19 @@ class RemindersManager {
     }
 
     private func runAppleScriptMove(reminderUUID: String, toListNamed targetListName: String) throws {
-        let escapedList = targetListName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let escape: (String) -> String = { value in
+            value
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+        }
+        // Both the list name AND the UUID are interpolated into the AppleScript
+        // body; even though `calendarItemIdentifier` values look UUID-like
+        // today, the field is documented as opaque, so escape it for safety.
+        let escapedList = escape(targetListName)
+        let escapedUUID = escape(reminderUUID)
         let script = """
         tell application "Reminders"
-            set src to first reminder whose id contains "\(reminderUUID)"
+            set src to first reminder whose id contains "\(escapedUUID)"
             move src to list "\(escapedList)"
         end tell
         """
@@ -1540,9 +1590,27 @@ struct ArgumentParser {
         var i = 0
         let arguments = Array(CommandLine.arguments.dropFirst())
 
+        // Every flag of the form `--key` consumes the NEXT token as its value,
+        // regardless of whether that token also starts with `--`. The previous
+        // implementation peeked at `arguments[i + 1].hasPrefix("--")` to decide
+        // whether a flag was boolean-only — any user-supplied value beginning
+        // with `--` could then be silently re-interpreted as a new flag,
+        // letting attacker-controlled text (titles, notes, list names…) flip
+        // unrelated reminder state. The only fallback to a "true" value is a
+        // trailing flag with no following token.
         while i < arguments.count {
-            let key = arguments[i].replacingOccurrences(of: "--", with: "")
-            if i + 1 < arguments.count && !arguments[i + 1].hasPrefix("--") {
+            let token = arguments[i]
+            guard token.hasPrefix("--") else {
+                // Defensive: silently skip stray non-flag tokens rather than
+                // dropping them into the wrong slot.
+                i += 1
+                continue
+            }
+            // Strip exactly the leading "--"; `replacingOccurrences(of:"--",…)`
+            // would also strip embedded "--" sequences in keys (none today,
+            // but the substitution was fragile).
+            let key = String(token.dropFirst(2))
+            if i + 1 < arguments.count {
                 dict[key] = arguments[i + 1]
                 i += 2
             } else {

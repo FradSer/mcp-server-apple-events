@@ -12,9 +12,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { handleToolCall, TOOLS } from '../tools/index.js';
 import type {
+  CalendarsToolArgs,
   CalendarToolArgs,
   ListsToolArgs,
   RemindersToolArgs,
+  SubtasksToolArgs,
 } from '../types/index.js';
 import {
   buildPromptResponse,
@@ -39,7 +41,9 @@ export function registerHandlers(server: Server): void {
       (request.params.arguments as unknown as
         | RemindersToolArgs
         | ListsToolArgs
-        | CalendarToolArgs) ?? {},
+        | SubtasksToolArgs
+        | CalendarToolArgs
+        | CalendarsToolArgs) ?? {},
     ),
   );
 
@@ -50,11 +54,9 @@ export function registerHandlers(server: Server): void {
 
   // Handler for getting a specific prompt
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    // `name` is required by `GetPromptRequestSchema` and already validated by
+    // the SDK before reaching this handler — no defensive guard needed.
     const { name, arguments: args } = request.params;
-
-    if (typeof name !== 'string') {
-      throw new Error('Prompt name must be a string.');
-    }
 
     const promptDefinition = getPromptDefinition(name);
 

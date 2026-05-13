@@ -53,7 +53,16 @@ describe('CalendarRepository', () => {
 
       const result = await repository.findEventById('2');
 
-      expect(mockExecuteCli).toHaveBeenCalledWith(['--action', 'read-events']);
+      // findEventById widens the read window to ~4 years either side of
+      // today so events far outside the default 14-day range can still be
+      // located by id. We only assert the shape of the args; the actual
+      // start/end dates are derived from `new Date()` and would be brittle
+      // to pin down.
+      expect(mockExecuteCli).toHaveBeenCalledTimes(1);
+      const args = mockExecuteCli.mock.calls[0][0];
+      expect(args.slice(0, 2)).toEqual(['--action', 'read-events']);
+      expect(args).toContain('--startDate');
+      expect(args).toContain('--endDate');
 
       expect(result).toEqual({
         id: '2',

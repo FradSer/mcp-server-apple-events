@@ -36,7 +36,7 @@ const expectPatterns = (text: string, patterns: RegExp[]): void => {
 
 describe('prompt templates', () => {
   describe('metadata', () => {
-    it('includes version numbers for all prompts', () => {
+    it('registers metadata for every prompt with name, description, and arguments', () => {
       const prompts: PromptName[] = [
         'daily-task-organizer',
         'smart-reminder-creator',
@@ -47,8 +47,10 @@ describe('prompt templates', () => {
       for (const name of prompts) {
         const template = getPromptDefinition(name);
         expect(template).toBeDefined();
-        expect(template?.metadata.version).toBeDefined();
-        expect(template?.metadata.version).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(template?.metadata.name).toBe(name);
+        expect(typeof template?.metadata.description).toBe('string');
+        expect(template?.metadata.description.length).toBeGreaterThan(0);
+        expect(Array.isArray(template?.metadata.arguments)).toBe(true);
       }
     });
   });

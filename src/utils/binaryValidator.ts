@@ -18,11 +18,22 @@ interface BinarySecurityConfig {
 }
 
 /**
- * Default security configuration
+ * Default security configuration.
+ *
+ * Each `allowedPaths` entry is a path suffix that the candidate binary must
+ * match against either its full normalized path or its parent directory. The
+ * previous "contiguous segments anywhere in the path" matcher accepted
+ * unrelated locations such as `/etc/swift/bin/passwd`; anchoring to the tail
+ * of the resolved path is what we actually want.
+ *
+ * The defaults intentionally do NOT include a bare `bin` entry — that would
+ * pass for any `/<anywhere>/bin/<anything>` (e.g. `/usr/local/bin/curl`).
+ * Production callers must opt into the specific `bin/EventKitCLI` filename
+ * suffix via configuration (see `cliExecutor.ts`).
  */
 const DEFAULT_CONFIG: BinarySecurityConfig = {
   maxFileSize: 50 * 1024 * 1024, // 50MB max
-  allowedPaths: ['/dist/swift/bin/', '/src/swift/bin/', '/swift/bin/'],
+  allowedPaths: ['dist/swift/bin', 'src/swift/bin', 'swift/bin'],
   requireAbsolutePath: true,
 };
 
@@ -56,38 +67,36 @@ export function validateBinaryPath(
   }
 
   const normalizedPath = path.normalize(binaryPath);
-  if (normalizedPath.includes('..')) {
+  // `path.normalize` resolves any embedded `..`, so a surviving `..` segment
+  // would only come from a deliberately malformed input — check segments
+  // rather than substring (`..foo` is a legal filename).
+  const segments = normalizedPath.split(path.sep);
+  if (segments.includes('..')) {
     throw new BinaryValidationError(
       'Path traversal detected in binary path',
       'PATH_TRAVERSAL',
     );
   }
 
-  // Check if path is in allowed directories
-  // Use path segment matching for better security than simple substring matching
+  // An entry matches when it is a suffix of either the full binary path
+  // (including its filename, e.g. `bin/EventKitCLI`) or the binary's parent
+  // directory (e.g. `dist/swift/bin`). Suffix matching is segment-aligned —
+  // `endsWith('/bin')` after stripping trailing separators avoids the
+  // `foo-bin` partial-match trap while still working for absolute and
+  // relative allowed paths.
+  const parentDir = path.dirname(normalizedPath);
   const isInAllowedPath = fullConfig.allowedPaths.some((allowedPath) => {
-    // Normalize the allowed path
-    const normalizedAllowedPath = path.normalize(allowedPath);
-
-    // Split paths into segments and check if allowed segments appear in order
-    const pathSegments = normalizedPath.split(path.sep).filter(Boolean);
-    const allowedSegments = normalizedAllowedPath
-      .split(path.sep)
-      .filter(Boolean);
-
-    // Check if allowedSegments appear consecutively in pathSegments
-    for (let i = 0; i <= pathSegments.length - allowedSegments.length; i++) {
-      let match = true;
-      for (let j = 0; j < allowedSegments.length; j++) {
-        if (pathSegments[i + j] !== allowedSegments[j]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) return true;
-    }
-
-    return false;
+    const allowedNormalized = path
+      .normalize(allowedPath)
+      .replace(/[\\/]+$/, '');
+    if (!allowedNormalized) return false;
+    const sepSuffix = path.sep + allowedNormalized;
+    return (
+      normalizedPath === allowedNormalized ||
+      normalizedPath.endsWith(sepSuffix) ||
+      parentDir === allowedNormalized ||
+      parentDir.endsWith(sepSuffix)
+    );
   });
 
   if (!isInAllowedPath) {
