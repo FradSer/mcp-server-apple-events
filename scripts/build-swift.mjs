@@ -1,10 +1,24 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// `exec`-style command-string building was sensitive to shell metacharacters in
+// derived paths (spaces, `$`, backticks). `execFile` with an argv array spawns
+// the tool directly, so paths and tokens are passed through unchanged.
+async function run(command, args, options = {}) {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, options);
+    return { stdout: stdout ?? '', stderr: stderr ?? '' };
+  } catch (error) {
+    error.stdout = error.stdout ?? '';
+    error.stderr = error.stderr ?? '';
+    throw error;
+  }
+}
 
 // macOS 26+ SDKs ship a Foundation.swiftinterface that older swiftc cannot parse,
 // surfacing as `could not build module 'Foundation'` / `SDK is not supported by
@@ -14,13 +28,12 @@ const MIN_SWIFT_MINOR_FOR_MACOS_26 = 3;
 
 async function getSwiftVersion() {
   try {
-    const { stdout } = await execAsync('xcrun swiftc --version');
+    const { stdout } = await run('xcrun', ['swiftc', '--version']);
     const match = stdout.match(/Apple Swift version (\d+)\.(\d+)(?:\.(\d+))?/);
     if (!match) return null;
     return {
       major: Number.parseInt(match[1], 10),
       minor: Number.parseInt(match[2], 10),
-      patch: match[3] ? Number.parseInt(match[3], 10) : 0,
       raw: match[0].replace(/^Apple Swift version /, ''),
     };
   } catch {
@@ -30,7 +43,7 @@ async function getSwiftVersion() {
 
 async function getSdkVersion() {
   try {
-    const { stdout } = await execAsync('xcrun --show-sdk-version');
+    const { stdout } = await run('xcrun', ['--show-sdk-version']);
     const trimmed = stdout.trim();
     const [maj, min] = trimmed.split('.');
     return {
@@ -101,18 +114,14 @@ async function main() {
     process.exit(1);
   }
 
-  try {
-    await execAsync('xcrun --find swiftc');
-  } catch (_error) {
+  const [swift, sdk] = await Promise.all([getSwiftVersion(), getSdkVersion()]);
+  if (!swift) {
     console.error('Error: Swift compiler (swiftc) not found via xcrun.');
     console.error(
       'Please install Xcode or Xcode Command Line Tools: xcode-select --install',
     );
     process.exit(1);
   }
-
-  const swift = await getSwiftVersion();
-  const sdk = await getSdkVersion();
   if (isSdkTooNewForSwift(swift, sdk)) {
     printIncompatibilityRemediation(swift, sdk);
     process.exit(1);
@@ -162,17 +171,37 @@ async function main() {
   // via its `requestAccess(to: .reminder)` legacy branch. Pinning keeps the
   // build deterministic across SDK versions and avoids defaulting to the host
   // SDK's target, which on macOS 26 makes the macOS-14 fallback path appear
-  // unreachable. Use `xcrun -sdk macosx swiftc` so the toolchain and SDK that
-  // `xcode-select` resolves are used consistently.
+  // unreachable.
   const target = `${swiftArchForHost()}-apple-macosx13.0`;
-  // Use -Xlinker to embed Info.plist into the binary
-  // This is required for macOS to show permission dialogs for EventKit access
-  const compileCommand = `xcrun -sdk macosx swiftc -target ${target} -o "${outputFile}" "${sourceFile}" -framework EventKit -framework Foundation -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "${infoPlistFile}"`;
+  // `xcrun -sdk macosx swiftc` keeps the toolchain and SDK xcode-select resolves
+  // consistent. -Xlinker embeds Info.plist so macOS shows EventKit prompts.
+  const compileArgs = [
+    '-sdk',
+    'macosx',
+    'swiftc',
+    '-target',
+    target,
+    '-o',
+    outputFile,
+    sourceFile,
+    '-framework',
+    'EventKit',
+    '-framework',
+    'Foundation',
+    '-Xlinker',
+    '-sectcreate',
+    '-Xlinker',
+    '__TEXT',
+    '-Xlinker',
+    '__info_plist',
+    '-Xlinker',
+    infoPlistFile,
+  ];
 
   console.log(`Compiling ${sourceFile} (target ${target})...`);
 
   try {
-    const { stdout, stderr } = await execAsync(compileCommand);
+    const { stdout, stderr } = await run('xcrun', compileArgs);
     if (stderr) {
       console.warn(`Swift compiler warnings:\n${stderr}`);
     }
@@ -188,8 +217,16 @@ async function main() {
     // --options runtime enables Hardened Runtime, required on macOS 26+ for
     // the TCC system to show calendar permission dialogs when the binary
     // runs as a subprocess of a GUI application (e.g. Claude Desktop).
-    const codesignCommand = `codesign --force --sign - --options runtime --entitlements "${entitlementsFile}" "${outputFile}"`;
-    const { stdout: csOut, stderr: csErr } = await execAsync(codesignCommand);
+    const { stdout: csOut, stderr: csErr } = await run('codesign', [
+      '--force',
+      '--sign',
+      '-',
+      '--options',
+      'runtime',
+      '--entitlements',
+      entitlementsFile,
+      outputFile,
+    ]);
     if (csErr) {
       console.warn(`codesign warnings:\n${csErr}`);
     }
