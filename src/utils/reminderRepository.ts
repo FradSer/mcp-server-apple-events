@@ -7,6 +7,7 @@ import type { Reminder, ReminderList } from '../types/index.js';
 import type {
   AlarmJSON,
   CreateReminderData,
+  IReminderRepository,
   ListJSON,
   RecurrenceRuleJSON,
   ReminderJSON,
@@ -42,7 +43,7 @@ const mapAlarmType = (
   return undefined;
 };
 
-class ReminderRepository {
+class ReminderRepository implements IReminderRepository {
   private mapReminder(reminder: ReminderJSON): Reminder {
     // Convert null values to undefined for optional fields
     // dueDate is passed through as-is from Swift CLI to avoid double timezone conversion
