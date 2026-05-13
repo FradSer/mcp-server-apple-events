@@ -6,25 +6,35 @@
 import 'exit-on-epipe';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { TOOLS } from '../tools/definitions.js';
 import type { ServerConfig } from '../types/index.js';
 import { registerHandlers } from './handlers.js';
+import { PROMPT_LIST } from './prompts.js';
 
-const SERVER_INSTRUCTIONS = `
-This MCP server exposes native macOS Apple Reminders and Calendar access
-through five tools:
-- reminders_tasks    — read / create / update / delete reminders
-- reminders_lists    — read / create / update / delete reminder lists
-- reminders_subtasks — read / create / update / delete / toggle / reorder
-                       subtasks stored in a reminder's notes
-- calendar_events    — read / create / update / delete calendar events
-- calendar_calendars — list available calendars
+/**
+ * Builds the `instructions` string surfaced through the MCP `initialize`
+ * response. Derived from `TOOLS` and `PROMPT_LIST` so the user-facing summary
+ * cannot drift when a tool or prompt is added — the new entry shows up
+ * automatically, and the maintainer just has to keep each tool's own
+ * `description` in `definitions.ts` accurate.
+ */
+const buildServerInstructions = (): string => {
+  const toolLines = TOOLS.map((tool) => `- ${tool.name} — ${tool.description}`);
+  const promptNames = PROMPT_LIST.map((p) => p.name).join(', ');
+  return [
+    'This MCP server exposes native macOS Apple Reminders and Calendar access.',
+    '',
+    `Tools (${TOOLS.length}):`,
+    ...toolLines,
+    '',
+    `Prompts (${PROMPT_LIST.length}): ${promptNames}.`,
+    '',
+    "All write actions go through the user's Reminders / Calendar accounts via EventKit.",
+    'The first call may trigger a system permission dialog.',
+  ].join('\n');
+};
 
-And four prompts: daily-task-organizer, smart-reminder-creator,
-reminder-review-assistant, weekly-planning-workflow.
-
-All write actions go through the user's Reminders / Calendar accounts via
-EventKit. The first call may trigger a system permission dialog.
-`.trim();
+const SERVER_INSTRUCTIONS = buildServerInstructions();
 
 /**
  * Creates and configures an MCP server instance

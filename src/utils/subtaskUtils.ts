@@ -23,12 +23,16 @@ const SUBTASK_END = '---END SUBTASKS---';
 
 // Regex to match the subtask section. Both markers are anchored to line
 // boundaries so that user-supplied content that happens to contain the marker
-// text mid-line cannot forge or truncate the structured section.
+// text mid-line cannot forge or truncate the structured section. `\r?\n`
+// keeps the matcher tolerant of CRLF line endings that some tools (or a
+// round-trip through AppleScript) can introduce.
 const SUBTASK_SECTION_REGEX =
-  /(?:^|\n)---SUBTASKS---\n([\s\S]*?)\n---END SUBTASKS---(?=\n|$)/;
+  /(?:^|\r?\n)---SUBTASKS---\r?\n([\s\S]*?)\r?\n---END SUBTASKS---(?=\r?\n|$)/;
 
-// Regex to match individual subtask lines: [ ] {id} title or [x] {id} title
-const SUBTASK_LINE_REGEX = /^\[([ x])\]\s*\{([a-f0-9]+)\}\s*(.+)$/;
+// Regex to match individual subtask lines: [ ] {id} title or [x] {id} title.
+// `\s*` at the end absorbs a trailing `\r` left behind when a CRLF-terminated
+// block is split on `\n`.
+const SUBTASK_LINE_REGEX = /^\[([ x])\]\s*\{([a-f0-9]+)\}\s*(.+?)\s*$/;
 
 /**
  * Generates a short unique ID (8 hex characters)
@@ -53,7 +57,8 @@ export function parseSubtasks(notes: string | null | undefined): Subtask[] {
   if (!match) return [];
 
   const subtaskContent = match[1];
-  const lines = subtaskContent.split('\n').filter((line) => line.trim());
+  // Split on either `\n` or `\r\n` so CRLF-terminated input round-trips.
+  const lines = subtaskContent.split(/\r?\n/).filter((line) => line.trim());
   const subtasks: Subtask[] = [];
 
   for (const line of lines) {

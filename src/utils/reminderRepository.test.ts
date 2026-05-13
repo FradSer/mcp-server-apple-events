@@ -640,6 +640,33 @@ describe('ReminderRepository', () => {
         'No calendar source available',
       );
     });
+
+    it('passes the --color flag when a color is supplied and returns it on the result', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: '999',
+        title: 'Colored List',
+        color: '#FF5733',
+      });
+
+      const result = await repository.createReminderList(
+        'Colored List',
+        '#FF5733',
+      );
+
+      expect(mockExecuteCli).toHaveBeenCalledWith([
+        '--action',
+        'create-list',
+        '--name',
+        'Colored List',
+        '--color',
+        '#FF5733',
+      ]);
+      expect(result).toEqual({
+        id: '999',
+        title: 'Colored List',
+        color: '#FF5733',
+      });
+    });
   });
 
   describe('updateReminderList', () => {
@@ -663,6 +690,30 @@ describe('ReminderRepository', () => {
       ]);
       expect(result).toEqual(mockResult);
     });
+
+    it('passes the --color flag when only a color is supplied (no newName)', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: '321',
+        title: 'Old Name',
+        color: '#00FF00',
+      });
+
+      const result = await repository.updateReminderList(
+        'Old Name',
+        undefined,
+        '#00FF00',
+      );
+
+      expect(mockExecuteCli).toHaveBeenCalledWith([
+        '--action',
+        'update-list',
+        '--name',
+        'Old Name',
+        '--color',
+        '#00FF00',
+      ]);
+      expect(result.color).toBe('#00FF00');
+    });
   });
 
   describe('deleteReminderList', () => {
@@ -677,6 +728,198 @@ describe('ReminderRepository', () => {
         '--name',
         'Test List',
       ]);
+    });
+  });
+
+  describe('mapReminder edge cases', () => {
+    // These tests target the JSON → domain mapping branches that mocked
+    // happy-path tests above never hit. Mocking `executeCli` directly keeps
+    // the assertions about the transformation, not the wire format.
+
+    it('defaults missing recurrence interval to 1 and converts null sub-fields to undefined', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r1',
+        title: 'Recurring',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        notes: null,
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+        recurrenceRules: [
+          {
+            frequency: 'weekly',
+            interval: undefined,
+            endDate: null,
+            occurrenceCount: null,
+            daysOfWeek: null,
+            daysOfMonth: null,
+            monthsOfYear: null,
+          },
+        ],
+      });
+
+      const result = await repository.findReminderById('r1');
+
+      expect(result.recurrenceRules).toEqual([
+        {
+          frequency: 'weekly',
+          interval: 1,
+          endDate: undefined,
+          occurrenceCount: undefined,
+          daysOfWeek: undefined,
+          daysOfMonth: undefined,
+          monthsOfYear: undefined,
+        },
+      ]);
+    });
+
+    it("maps locationTrigger with 'leave' proximity verbatim", async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r2',
+        title: 'Geo',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        notes: null,
+        url: null,
+        dueDate: null,
+        locationTrigger: {
+          title: 'Office',
+          latitude: 37.0,
+          longitude: -122.0,
+          radius: 50,
+          proximity: 'leave',
+        },
+      });
+
+      const result = await repository.findReminderById('r2');
+      expect(result.locationTrigger).toEqual({
+        title: 'Office',
+        latitude: 37.0,
+        longitude: -122.0,
+        radius: 50,
+        proximity: 'leave',
+      });
+    });
+
+    it("treats unknown proximity values as 'enter' (forward-compat fallback)", async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r3',
+        title: 'Geo',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        notes: null,
+        url: null,
+        dueDate: null,
+        locationTrigger: {
+          title: 'Home',
+          latitude: 0,
+          longitude: 0,
+          proximity: 'none',
+        },
+      });
+
+      const result = await repository.findReminderById('r3');
+      expect(result.locationTrigger?.proximity).toBe('enter');
+    });
+
+    it('maps alarms with each of relativeOffset, absoluteDate, and locationTrigger triggers', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r4',
+        title: 'Many alarms',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        notes: null,
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+        alarms: [
+          { relativeOffset: -300, alarmType: 'audio' },
+          { absoluteDate: '2026-01-01T09:00:00Z', alarmType: 'display' },
+          {
+            locationTrigger: {
+              title: 'Home',
+              latitude: 0,
+              longitude: 0,
+              proximity: 'leave',
+            },
+            alarmType: null, // exercises mapAlarmType returning undefined
+          },
+        ],
+      });
+
+      const result = await repository.findReminderById('r4');
+      expect(result.alarms).toHaveLength(3);
+      expect(result.alarms?.[0].relativeOffset).toBe(-300);
+      expect(result.alarms?.[0].alarmType).toBe('audio');
+      expect(result.alarms?.[1].absoluteDate).toBe('2026-01-01T09:00:00Z');
+      expect(result.alarms?.[2].locationTrigger?.proximity).toBe('leave');
+      expect(result.alarms?.[2].alarmType).toBeUndefined();
+    });
+
+    it('drops invalid alarmType values rather than passing them through', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r5',
+        title: 'Bad alarm type',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        notes: null,
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+        alarms: [{ relativeOffset: -60, alarmType: 'not-a-real-type' }],
+      });
+
+      const result = await repository.findReminderById('r5');
+      expect(result.alarms?.[0].alarmType).toBeUndefined();
+    });
+
+    it('extracts tags and subtasks from notes into structured fields', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r6',
+        title: 'Has metadata',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+        notes:
+          '[#work] [#urgent] User notes\n\n---SUBTASKS---\n[ ] {aabbccdd} First\n[x] {eeff0011} Done\n---END SUBTASKS---',
+      });
+
+      const result = await repository.findReminderById('r6');
+      expect(result.tags).toEqual(['work', 'urgent']);
+      expect(result.subtasks).toHaveLength(2);
+      expect(result.subtaskProgress).toEqual({
+        completed: 1,
+        total: 2,
+        percentage: 50,
+      });
+    });
+
+    it('omits tags and subtasks when notes contain neither', async () => {
+      mockExecuteCli.mockResolvedValue({
+        id: 'r7',
+        title: 'Plain',
+        list: 'Default',
+        isCompleted: false,
+        priority: 0,
+        notes: 'just plain notes',
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+      });
+
+      const result = await repository.findReminderById('r7');
+      expect(result.tags).toBeUndefined();
+      expect(result.subtasks).toBeUndefined();
+      expect(result.subtaskProgress).toBeUndefined();
     });
   });
 });
