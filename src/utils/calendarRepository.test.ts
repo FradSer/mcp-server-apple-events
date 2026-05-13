@@ -285,6 +285,39 @@ describe('CalendarRepository', () => {
     });
   });
 
+  describe('findEvents with availability filter', () => {
+    it('filters events client-side by availability when the filter is provided', async () => {
+      mockExecuteCli.mockResolvedValue({
+        calendars: [],
+        events: [
+          {
+            id: '1',
+            title: 'Busy meeting',
+            startDate: '2026-02-20T09:00:00Z',
+            endDate: '2026-02-20T10:00:00Z',
+            calendar: 'Work',
+            isAllDay: false,
+            availability: 'busy',
+          },
+          {
+            id: '2',
+            title: 'Free block',
+            startDate: '2026-02-20T11:00:00Z',
+            endDate: '2026-02-20T12:00:00Z',
+            calendar: 'Work',
+            isAllDay: false,
+            availability: 'free',
+          },
+        ],
+      });
+
+      const result = await repository.findEvents({ availability: 'busy' });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('1');
+    });
+  });
+
   describe('findAllCalendars', () => {
     it('should return all calendars', async () => {
       const mockCalendars: Calendar[] = [

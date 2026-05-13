@@ -171,35 +171,7 @@ const parseCliOutput = <T>(output: string): T => {
   throw new CliUserError(parsed.message);
 };
 
-/**
- * Defense-in-depth: refuse to spawn the Swift binary if a value position
- * (the token following any `--flag`) itself starts with `--`. A malformed or
- * outdated Swift argument parser could otherwise mistake the user-supplied
- * value for a new flag and silently flip unrelated reminder/event state.
- *
- * Legitimate CLI values never start with `--`: dates, numbers, JSON payloads
- * (start with `{`/`[`), booleans (`true`/`false`), and free-form text after
- * Zod validation are all incompatible with a leading `--`.
- */
-const assertNoFlagShapedValues = (args: string[]): void => {
-  for (let i = 0; i < args.length - 1; i++) {
-    const token = args[i];
-    const next = args[i + 1];
-    if (
-      typeof token === 'string' &&
-      token.startsWith('--') &&
-      typeof next === 'string' &&
-      next.startsWith('--')
-    ) {
-      throw new Error(
-        `EventKitCLI execution refused: value for flag ${token} cannot start with '--' (got: ${JSON.stringify(next.slice(0, 32))})`,
-      );
-    }
-  }
-};
-
 const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
-  assertNoFlagShapedValues(args);
   try {
     const { stdout } = await execFilePromise(cliPath, args);
     const normalized = bufferToString(stdout);
@@ -246,9 +218,12 @@ const runCli = async <T>(cliPath: string, args: string[]): Promise<T> => {
  *    operating system passes each argument directly to the spawned process via
  *    `execve()`, preventing injection through argument boundaries.
  *
- * 3. **Swift CLI ArgumentParser**: The Swift binary uses Swift's ArgumentParser
- *    library, which provides type-safe argument parsing and additional validation
- *    at the native layer.
+ * 3. **Swift CLI ArgumentParser**: The Swift binary's custom argument parser
+ *    treats every `--key` flag as taking the next token as its value, even if
+ *    that token also starts with `--`. This prevents user-supplied text like
+ *    `--draft outline` from being silently re-interpreted as a new flag, so
+ *    legitimate user titles/notes starting with `--` round-trip as literal
+ *    strings rather than being rejected at the TS boundary.
  *
  * Example of safe handling with malicious input:
  * ```typescript
@@ -280,24 +255,18 @@ export async function executeCli<T>(args: string[]): Promise<T> {
 
   const projectRoot = findProjectRoot();
   const binaryName = FILE_SYSTEM.SWIFT_BINARY_NAME;
-  const possiblePaths = [path.join(projectRoot, 'bin', binaryName)];
+  const canonicalPath = path.join(projectRoot, 'bin', binaryName);
+  const possiblePaths = [canonicalPath];
 
-  // Allowed paths are interpreted as suffixes of either the binary's full
-  // path or its parent directory. The Swift binary ships at
-  // `<projectRoot>/bin/EventKitCLI`, so `bin/EventKitCLI` is the canonical
-  // (filename-anchored) production entry — that is strict enough to reject
-  // `/usr/local/bin/<anything-else>` while still matching the install
-  // location regardless of where the package is unpacked. The remaining
-  // entries cover source-tree dev builds. See `binaryValidator.ts` for
-  // matching semantics.
+  // Restrict the allowlist to the single absolute path we just constructed
+  // from `findProjectRoot()`. The validator's suffix matcher would otherwise
+  // accept any `/<anywhere>/bin/EventKitCLI` — fine today because we only
+  // ever pass `canonicalPath` as a candidate, but anchoring the check makes
+  // the upstream invariant explicit rather than relying on the caller to
+  // never pass anything else.
   const config = {
     ...getEnvironmentBinaryConfig(),
-    allowedPaths: [
-      'bin/EventKitCLI',
-      'dist/swift/bin/EventKitCLI',
-      'src/swift/bin/EventKitCLI',
-      'swift/bin/EventKitCLI',
-    ],
+    allowedPaths: [canonicalPath],
   };
 
   const { path: cliPath } = findSecureBinaryPath(possiblePaths, config);

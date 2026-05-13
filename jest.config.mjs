@@ -42,17 +42,17 @@ export default {
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
   // Ignore import.meta.url line in projectUtils.ts
   coverageReporters: ['text', 'text-summary', 'html'],
-  // Thresholds set to a level the suite currently meets. Raise them as
-  // coverage grows; lowering should require an explicit justification on PR.
-  // Branches lags because several JSON-shape fallbacks (`?? undefined` etc.)
-  // in `reminderRepository.ts` / `calendarRepository.ts` are only exercised
-  // when the Swift CLI returns nulls, which mocked tests don't cover yet.
+  // Thresholds set just below the suite's current ceiling — leaves a thin
+  // buffer for unrelated future patches without papering over regressions.
+  // Branches still trails the other metrics; the largest remaining gaps are
+  // SSRF-blocking paths in `schemas.ts` and tag/date filter edge cases —
+  // good targets for the next coverage pass.
   coverageThreshold: {
     global: {
-      statements: 90,
-      branches: 70,
-      functions: 92,
-      lines: 90,
+      statements: 93,
+      branches: 78,
+      functions: 96,
+      lines: 94,
     },
   },
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],

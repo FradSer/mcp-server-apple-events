@@ -140,11 +140,21 @@ class CalendarRepository implements ICalendarRepository {
     return executeCli<EventsReadResult>(args);
   }
 
+  /**
+   * Find a calendar event by its identifier.
+   *
+   * Performance note: the Swift CLI does not currently expose an
+   * `event-by-id` action, so this method asks for a wide ±4-year window of
+   * events and linear-scans the result. For users with very many events the
+   * Swift→JSON→JS transfer can be sizable. The proper fix is a dedicated
+   * Swift `read-event-by-id` action mirroring the reminder side; this method
+   * should switch to that as soon as it lands.
+   *
+   * The previous implementation used the default 14-day window, which
+   * silently hid any event outside that range from id-based lookups — the
+   * widened window prioritises correctness over scan cost.
+   */
   async findEventById(id: string): Promise<CalendarEvent> {
-    // The Swift CLI does not expose an event-by-id action, so we widen the
-    // predicate window aggressively before falling back to a linear scan. The
-    // previous implementation used the default 14-day window, which silently
-    // hid any event outside that range from id-based lookups.
     const today = new Date();
     const { events } = await this.readEvents(
       formatDateOnly(shiftDays(today, -FIND_BY_ID_WINDOW_DAYS)),
