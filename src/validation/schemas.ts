@@ -207,11 +207,22 @@ export const SafeTextSchema = createSafeTextSchema(
   1,
   VALIDATION.MAX_TITLE_LENGTH,
 );
+// Subtask section markers must not appear as standalone lines in user-supplied
+// notes — they would let an attacker forge or truncate the structured subtask
+// section that lives in the same field.
+const SUBTASK_MARKER_LINE_REGEX = /^---(?:END )?SUBTASKS---$/m;
+
 export const SafeNoteSchema = createSafeTextSchema(
   0,
   VALIDATION.MAX_NOTE_LENGTH,
   'Note',
   true,
+).refine(
+  (value) => value === undefined || !SUBTASK_MARKER_LINE_REGEX.test(value),
+  {
+    message:
+      'Note cannot contain a line that exactly matches the reserved subtask section markers (---SUBTASKS--- or ---END SUBTASKS---)',
+  },
 );
 export const SafeListNameSchema = createSafeTextSchema(
   0,
@@ -393,11 +404,17 @@ const TagArraySchema = z.array(TagSchema).optional();
 
 /**
  * Subtask validation schemas
+ * Subtask titles are stored as a single line inside a structured notes section,
+ * so they must not contain newlines, tabs, or brace characters that would
+ * collide with the `[ ] {id} title` line format.
  */
 const SubtaskTitleSchema = createSafeTextSchema(
   1,
   VALIDATION.MAX_TITLE_LENGTH,
   'Subtask title',
+).regex(
+  /^[^\n\r\t{}]+$/,
+  'Subtask title cannot contain newlines, tabs, or braces',
 );
 
 const SubtaskTitleArraySchema = z.array(SubtaskTitleSchema).optional();
