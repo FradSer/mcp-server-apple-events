@@ -7,7 +7,7 @@
  * It gracefully skips on non-macOS platforms or if Swift is not available.
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,22 +24,30 @@ if (!isMacOS) {
 const buildSwift = async () => {
   return new Promise((resolve, reject) => {
     const buildScript = path.join(projectRoot, 'scripts', 'build-swift.mjs');
-    const buildCommand = `node ${buildScript}`;
 
-    exec(buildCommand, { cwd: projectRoot }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Swift binary build failed:', error.message);
-        if (stderr) {
-          console.error('Build error:', stderr);
+    // `execFile` (not `exec`) so the install path is passed as a discrete argv
+    // entry instead of being interpolated into a shell command. This keeps the
+    // build deterministic even when the project lives under a directory that
+    // contains spaces, `$`, backticks, or other shell-significant characters.
+    execFile(
+      process.execPath,
+      [buildScript],
+      { cwd: projectRoot },
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error('Swift binary build failed:', error.message);
+          if (stderr) {
+            console.error('Build error:', stderr);
+          }
+          reject(error);
+          return;
         }
-        reject(error);
-        return;
-      }
-      if (stdout) {
-        console.log(stdout);
-      }
-      resolve(stdout);
-    });
+        if (stdout) {
+          console.log(stdout);
+        }
+        resolve(stdout);
+      },
+    );
   });
 };
 
@@ -50,7 +58,7 @@ buildSwift()
   })
   .catch((error) => {
     console.error(`\n${'='.repeat(70)}`);
-    console.error('⚠️  WARNING: Swift binary build failed');
+    console.error('WARNING: Swift binary build failed');
     console.error('='.repeat(70));
     console.error('\nError details:', error.message);
     console.error(
