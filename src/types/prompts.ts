@@ -20,12 +20,15 @@ export interface PromptArgumentDefinition {
 
 /**
  * Prompt metadata that is surfaced through the `ListPrompts` endpoint.
+ * Fields mirror the MCP `Prompt` schema (`name`, optional `title`,
+ * `description`, `arguments`). A `version` field was previously included but
+ * the MCP `Prompt` type has no such concept, so clients silently dropped it.
  */
 export interface PromptMetadata<Name extends PromptName = PromptName> {
   name: Name;
+  title?: string;
   description: string;
   arguments: PromptArgumentDefinition[];
-  version?: string;
 }
 
 /**

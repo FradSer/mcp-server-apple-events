@@ -33,7 +33,9 @@
     "build": "pnpm run clean && pnpm run build:ts && pnpm run build:swift",
     "postinstall": "node scripts/postinstall.mjs",
     "test": "NODE_NO_WARNINGS=1 jest",
-    "lint": "pnpm exec biome check --write --unsafe && pnpm exec tsc --noEmit --project tsconfig.json"
+    "test:ci": "NODE_NO_WARNINGS=1 jest --coverage",
+    "lint": "pnpm exec biome check --write --unsafe && pnpm exec tsc --noEmit --project tsconfig.json",
+    "check": "pnpm run lint && pnpm run test:ci"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",

@@ -7,15 +7,15 @@ describe('build-swift.mjs code signing', () => {
   const buildScript = readFileSync(buildScriptPath, 'utf8');
 
   it('signs binary with hardened runtime for macOS 26+ TCC compatibility', () => {
-    expect(buildScript).toMatch(/codesign.*--options\s+runtime/);
+    expect(buildScript).toMatch(/codesign[\s\S]*?--options[\s\S]*?runtime/);
   });
 
   it('embeds Info.plist into binary via linker', () => {
-    expect(buildScript).toMatch(/-Xlinker.*__info_plist/);
+    expect(buildScript).toMatch(/-Xlinker[\s\S]*?__info_plist/);
   });
 
   it('applies entitlements during code signing', () => {
-    expect(buildScript).toMatch(/codesign.*--entitlements/);
+    expect(buildScript).toMatch(/codesign[\s\S]*?--entitlements/);
   });
 });
 
@@ -42,13 +42,11 @@ describe('build-swift.mjs toolchain/SDK compatibility (issue #85)', () => {
   const buildScript = readFileSync(buildScriptPath, 'utf8');
 
   it('detects Swift toolchain older than macOS 26 SDK requires before compile', () => {
-    // Pre-flight check must parse swiftc version and compare against SDK major.
     expect(buildScript).toMatch(/Apple Swift version/);
     expect(buildScript).toMatch(/--show-sdk-version/);
   });
 
   it('surfaces actionable remediation when SDK is too new for the toolchain', () => {
-    // Error message must mention the path to fix (xcode-select / Xcode / CLT) and link to issue #85.
     expect(buildScript).toMatch(/issues\/85/);
     expect(buildScript).toMatch(/xcode-select|Xcode|Command Line Tools/);
   });

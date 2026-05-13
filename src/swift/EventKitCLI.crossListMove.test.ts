@@ -36,10 +36,15 @@ describe('EventKitCLI cross-list move fallback', () => {
     );
   });
 
-  it('escapes backslashes and quotes in the target list name', () => {
+  it('escapes backslashes and quotes in both the list name and the UUID', () => {
+    // A shared `escape` closure replaces `\` → `\\` and `"` → `\"` for any
+    // string interpolated into the AppleScript body. We assert the closure's
+    // shape plus the fact that it is applied to both interpolated values.
     expect(swiftSource).toMatch(
-      /replacingOccurrences\(of: "\\\\", with: "\\\\\\\\"\)\.replacingOccurrences\(of: "\\"", with: "\\\\\\""\)/,
+      /\.replacingOccurrences\(of: "\\\\", with: "\\\\\\\\"\)[\s\S]*?\.replacingOccurrences\(of: "\\"", with: "\\\\\\""\)/,
     );
+    expect(swiftSource).toMatch(/let escapedList = escape\(targetListName\)/);
+    expect(swiftSource).toMatch(/let escapedUUID = escape\(reminderUUID\)/);
   });
 
   it('re-fetches the moved reminder by title and creationDate', () => {

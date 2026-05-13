@@ -78,15 +78,9 @@ export const TIME = {
 export const MESSAGES = {
   /** Error messages */
   ERROR: {
-    INPUT_VALIDATION_FAILED: (details: string) =>
-      `Input validation failed: ${details}`,
-
     UNKNOWN_TOOL: (name: string) => `Unknown tool: ${name}`,
 
     UNKNOWN_ACTION: (tool: string, action: string) =>
       `Unknown ${tool} action: ${action}`,
-
-    SYSTEM_ERROR: (operation: string) =>
-      `Failed to ${operation}: System error occurred`,
   },
 } as const;

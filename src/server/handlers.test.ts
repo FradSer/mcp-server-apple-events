@@ -207,9 +207,12 @@ describe('Server Handlers', () => {
         expect(text).toContain('today only — do not plan beyond today');
       });
 
+      // The SDK validates `name` as a string before handlers run, so the
+      // numeric-name case falls through to the unknown-prompt branch in this
+      // unit test (which bypasses the SDK's own request-schema layer).
       it.each([
         ['unknown-prompt', 'Unknown prompt: unknown-prompt'],
-        [123 as unknown, 'Prompt name must be a string.'],
+        [123 as unknown, 'Unknown prompt: 123'],
       ])('should throw error for invalid prompt: %s', async (name, expectedError) => {
         const request = {
           params: { name, arguments: {} },

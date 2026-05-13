@@ -1,7 +1,22 @@
 /**
  * repository.ts
- * Shared type definitions for repository layer JSON interfaces
+ * Shared type definitions for repository layer JSON interfaces and the
+ * abstract contracts the application layer is allowed to depend on.
+ *
+ * Domain layer rule (CLAUDE.md): interfaces are defined in the *consuming*
+ * layer, not the implementation layer. The handlers / orchestration code in
+ * `src/tools/handlers/` are the consumers — these interfaces live here in
+ * `src/types/` so the concrete repositories in `src/utils/` formally
+ * implement them rather than the handlers being coupled to the
+ * implementation.
  */
+
+import type {
+  Calendar,
+  CalendarEvent,
+  Reminder,
+  ReminderList,
+} from './index.js';
 
 /**
  * Recurrence rule JSON interface matching EventKitCLI output
@@ -198,4 +213,54 @@ export interface UpdateEventData {
   recurrenceRules?: RecurrenceRuleJSON[];
   clearRecurrence?: boolean;
   span?: 'this-event' | 'future-events';
+}
+
+/**
+ * Reminder repository contract. Implementations are responsible for talking
+ * to the underlying EventKit data store (today: via the Swift CLI). The
+ * application layer depends only on this interface.
+ */
+export interface IReminderRepository {
+  findReminderById(id: string): Promise<Reminder>;
+  findReminders(filters?: {
+    list?: string;
+    showCompleted?: boolean;
+    search?: string;
+    dueWithin?: string;
+    priority?: 'high' | 'medium' | 'low' | 'none';
+    recurring?: boolean;
+    locationBased?: boolean;
+    tags?: string[];
+  }): Promise<Reminder[]>;
+  findAllLists(): Promise<ReminderList[]>;
+  createReminder(data: CreateReminderData): Promise<ReminderJSON>;
+  updateReminder(data: UpdateReminderData): Promise<ReminderJSON>;
+  deleteReminder(id: string): Promise<void>;
+  createReminderList(name: string, color?: string): Promise<ReminderList>;
+  updateReminderList(
+    currentName: string,
+    newName?: string,
+    color?: string,
+  ): Promise<ReminderList>;
+  deleteReminderList(name: string): Promise<void>;
+}
+
+/**
+ * Calendar repository contract. Mirrors `IReminderRepository` for EventKit
+ * calendar/event operations.
+ */
+export interface ICalendarRepository {
+  findEventById(id: string): Promise<CalendarEvent>;
+  findEvents(filters?: {
+    startDate?: string;
+    endDate?: string;
+    calendarName?: string;
+    search?: string;
+    availability?: string;
+    accountName?: string;
+  }): Promise<CalendarEvent[]>;
+  findAllCalendars(): Promise<Calendar[]>;
+  createEvent(data: CreateEventData): Promise<EventJSON>;
+  updateEvent(data: UpdateEventData): Promise<EventJSON>;
+  deleteEvent(id: string, span?: string): Promise<void>;
 }

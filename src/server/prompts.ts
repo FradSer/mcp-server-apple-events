@@ -486,7 +486,6 @@ const PROMPTS: PromptRegistry = {
       name: 'daily-task-organizer',
       description:
         'Proactive daily task organization with intelligent reminder creation and optimization',
-      version: '1.0.0',
       arguments: [
         {
           name: "Today's focus",
@@ -510,7 +509,6 @@ const PROMPTS: PromptRegistry = {
       name: 'smart-reminder-creator',
       description:
         'Intelligently create reminders with optimal scheduling and context',
-      version: '1.0.0',
       arguments: [
         {
           name: 'Task idea',
@@ -533,7 +531,6 @@ const PROMPTS: PromptRegistry = {
       name: 'reminder-review-assistant',
       description:
         'Analyze and review existing reminders for productivity optimization',
-      version: '1.0.0',
       arguments: [
         {
           name: 'Review focus',
@@ -557,7 +554,6 @@ const PROMPTS: PromptRegistry = {
       name: 'weekly-planning-workflow',
       description:
         'Assign due dates to existing reminders based on your weekly planning ideas',
-      version: '1.0.0',
       arguments: [
         {
           name: 'User ideas',

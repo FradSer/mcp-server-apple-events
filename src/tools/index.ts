@@ -94,7 +94,7 @@ const TOOL_ROUTER_MAP = {
   [TOOL_NAMES.REMINDERS_LISTS]: createActionRouter<ListsToolArgs>(
     TOOL_NAMES.REMINDERS_LISTS,
     {
-      read: async (_listArgs) => handleReadReminderLists(),
+      read: () => handleReadReminderLists(),
       create: (listArgs) => handleCreateReminderList(listArgs),
       update: (listArgs) => handleUpdateReminderList(listArgs),
       delete: (listArgs) => handleDeleteReminderList(listArgs),

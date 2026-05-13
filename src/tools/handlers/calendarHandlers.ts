@@ -4,7 +4,11 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { CalendarsToolArgs, CalendarToolArgs } from '../../types/index.js';
+import type {
+  CalendarEvent,
+  CalendarsToolArgs,
+  CalendarToolArgs,
+} from '../../types/index.js';
 import { calendarRepository } from '../../utils/calendarRepository.js';
 import { handleAsyncOperation } from '../../utils/errorHandling.js';
 import { formatMultilineNotes } from '../../utils/helpers.js';
@@ -15,6 +19,7 @@ import {
   ReadCalendarsSchema,
   UpdateCalendarEventSchema,
 } from '../../validation/schemas.js';
+import { formatAlarm, formatRecurrenceRules } from './formatters.js';
 import {
   extractAndValidateArgs,
   formatDeleteMessage,
@@ -23,31 +28,12 @@ import {
 } from './shared.js';
 
 /**
- * Formats a calendar event as a markdown list item
+ * Formats a calendar event as a markdown list item. Renders alarms /
+ * recurrence rules through the same helpers as the reminder formatter so the
+ * two outputs stay structurally consistent (instead of degenerating to bare
+ * counts like `Alarms: 2`).
  */
-const formatEventMarkdown = (event: {
-  title: string;
-  calendar?: string;
-  id?: string;
-  startDate?: string;
-  endDate?: string;
-  notes?: string;
-  location?: string;
-  structuredLocation?: { title: string; latitude?: number; longitude?: number };
-  url?: string;
-  isAllDay?: boolean;
-  availability?: string;
-  alarms?: Array<{ relativeOffset?: number; absoluteDate?: string }>;
-  recurrenceRules?: Array<{ frequency: string; interval: number }>;
-  organizer?: { name?: string; url: string };
-  attendees?: Array<{ name?: string; url: string }>;
-  status?: string;
-  isDetached?: boolean;
-  occurrenceDate?: string;
-  creationDate?: string;
-  lastModifiedDate?: string;
-  externalId?: string;
-}): string[] => {
+const formatEventMarkdown = (event: CalendarEvent): string[] => {
   const lines: string[] = [];
   lines.push(`- ${event.title}`);
   if (event.calendar) lines.push(`  - Calendar: ${event.calendar}`);
@@ -60,14 +46,18 @@ const formatEventMarkdown = (event: {
   if (event.structuredLocation)
     lines.push(`  - Structured Location: ${event.structuredLocation.title}`);
   if (event.availability) lines.push(`  - Availability: ${event.availability}`);
-  if (event.alarms && event.alarms.length > 0)
-    lines.push(`  - Alarms: ${event.alarms.length}`);
-  if (event.recurrenceRules && event.recurrenceRules.length > 0)
-    lines.push(`  - Recurrence Rules: ${event.recurrenceRules.length}`);
+  if (event.alarms && event.alarms.length > 0) {
+    lines.push(`  - Alarms: ${event.alarms.map(formatAlarm).join('; ')}`);
+  }
+  if (event.recurrenceRules && event.recurrenceRules.length > 0) {
+    lines.push(`  - Repeats: ${formatRecurrenceRules(event.recurrenceRules)}`);
+  }
   if (event.organizer)
     lines.push(`  - Organizer: ${event.organizer.name ?? event.organizer.url}`);
-  if (event.attendees && event.attendees.length > 0)
-    lines.push(`  - Attendees: ${event.attendees.length}`);
+  if (event.attendees && event.attendees.length > 0) {
+    const attendeeList = event.attendees.map((a) => a.name ?? a.url).join(', ');
+    lines.push(`  - Attendees (${event.attendees.length}): ${attendeeList}`);
+  }
   if (event.status) lines.push(`  - Status: ${event.status}`);
   if (event.isDetached !== undefined)
     lines.push(`  - Detached: ${event.isDetached}`);
