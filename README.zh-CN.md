@@ -8,6 +8,11 @@ English | [简体中文](README.zh-CN.md)
 
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/fradser-mcp-server-apple-events-badge.png)](https://mseep.ai/app/fradser-mcp-server-apple-events)
 
+> [!NOTE]
+> **后续方向：[event](https://github.com/FradSer/event) —— 纯 Swift 实现的 macOS Apple Reminders 与 Calendar 命令行工具。**
+>
+> 对于脚本化、自动化以及在终端中直接使用的场景，我们后续建议优先使用独立的 [`event`](https://github.com/FradSer/event) CLI。它通过 EventKit 提供与本服务器一致的提醒事项 / 日历 / 列表 / 子任务 / 标签操作，并原生支持 Markdown 与 JSON 输出。后续版本的 `mcp-server-apple-events` 计划改为依赖 `event` CLI 来替代当前内置的 `EventKitCLI` 二进制，使两个项目共用同一套经过验证的 Swift 实现。
+
 ## 功能特性
 
 ### 核心功能

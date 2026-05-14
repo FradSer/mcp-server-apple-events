@@ -6,6 +6,11 @@ English | [简体中文](README.zh-CN.md)
 
 A Model Context Protocol (MCP) server that provides native integration with Apple Reminders and Calendar on macOS. This server allows you to interact with Apple Reminders and Calendar Events through a standardized interface with comprehensive management capabilities.
 
+> [!NOTE]
+> **Looking ahead: [event](https://github.com/FradSer/event) — a pure Swift CLI for Apple Reminders and Calendar on macOS.**
+>
+> For scripting, automation, and direct terminal usage, we now recommend the standalone [`event`](https://github.com/FradSer/event) CLI. It exposes the same EventKit-backed reminder/calendar/list/subtask/tag operations this server uses today, with first-class Markdown and JSON output. Future versions of `mcp-server-apple-events` are planned to depend on the `event` CLI in place of the bundled `EventKitCLI` binary, so both projects can share a single, well-tested Swift implementation.
+
 ## Features
 
 ### Core Functionality
