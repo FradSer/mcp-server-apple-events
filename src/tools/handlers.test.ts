@@ -285,7 +285,8 @@ describe('Tool Handlers', () => {
         note: 'New note',
       });
 
-      const updateArgs = mockReminderRepository.updateReminder.mock.calls[0][0];
+      const updateArgs =
+        mockReminderRepository.updateReminder.mock.calls[0]![0];
       expect(updateArgs.notes).toContain('[#work]');
       expect(updateArgs.notes).toContain('[#urgent]');
       expect(updateArgs.notes).toContain('New note');
@@ -321,7 +322,8 @@ describe('Tool Handlers', () => {
         note: 'Updated note',
       });
 
-      const updateArgs = mockReminderRepository.updateReminder.mock.calls[0][0];
+      const updateArgs =
+        mockReminderRepository.updateReminder.mock.calls[0]![0];
       expect(updateArgs.notes).toContain('[#work]');
       expect(updateArgs.notes).toContain('Updated note');
       expect(updateArgs.notes).toContain('---SUBTASKS---');
@@ -356,7 +358,8 @@ describe('Tool Handlers', () => {
         tags: ['home'],
       });
 
-      const updateArgs = mockReminderRepository.updateReminder.mock.calls[0][0];
+      const updateArgs =
+        mockReminderRepository.updateReminder.mock.calls[0]![0];
       expect(updateArgs.notes).toContain('[#home]');
       expect(updateArgs.notes).toContain('Keep this note');
       expect(updateArgs.notes).toContain('---SUBTASKS---');
