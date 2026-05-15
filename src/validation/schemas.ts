@@ -81,16 +81,24 @@ function isBlockedHostname(hostname: string): boolean {
       parts.length === 4 &&
       parts.every((p) => !Number.isNaN(p) && p >= 0 && p <= 255)
     ) {
-      if (isBlockedIPv4(parts[0], parts[1], parts[2], parts[3])) return true;
+      if (isBlockedIPv4(parts[0]!, parts[1]!, parts[2]!, parts[3]!))
+        return true;
     }
   }
 
-  // IPv4 pattern checks (standard dotted decimal)
+  // IPv4 pattern checks (standard dotted decimal) — groups 1-4 are mandatory.
   const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/;
   const ipv4Match = lowerHostname.match(ipv4Pattern);
   if (ipv4Match) {
-    const [, a, b, c, d] = ipv4Match.map(Number);
-    if (isBlockedIPv4(a, b, c, d)) return true;
+    if (
+      isBlockedIPv4(
+        Number(ipv4Match[1]),
+        Number(ipv4Match[2]),
+        Number(ipv4Match[3]),
+        Number(ipv4Match[4]),
+      )
+    )
+      return true;
   }
 
   // IPv6 pattern checks (remove brackets first)

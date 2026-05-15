@@ -45,12 +45,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
+    "@swc/core": "^1.15.33",
+    "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.8.0",
-    "babel-jest": "^30.4.1",
-    "babel-plugin-transform-import-meta": "^2.3.3",
     "jest": "^30.4.2",
-    "ts-jest": "^29.4.9",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

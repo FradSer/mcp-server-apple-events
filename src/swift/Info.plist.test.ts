@@ -22,6 +22,6 @@ describe('Info.plist privacy declarations', () => {
     );
     const match = plistContents.match(pattern);
     expect(match).not.toBeNull();
-    expect(match?.[1].trim().length).toBeGreaterThan(0);
+    expect(match?.[1]?.trim().length).toBeGreaterThan(0);
   });
 });
