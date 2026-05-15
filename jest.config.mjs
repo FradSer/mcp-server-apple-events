@@ -11,11 +11,14 @@ export default {
         tsconfig: {
           module: 'ES2022',
           target: 'ES2020',
-          moduleResolution: 'Node',
+          moduleResolution: 'Bundler',
           allowSyntheticDefaultImports: true,
           esModuleInterop: true,
           isolatedModules: true,
           types: ['jest', 'node'],
+          // ts-jest 29 still falls back to the deprecated `node10`
+          // moduleResolution internally; silence the TS6 deprecation.
+          ignoreDeprecations: '6.0',
         },
         diagnostics: {
           ignoreCodes: ['TS151001'],
