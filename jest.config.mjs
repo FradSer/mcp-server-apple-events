@@ -1,34 +1,24 @@
 /** @type {import('jest').Config} */
 export default {
-  preset: 'ts-jest/presets/default-esm',
   extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: './jest-env.cjs',
+  // SWC is ~10x faster than ts-jest and avoids ts-jest 29's internal
+  // `node10` moduleResolution fallback that TS6 now flags as deprecated.
+  // Type checking is handled separately by `tsc --noEmit` in `pnpm lint`.
   transform: {
     '^.+\\.ts$': [
-      'ts-jest',
+      '@swc/jest',
       {
-        useESM: true,
-        tsconfig: {
-          module: 'ES2022',
-          target: 'ES2020',
-          moduleResolution: 'Bundler',
-          allowSyntheticDefaultImports: true,
-          esModuleInterop: true,
-          isolatedModules: true,
-          types: ['jest', 'node'],
-          // ts-jest 29 still falls back to the deprecated `node10`
-          // moduleResolution internally; silence the TS6 deprecation.
-          ignoreDeprecations: '6.0',
+        jsc: {
+          parser: { syntax: 'typescript' },
+          target: 'es2020',
         },
-        diagnostics: {
-          ignoreCodes: ['TS151001'],
-        },
+        module: { type: 'es6' },
       },
     ],
   },
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
-    '^import-meta$': '<rootDir>/src/__mocks__/importMeta.js',
   },
   transformIgnorePatterns: ['node_modules/'],
   testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.spec.ts'],

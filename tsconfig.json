@@ -14,6 +14,11 @@
     "sourceMap": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
     "types": ["jest", "node"]
   },
   "include": ["src/**/*"],
