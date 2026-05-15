@@ -44,7 +44,7 @@ const installDateMock = () => {
       }
     }
 
-    static now(): number {
+    static override now(): number {
       return mockNow.getTime();
     }
   } as typeof global.Date;
@@ -121,7 +121,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should filter by search term in notes', () => {
@@ -129,7 +129,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should filter by due date', () => {
@@ -137,7 +137,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('5');
+      expect(result[0]!.id).toBe('5');
     });
 
     it('should apply multiple filters together', () => {
@@ -149,7 +149,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should return all reminders when no filters applied', () => {
@@ -171,7 +171,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should filter reminders with no due date', () => {
@@ -205,7 +205,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(overdueReminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('1');
+      expect(result[0]!.id).toBe('1');
     });
 
     it('should filter tomorrow reminders', () => {
@@ -231,7 +231,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(tomorrowReminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('2');
+      expect(result[0]!.id).toBe('2');
     });
 
     it('should filter this-week reminders using calendar week boundaries', () => {
@@ -263,8 +263,8 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(weekReminders, filters);
 
       expect(result).toHaveLength(2);
-      expect(result[0].id).toBe('2');
-      expect(result[1].id).toBe('3');
+      expect(result[0]!.id).toBe('2');
+      expect(result[1]!.id).toBe('3');
     });
 
     it('should handle unknown dueWithin filter (default branch)', () => {
@@ -308,7 +308,7 @@ describe('DateFiltering', () => {
         });
 
         expect(result).toHaveLength(1);
-        expect(result[0].id).toBe('floating-date');
+        expect(result[0]!.id).toBe('floating-date');
       });
 
       it('should treat local datetime strings without timezone as today for America/New_York timezone', () => {
@@ -326,7 +326,7 @@ describe('DateFiltering', () => {
         });
 
         expect(result).toHaveLength(1);
-        expect(result[0].id).toBe('floating-datetime');
+        expect(result[0]!.id).toBe('floating-datetime');
       });
     });
   });
@@ -354,7 +354,7 @@ describe('DateFiltering', () => {
         tags: ['social'],
       });
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('bare-tags');
+      expect(result[0]!.id).toBe('bare-tags');
     });
 
     it('should filter reminders requiring ALL tags (AND logic)', () => {
@@ -362,7 +362,7 @@ describe('DateFiltering', () => {
         tags: ['work', 'urgent'],
       });
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('bracket-tags');
+      expect(result[0]!.id).toBe('bracket-tags');
     });
 
     it('should return all reminders when no tags filter', () => {

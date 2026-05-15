@@ -87,7 +87,8 @@ export const formatRecurrence = (recurrence: RecurrenceRule): string => {
 };
 
 export const formatRecurrenceRules = (rules: RecurrenceRule[]): string => {
-  if (rules.length === 1) return formatRecurrence(rules[0]);
+  const [first, ...rest] = rules;
+  if (first && rest.length === 0) return formatRecurrence(first);
   return rules.map((rule) => formatRecurrence(rule)).join('; ');
 };
 

@@ -186,9 +186,9 @@ describe('Server Handlers', () => {
           'Proactive daily task organization with intelligent reminder creation and optimization',
         );
         expect(result.messages).toHaveLength(1);
-        expect(result.messages[0].role).toBe('user');
-        expect(result.messages[0].content.type).toBe('text');
-        expect((result.messages[0].content as MessageContent).text).toContain(
+        expect(result.messages[0]!.role).toBe('user');
+        expect(result.messages[0]!.content.type).toBe('text');
+        expect((result.messages[0]!.content as MessageContent).text).toContain(
           args["Today's focus"],
         );
       });
@@ -201,8 +201,8 @@ describe('Server Handlers', () => {
         const result = await getPromptHandler(request);
 
         expect(result).toBeDefined();
-        expect(result.messages[0].content.type).toBe('text');
-        const text = (result.messages[0].content as MessageContent).text;
+        expect(result.messages[0]!.content.type).toBe('text');
+        const text = (result.messages[0]!.content as MessageContent).text;
         expect(text).toContain('Focus: same-day organizing');
         expect(text).toContain('today only — do not plan beyond today');
       });
