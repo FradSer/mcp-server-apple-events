@@ -88,8 +88,8 @@ describe('Timezone Data Passthrough Tests', () => {
 
       expect(results).toHaveLength(testCases.length);
       results.forEach((event, index) => {
-        expect(event.startDate).toBe(testCases[index].start);
-        expect(event.endDate).toBe(testCases[index].end);
+        expect(event.startDate).toBe(testCases[index]?.start);
+        expect(event.endDate).toBe(testCases[index]?.end);
       });
     });
   });

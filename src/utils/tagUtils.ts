@@ -47,15 +47,15 @@ export function extractTags(notes: string | null | undefined): string[] {
 
   const tags = new Set<string>();
 
-  // Extract bracket-format tags: [#tagname]
+  // Extract bracket-format tags: [#tagname] — group 1 is mandatory.
   for (const match of notes.matchAll(BRACKET_TAG_REGEX)) {
-    const tag = match[1].trim().toLowerCase();
+    const tag = match[1]?.trim().toLowerCase();
     if (tag) tags.add(tag);
   }
 
-  // Extract bare-format tags: #tagname (Apple Reminders native)
+  // Extract bare-format tags: #tagname (Apple Reminders native) — group 1 is mandatory.
   for (const match of notes.matchAll(BARE_TAG_REGEX)) {
-    const tag = match[1].trim().toLowerCase();
+    const tag = match[1]?.trim().toLowerCase();
     if (tag) tags.add(tag);
   }
 

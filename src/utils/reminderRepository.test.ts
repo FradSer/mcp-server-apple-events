@@ -281,7 +281,7 @@ describe('ReminderRepository', () => {
 
       const result = await repository.findReminders();
 
-      expect(result[0].dueDate).toBe('2025-11-20T02:00:00Z');
+      expect(result[0]?.dueDate).toBe('2025-11-20T02:00:00Z');
     });
 
     it('should preserve alarmType when mapping alarms from Swift CLI', async () => {
@@ -303,7 +303,7 @@ describe('ReminderRepository', () => {
 
       const result = await repository.findReminders();
 
-      expect(result[0].alarms).toEqual([
+      expect(result[0]?.alarms).toEqual([
         { relativeOffset: -900, alarmType: 'display' },
       ]);
     });
@@ -414,7 +414,7 @@ describe('ReminderRepository', () => {
 
       await repository.createReminder(data);
 
-      const args = mockExecuteCli.mock.calls[0][0];
+      const args = mockExecuteCli.mock.calls[0]![0];
       expect(args).not.toContain('--note');
       expect(args).not.toContain('--url');
       expect(args).not.toContain('--dueDate');
@@ -437,7 +437,7 @@ describe('ReminderRepository', () => {
 
       const result = await repository.createReminder(data);
 
-      const args = mockExecuteCli.mock.calls[0][0];
+      const args = mockExecuteCli.mock.calls[0]![0];
       expect(args).toContain('--isCompleted');
       expect(args).toContain('true');
       expect(result).toBe(mockResult);
@@ -460,7 +460,7 @@ describe('ReminderRepository', () => {
 
       await repository.createReminder(data);
 
-      const args = mockExecuteCli.mock.calls[0][0];
+      const args = mockExecuteCli.mock.calls[0]![0];
       expect(args).not.toContain('--isCompleted');
     });
   });
@@ -559,7 +559,7 @@ describe('ReminderRepository', () => {
 
       await repository.updateReminder(data);
 
-      const args = mockExecuteCli.mock.calls[0][0];
+      const args = mockExecuteCli.mock.calls[0]![0];
       expect(args).toContain('--isCompleted');
       expect(args).toContain('false');
     });
@@ -575,7 +575,7 @@ describe('ReminderRepository', () => {
 
       await repository.updateReminder(data);
 
-      const args = mockExecuteCli.mock.calls[0][0];
+      const args = mockExecuteCli.mock.calls[0]![0];
       expect(args).not.toContain('--isCompleted');
     });
   });
@@ -854,11 +854,11 @@ describe('ReminderRepository', () => {
 
       const result = await repository.findReminderById('r4');
       expect(result.alarms).toHaveLength(3);
-      expect(result.alarms?.[0].relativeOffset).toBe(-300);
-      expect(result.alarms?.[0].alarmType).toBe('audio');
-      expect(result.alarms?.[1].absoluteDate).toBe('2026-01-01T09:00:00Z');
-      expect(result.alarms?.[2].locationTrigger?.proximity).toBe('leave');
-      expect(result.alarms?.[2].alarmType).toBeUndefined();
+      expect(result.alarms?.[0]?.relativeOffset).toBe(-300);
+      expect(result.alarms?.[0]?.alarmType).toBe('audio');
+      expect(result.alarms?.[1]?.absoluteDate).toBe('2026-01-01T09:00:00Z');
+      expect(result.alarms?.[2]?.locationTrigger?.proximity).toBe('leave');
+      expect(result.alarms?.[2]?.alarmType).toBeUndefined();
     });
 
     it('drops invalid alarmType values rather than passing them through', async () => {
@@ -876,7 +876,7 @@ describe('ReminderRepository', () => {
       });
 
       const result = await repository.findReminderById('r5');
-      expect(result.alarms?.[0].alarmType).toBeUndefined();
+      expect(result.alarms?.[0]?.alarmType).toBeUndefined();
     });
 
     it('extracts tags and subtasks from notes into structured fields', async () => {

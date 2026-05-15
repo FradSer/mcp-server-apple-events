@@ -59,7 +59,7 @@ describe('CalendarRepository', () => {
       // start/end dates are derived from `new Date()` and would be brittle
       // to pin down.
       expect(mockExecuteCli).toHaveBeenCalledTimes(1);
-      const args = mockExecuteCli.mock.calls[0][0];
+      const args = mockExecuteCli.mock.calls[0]![0];
       expect(args.slice(0, 2)).toEqual(['--action', 'read-events']);
       expect(args).toContain('--startDate');
       expect(args).toContain('--endDate');
@@ -314,7 +314,7 @@ describe('CalendarRepository', () => {
       const result = await repository.findEvents({ availability: 'busy' });
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('1');
+      expect(result[0]!.id).toBe('1');
     });
   });
 

@@ -56,7 +56,9 @@ export function parseSubtasks(notes: string | null | undefined): Subtask[] {
   const match = notes.match(SUBTASK_SECTION_REGEX);
   if (!match) return [];
 
-  const subtaskContent = match[1];
+  // Groups 1-3 are mandatory in SUBTASK_SECTION_REGEX / SUBTASK_LINE_REGEX,
+  // so non-null assertions on match indices are safe under noUncheckedIndexedAccess.
+  const subtaskContent = match[1]!;
   // Split on either `\n` or `\r\n` so CRLF-terminated input round-trips.
   const lines = subtaskContent.split(/\r?\n/).filter((line) => line.trim());
   const subtasks: Subtask[] = [];
@@ -65,8 +67,8 @@ export function parseSubtasks(notes: string | null | undefined): Subtask[] {
     const lineMatch = line.match(SUBTASK_LINE_REGEX);
     if (lineMatch) {
       subtasks.push({
-        id: lineMatch[2],
-        title: lineMatch[3].trim(),
+        id: lineMatch[2]!,
+        title: lineMatch[3]!.trim(),
         isCompleted: lineMatch[1] === 'x',
       });
     }
@@ -174,11 +176,13 @@ export function updateSubtask(
     throw new Error(`Subtask with ID '${subtaskId}' not found.`);
   }
 
+  // findIndex returned a valid index, so subtasks[index] is defined.
+  const subtask = subtasks[index]!;
   if (updates.title !== undefined) {
-    subtasks[index].title = updates.title.trim();
+    subtask.title = updates.title.trim();
   }
   if (updates.isCompleted !== undefined) {
-    subtasks[index].isCompleted = updates.isCompleted;
+    subtask.isCompleted = updates.isCompleted;
   }
 
   return combineSubtasksAndNotes(subtasks, notes);
@@ -222,11 +226,13 @@ export function toggleSubtask(
     throw new Error(`Subtask with ID '${subtaskId}' not found.`);
   }
 
-  subtasks[index].isCompleted = !subtasks[index].isCompleted;
+  // findIndex returned a valid index, so subtasks[index] is defined.
+  const subtask = subtasks[index]!;
+  subtask.isCompleted = !subtask.isCompleted;
 
   return {
     notes: combineSubtasksAndNotes(subtasks, notes),
-    subtask: subtasks[index],
+    subtask,
   };
 }
 
