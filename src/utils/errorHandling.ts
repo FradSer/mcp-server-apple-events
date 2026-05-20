@@ -14,6 +14,8 @@ const USER_ACTIONABLE_PERMISSION_PATTERNS = [
   /System Settings > Privacy & Security/i,
   /full calendar access/i,
   /full reminder access/i,
+  /subprocess/i,
+  /responsible process/i,
 ] as const;
 
 function isUserActionablePermissionError(message: string): boolean {
