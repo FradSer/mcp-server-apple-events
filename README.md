@@ -195,14 +195,14 @@ Add the following configuration to your `claude_desktop_config.json`:
 
 **Option B: Using local build**
 
-If you have built the project locally, use node with the path to run.cjs:
+If you have built the project locally, use node with the path to `dist/index.js`:
 
 ```json
 {
   "mcpServers": {
     "apple-reminders": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-server-apple-events/bin/run.cjs"]
+      "args": ["/absolute/path/to/mcp-server-apple-events/dist/index.js"]
     }
   }
 }
