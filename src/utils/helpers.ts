@@ -84,8 +84,6 @@ export function nullToUndefined<T>(obj: T, fields: (keyof T)[]): T {
 
 /**
  * Converts Buffer or string data to string, handling null/undefined values
- * @param data - Input data that may be string, Buffer, null, or undefined
- * @returns String representation or null
  */
 export function bufferToString(data?: string | Buffer | null): string | null {
   if (typeof data === 'string') return data;

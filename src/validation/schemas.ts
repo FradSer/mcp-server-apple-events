@@ -1,10 +1,3 @@
-/**
- * @fileoverview Comprehensive input validation schemas using Zod for security
- * @module validation/schemas
- * @description Security-focused validation with safe text patterns, URL validation,
- * and length limits to prevent injection attacks and malformed data
- */
-
 import { z } from 'zod/v3';
 import { VALIDATION } from '../utils/constants.js';
 

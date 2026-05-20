@@ -4,12 +4,6 @@
  */
 
 /**
- * Priority levels for reminders (native EventKit values)
- * 0 = none, 1 = high, 2 = medium, 3 = low
- */
-export type ReminderPriority = 0 | 1 | 2 | 3;
-
-/**
  * Priority label mapping for display
  */
 export const PRIORITY_LABELS: Record<number, string> = {

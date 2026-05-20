@@ -33,7 +33,6 @@ export default {
     '!src/utils/projectUtils.ts', // Excluded: import.meta.url line cannot be tested in Jest
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
-  // Ignore import.meta.url line in projectUtils.ts
   coverageReporters: ['text', 'text-summary', 'html'],
   // Thresholds set just below the suite's current ceiling — leaves a thin
   // buffer for unrelated future patches without papering over regressions.
