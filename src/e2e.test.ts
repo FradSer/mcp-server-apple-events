@@ -16,7 +16,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 async function createClient(): Promise<Client> {
   const transport = new StdioClientTransport({
     command: 'node',
-    args: ['bin/run.cjs'],
+    args: ['dist/index.js'],
     stderr: 'pipe',
     cwd: process.cwd(),
   });

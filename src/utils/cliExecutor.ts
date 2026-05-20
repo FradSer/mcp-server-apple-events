@@ -288,7 +288,7 @@ To build it manually, clone the repository and run a local build:
 
 Then use the local path in your Claude Desktop config:
    "command": "node",
-   "args": ["/absolute/path/to/mcp-server-apple-events/bin/run.cjs"]`,
+   "args": ["/absolute/path/to/mcp-server-apple-events/dist/index.js"]`,
     );
   }
 
