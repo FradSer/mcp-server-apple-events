@@ -1,8 +1,8 @@
-# Apple Events MCP Server ![Version 1.3.0](https://img.shields.io/badge/version-1.3.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+# Apple Events MCP Server ![Version 1.4.0](https://img.shields.io/badge/version-1.4.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-[![Twitter Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://twitter.com/FradSer)
+[![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
 
-English | [简体中文](README.zh-CN.md)
+[English](README.md) | **简体中文**
 
 一个为 macOS 提供原生 Apple Reminders 和 Calendar 集成的 Model Context Protocol (MCP) 服务器。该服务器允许你通过标准化接口与 Apple Reminders 和 Calendar Events 进行交互，具有全面的管理功能。
 
@@ -46,7 +46,7 @@ English | [简体中文](README.zh-CN.md)
 
 ## 系统要求
 
-- **Node.js 18 或更高版本**
+- **Node.js 20 或更高版本**
 - **macOS**（Apple Reminders 集成所需）
 - **Xcode Command Line Tools**（编译 Swift 代码所需）
 - **pnpm**（推荐用于包管理）
@@ -83,6 +83,30 @@ pnpm test -- src/swift/Info.plist.test.ts
 ```
 
 测试会确保所有必须的 usage-description 字段在发布前均已就绪。
+
+### macOS 26 (Tahoe) 上 `could not build module 'Foundation'` 错误排查
+
+如果 `pnpm build` 失败并提示 `could not build module 'Foundation'`（或 `SDK is not supported by the compiler`），说明你的 Swift 工具链版本低于 macOS 26 SDK 的要求。macOS 26+ SDK 包含的 `Foundation.swiftinterface` 需要 **Swift 6.3 或更高版本**；而 macOS 26 早期版本附带的 Command Line Tools 包含的是 Swift 6.2.x，无法解析该文件。详见 [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85)。
+
+`pnpm build:swift` 现在会检测此不匹配并打印相同的解决方案，但如果手动遇到此问题：
+
+1. 从 App Store 安装 Xcode 26.x（附带 Swift 6.3+），或
+2. 将 Command Line Tools 更新到附带 Swift 6.3+ 的版本：
+   ```bash
+   softwareupdate --list
+   sudo softwareupdate -i "Command Line Tools for Xcode-<latest>"
+   ```
+3. 如果两者都已安装，将 `xcode-select` 指向完整版 Xcode：
+   ```bash
+   sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+   ```
+
+验证：
+
+```bash
+xcrun swiftc --version          # 应显示 Apple Swift version 6.3 或更高
+xcrun --show-sdk-version        # 应与你的 macOS 主版本匹配
+```
 
 ## 快速开始
 
@@ -151,6 +175,8 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 将以下配置添加到你的 `claude_desktop_config.json`：
 
+**方式 A：使用 npx（推荐）**
+
 ```json
 {
   "mcpServers": {
@@ -161,6 +187,24 @@ code %APPDATA%\Claude\claude_desktop_config.json
   }
 }
 ```
+
+**方式 B：使用本地构建**
+
+如果你在本地构建了项目，使用 node 并指定 `dist/index.js` 的路径：
+
+```json
+{
+  "mcpServers": {
+    "apple-reminders": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-server-apple-events/dist/index.js"]
+    }
+  }
+}
+```
+
+有关连接本地 MCP 服务器的更多信息，请参阅
+[官方 MCP 文档](https://modelcontextprotocol.io/docs/develop/connect-local-servers)。
 
 ### 3. 重启 Claude Desktop
 
@@ -411,6 +455,51 @@ code %APPDATA%\Claude\claude_desktop_config.json
 }
 ```
 
+```json
+{
+  "action": "create",
+  "title": "团队站会",
+  "dueDate": "2024-03-25 09:00:00",
+  "recurrence": {
+    "frequency": "weekly",
+    "interval": 1,
+    "daysOfWeek": [2, 3, 4, 5, 6]
+  }
+}
+```
+
+```json
+{
+  "action": "create",
+  "title": "买牛奶",
+  "locationTrigger": {
+    "title": "杂货店",
+    "latitude": 37.7749,
+    "longitude": -122.4194,
+    "radius": 200,
+    "proximity": "enter"
+  }
+}
+```
+
+```json
+{
+  "action": "read",
+  "filterList": "工作",
+  "showCompleted": false,
+  "dueWithin": "today",
+  "filterPriority": "high",
+  "filterTags": ["urgent"]
+}
+```
+
+```json
+{
+  "action": "delete",
+  "id": "reminder-123"
+}
+```
+
 ### 提醒事项子任务工具
 
 **工具名称**：`reminders_subtasks`
@@ -427,6 +516,39 @@ code %APPDATA%\Claude\claude_desktop_config.json
 - `handleToggleSubtask()` - 切换完成状态
 - `handleReorderSubtasks()` - 更改子任务顺序
 
+#### 按操作的参数
+
+**读取操作**（`action: "read"`）：
+
+- `reminderId` *(必填)*：父提醒事项 ID
+
+**创建操作**（`action: "create"`）：
+
+- `reminderId` *(必填)*：父提醒事项 ID
+- `title` *(必填)*：子任务标题
+
+**更新操作**（`action: "update"`）：
+
+- `reminderId` *(必填)*：父提醒事项 ID
+- `subtaskId` *(必填)*：要更新的子任务 ID
+- `title` *(可选)*：新标题
+- `completed` *(可选)*：新的完成状态
+
+**删除操作**（`action: "delete"`）：
+
+- `reminderId` *(必填)*：父提醒事项 ID
+- `subtaskId` *(必填)*：要删除的子任务 ID
+
+**切换操作**（`action: "toggle"`）：
+
+- `reminderId` *(必填)*：父提醒事项 ID
+- `subtaskId` *(必填)*：要切换的子任务 ID
+
+**重排序操作**（`action: "reorder"`）：
+
+- `reminderId` *(必填)*：父提醒事项 ID
+- `order` *(必填)*：所有子任务 ID 的数组，按期望顺序排列
+
 #### 使用示例
 
 ```json
@@ -435,6 +557,38 @@ code %APPDATA%\Claude\claude_desktop_config.json
   "reminderId": "reminder-123"
 }
 ```
+
+```json
+{
+  "action": "create",
+  "reminderId": "reminder-123",
+  "title": "取干洗衣服"
+}
+```
+
+```json
+{
+  "action": "toggle",
+  "reminderId": "reminder-123",
+  "subtaskId": "a1b2c3d4"
+}
+```
+
+#### 子任务存储格式
+
+子任务使用以下人类可读的格式存储在备注字段中：
+
+```text
+用户备注...
+
+---SUBTASKS---
+[ ] {a1b2c3d4} 第一个任务
+[x] {e5f6g7h8} 已完成任务
+[ ] {i9j0k1l2} 另一个任务
+---END SUBTASKS---
+```
+
+此格式确保子任务在原生提醒事项应用中可见，同时支持编程访问。
 
 ### 提醒事项列表工具
 
@@ -449,6 +603,25 @@ code %APPDATA%\Claude\claude_desktop_config.json
 - `handleCreateReminderList()` - 创建新的提醒事项列表
 - `handleUpdateReminderList()` - 更新现有提醒事项列表
 - `handleDeleteReminderList()` - 删除提醒事项列表
+
+#### 按操作的参数
+
+**读取操作**（`action: "read"`）：
+
+- 无需额外参数
+
+**创建操作**（`action: "create"`）：
+
+- `name` *(必填)*：新提醒事项列表的名称
+
+**更新操作**（`action: "update"`）：
+
+- `name` *(必填)*：要更新的列表的当前名称
+- `newName` *(必填)*：提醒事项列表的新名称
+
+**删除操作**（`action: "delete"`）：
+
+- `name` *(必填)*：要删除的列表名称
 
 #### 使用示例
 
@@ -514,7 +687,43 @@ code %APPDATA%\Claude\claude_desktop_config.json
 **主要处理函数**：
 - `handleReadCalendars()` - 列出所有日历的 ID 与名称
 
+#### 使用示例
+
+```json
+{
+  "action": "read"
+}
+```
+
+#### 响应示例
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "### Calendars (Total: 3)\n- Work (ID: cal-1)\n- Personal (ID: cal-2)\n- Shared (ID: cal-3)"
+    }
+  ],
+  "isError": false
+}
+```
+
 #### 响应格式
+
+**成功响应**：
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully created reminder: Buy groceries"
+    }
+  ],
+  "isError": false
+}
+```
 
 **带有增强功能的提醒事项**：
 
@@ -536,6 +745,69 @@ code %APPDATA%\Claude\claude_desktop_config.json
     - [ ] 鸡蛋
     - [ ] 面包
   - 到期: 2024-03-25 18:00:00
+```
+
+**关于 URL 字段的说明**：`url` 字段完全受 EventKit API 支持。创建或更新带有 URL 参数的提醒事项时，URL 会存储在两个位置以确保最大兼容性：
+
+1. **EventKit URL 字段**：URL 存储在原生的 `url` 属性中（可通过提醒事项应用详情视图的 "i" 图标查看）
+2. **备注字段**：URL 也会以结构化格式追加到备注中，以便解析
+
+**双重存储方式**：
+
+- **URL 字段**：存储单个 URL，用于原生提醒事项应用显示
+- **备注字段**：以结构化格式存储 URL，支持解析和多个 URL
+
+```text
+提醒事项备注内容...
+
+URLs:
+- https://example.com
+- https://another-url.com
+```
+
+这确保了 URL 既可通过提醒事项应用 UI 访问，也可通过 API/备注进行解析。
+
+**URL 提取**：可以使用正则表达式从提醒事项备注中提取 URL：
+
+```typescript
+// 使用正则表达式从备注中提取 URL
+const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
+```
+
+**结构化格式的优势**：
+
+- **一致的解析**：URL 始终在可预测的位置
+- **支持多个 URL**：可靠地处理每个提醒事项的多个 URL
+- **清晰的分离**：备注内容和 URL 清晰分离
+- **向后兼容**：非结构化 URL 仍可作为回退方案检测
+
+**列表响应**：
+
+```json
+{
+  "reminders": [
+    {
+      "title": "Buy groceries",
+      "list": "Shopping",
+      "isCompleted": false,
+      "dueDate": "2024-03-25 18:00:00",
+      "priority": 1,
+      "tags": ["shopping", "errands"],
+      "subtasks": [
+        { "id": "a1b2c3d4", "title": "Milk", "isCompleted": true },
+        { "id": "e5f6g7h8", "title": "Eggs", "isCompleted": false }
+      ],
+      "subtaskProgress": { "completed": 1, "total": 2, "percentage": 50 },
+      "notes": "Don't forget the organic options",
+      "url": null
+    }
+  ],
+  "total": 1,
+  "filter": {
+    "list": "Shopping",
+    "showCompleted": false
+  }
+}
 ```
 
 ## 组织策略
@@ -574,6 +846,26 @@ code %APPDATA%\Claude\claude_desktop_config.json
 - **活跃**：未完成的提醒事项
 - **已完成**：已完成的提醒事项
 
+### 使用示例
+
+按优先级组织所有提醒事项：
+
+```text
+按优先级组织我的提醒事项
+```
+
+对与工作相关的提醒事项进行分类：
+
+```text
+按类别组织工作列表中的提醒事项
+```
+
+对逾期项目进行排序：
+
+```text
+按截止日期组织逾期提醒事项
+```
+
 ## 标签系统
 
 标签为提醒事项提供跨列表分类。它们使用 `[#tag]` 格式存储在备注字段中，这使得它们在原生提醒事项应用中保持人类可读。
@@ -591,6 +883,38 @@ code %APPDATA%\Claude\claude_desktop_config.json
 - 每个标签最多 50 个字符
 - 区分大小写
 - 按多个标签过滤使用 AND 逻辑（提醒必须具有所有指定的标签）
+
+### 标签操作示例
+
+创建时添加标签：
+
+```json
+{
+  "action": "create",
+  "title": "Review code",
+  "tags": ["work", "code-review", "urgent"]
+}
+```
+
+按标签过滤：
+
+```json
+{
+  "action": "read",
+  "filterTags": ["work", "urgent"]
+}
+```
+
+更新标签（添加/移除）：
+
+```json
+{
+  "action": "update",
+  "id": "reminder-123",
+  "addTags": ["completed"],
+  "removeTags": ["urgent"]
+}
+```
 
 ## 开发
 
@@ -620,32 +944,31 @@ CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或�
 
 ### 可用脚本
 
-- `pnpm build` - 构建 Swift 二进制文件（启动服务器前必需）
+- `pnpm build` - 构建 TypeScript 和 Swift 二进制文件（运行前必需）
 - `pnpm build:swift` - 仅构建 Swift 二进制文件
-- `pnpm dev` - 通过 tsx 以文件监视模式运行 TypeScript 开发服务器（运行时 TS 执行）
-- `pnpm start` - 通过 stdio 启动 MCP 服务器（如果没有构建则自动回退到运行时 TS）
-- `pnpm test` - 运行完整的 Jest 测试套件
+- `pnpm test` - 运行 Jest 测试套件
 - `pnpm check` - 运行 Biome 格式化和 TypeScript 类型检查
 
 ### 依赖
 
 **运行时依赖：**
-- `@modelcontextprotocol/sdk ^1.25.1` - MCP 协议实现
+
+- `@modelcontextprotocol/sdk ^1.29.0` - MCP 协议实现
 - `exit-on-epipe ^1.0.1` - 优雅的进程终止处理
-- `tsx ^4.21.0` - TypeScript 执行和 REPL
-- `zod ^4.3.5` - 运行时类型验证
+- `zod ^4.4.3` - 运行时类型验证
 
 **开发依赖：**
-- `typescript ^5.9.3` - TypeScript 编译器
-- `@types/node ^25.0.3` - Node.js 类型定义
+
+- `typescript ^6.0.3` - TypeScript 编译器
+- `@types/node ^25.8.0` - Node.js 类型定义
 - `@types/jest ^30.0.0` - Jest 类型定义
-- `jest ^30.2.0` - 测试框架
-- `babel-jest ^30.2.0` - Babel Jest 转换器
-- `babel-plugin-transform-import-meta ^2.3.3` - Babel 导入元转换
-- `ts-jest ^29.4.6` - Jest TypeScript 支持
-- `@biomejs/biome ^2.3.11` - 代码格式化和静态检查
+- `jest ^30.4.2` - 测试框架
+- `@swc/core ^1.15.33` - SWC 编译器
+- `@swc/jest ^0.2.39` - SWC Jest 转换器
+- `@biomejs/biome 2.4.15` - 代码格式化和静态检查
 
 **构建工具：**
+
 - Swift 二进制文件用于原生 macOS 集成
 - TypeScript 编译用于跨平台兼容性
 

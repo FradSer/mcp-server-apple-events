@@ -1,10 +1,12 @@
-# Apple Events MCP Server ![Version 1.3.0](https://img.shields.io/badge/version-1.3.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+# Apple Events MCP Server ![Version 1.4.0](https://img.shields.io/badge/version-1.4.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 [![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
 
 English | [简体中文](README.zh-CN.md)
 
 A Model Context Protocol (MCP) server that provides native integration with Apple Reminders and Calendar on macOS. This server allows you to interact with Apple Reminders and Calendar Events through a standardized interface with comprehensive management capabilities.
+
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/fradser-mcp-server-apple-events-badge.png)](https://mseep.ai/app/fradser-mcp-server-apple-events)
 
 > [!NOTE]
 > **Looking ahead: [event](https://github.com/FradSer/event) — a pure Swift CLI for Apple Reminders and Calendar on macOS.**
@@ -48,7 +50,7 @@ A Model Context Protocol (MCP) server that provides native integration with Appl
 
 ## Prerequisites
 
-- **Node.js 18 or later**
+- **Node.js 20 or later**
 - **macOS** (required for Apple Reminders integration)
 - **Xcode Command Line Tools** (required for compiling Swift code)
 - **pnpm** (recommended for package management)
@@ -960,14 +962,6 @@ Update tags (add/remove):
 }
 ```
 
-## License
-
-MIT
-
-## Contributing
-
-Contributions welcome! Please read the contributing guidelines first.
-
 ## Development
 
 1. Install dependencies with pnpm (keeps the Swift bridge and TypeScript graph in sync):
@@ -1000,34 +994,38 @@ The CLI entry point includes a project-root fallback, so you can start the serve
 
 ### Available Scripts
 
-- `pnpm build` - Build the Swift helper binary (required before starting the server)
-- `pnpm build:swift` - Build the Swift helper binary only
-- `pnpm dev` - TypeScript development mode with file watching via tsx (runtime TS execution)
-- `pnpm start` - Start the MCP server over stdio (auto-fallback to runtime TS if no build)
-- `pnpm test` - Run the comprehensive Jest test suite
+- `pnpm build` - Build TypeScript and Swift binary (required before running)
+- `pnpm build:swift` - Build the Swift binary only
+- `pnpm test` - Run the Jest test suite
 - `pnpm check` - Run Biome formatting and TypeScript type checking
 
 ### Dependencies
 
 **Runtime Dependencies:**
 
-- `@modelcontextprotocol/sdk ^1.25.1` - MCP protocol implementation
+- `@modelcontextprotocol/sdk ^1.29.0` - MCP protocol implementation
 - `exit-on-epipe ^1.0.1` - Graceful process termination handling
-- `tsx ^4.21.0` - TypeScript execution and REPL
-- `zod ^4.3.5` - Runtime type validation
+- `zod ^4.4.3` - Runtime type validation
 
 **Development Dependencies:**
 
-- `typescript ^5.9.3` - TypeScript compiler
-- `@types/node ^25.0.3` - Node.js type definitions
+- `typescript ^6.0.3` - TypeScript compiler
+- `@types/node ^25.8.0` - Node.js type definitions
 - `@types/jest ^30.0.0` - Jest type definitions
-- `jest ^30.2.0` - Testing framework
-- `babel-jest ^30.2.0` - Babel Jest transformer
-- `babel-plugin-transform-import-meta ^2.3.3` - Babel import meta transform
-- `ts-jest ^29.4.6` - Jest TypeScript support
-- `@biomejs/biome ^2.3.11` - Code formatting and linting
+- `jest ^30.4.2` - Testing framework
+- `@swc/core ^1.15.33` - SWC compiler
+- `@swc/jest ^0.2.39` - SWC Jest transformer
+- `@biomejs/biome 2.4.15` - Code formatting and linting
 
 **Build Tools:**
 
 - Swift binaries for native macOS integration
 - TypeScript compilation for cross-platform compatibility
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please read the contributing guidelines first.
