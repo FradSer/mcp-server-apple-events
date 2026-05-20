@@ -34,8 +34,7 @@
     "src/swift/EventKitCLI.swift",
     "src/swift/EventKitCLI.entitlements",
     "src/swift/Info.plist",
-    "CHANGELOG.md",
-    "README.zh-CN.md"
+    "CHANGELOG.md"
   ],
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
@@ -51,7 +50,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "exit-on-epipe": "^1.0.1",
-    "tsx": "^4.22.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
