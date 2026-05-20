@@ -26,6 +26,17 @@
   "bin": {
     "mcp-server-apple-events": "./bin/run.cjs"
   },
+  "files": [
+    "bin/run.cjs",
+    "dist",
+    "scripts/postinstall.mjs",
+    "scripts/build-swift.mjs",
+    "src/swift/EventKitCLI.swift",
+    "src/swift/EventKitCLI.entitlements",
+    "src/swift/Info.plist",
+    "CHANGELOG.md",
+    "README.zh-CN.md"
+  ],
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build:ts": "tsc -p tsconfig.json",
