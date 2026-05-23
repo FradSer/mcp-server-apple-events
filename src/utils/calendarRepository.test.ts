@@ -208,6 +208,13 @@ describe('CalendarRepository', () => {
       ]);
     });
 
+    it('rejects invalid date bounds instead of issuing an unbounded CLI read', async () => {
+      await expect(
+        repository.findEvents({ startDate: 'not-a-date' }),
+      ).rejects.toThrow('startDate must be a valid date');
+      expect(mockExecuteCli).not.toHaveBeenCalled();
+    });
+
     it('should filter events by calendar name', async () => {
       const mockEvents: Partial<CalendarEvent>[] = [
         {

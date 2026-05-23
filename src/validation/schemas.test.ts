@@ -174,8 +174,10 @@ describe('ValidationSchemas', () => {
       it('should reject invalid date formats', () => {
         expect(() => SafeDateSchema.parse('01/15/2024')).toThrow();
         expect(() => SafeDateSchema.parse('not-a-date')).toThrow();
-        // Note: DATE_PATTERN only checks basic format, doesn't validate date ranges
-        expect(() => SafeDateSchema.parse('2024-13-45')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2024-13-45')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-02-30')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-01-15oops')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-01-15 25:00:00')).toThrow();
       });
     });
 

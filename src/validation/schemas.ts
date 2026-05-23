@@ -15,9 +15,11 @@ import { VALIDATION } from '../utils/constants.js';
 // This keeps Chinese/Unicode names working while remaining safe with AppleScript quoting.
 const SAFE_TEXT_PATTERN =
   /^[\u0020-\u007E\u00A0-\u2027\u202F-\u2065\u206A-\uD7FF\uE000-\u{10FFFF}\n\r\t]*$/u;
-// Support multiple date formats: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, or ISO 8601
-// Basic validation - detailed parsing handled by Swift
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}.*$/;
+// Support multiple date formats: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, or ISO 8601.
+// Keep this strict enough that a malformed date cannot pass the TS layer and
+// later collapse to an unbounded EventKit query in the Swift CLI.
+const DATE_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 // URL validation that blocks internal/private network addresses and localhost
 // Prevents SSRF attacks while allowing legitimate external URLs
 // Blocks: IPv4 private/reserved (127.x, 192.168.x, 10.x, 172.16-31.x, 169.254.x, 0.0.0.0, 224-239.x multicast)
@@ -208,6 +210,32 @@ function createSafeTextSchema(
   return optional ? schema.optional() : schema;
 }
 
+function isValidDateInput(value: string): boolean {
+  const match = DATE_PATTERN.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = match[4] === undefined ? 0 : Number(match[4]);
+  const minute = match[5] === undefined ? 0 : Number(match[5]);
+  const second = match[6] === undefined ? 0 : Number(match[6]);
+
+  if (hour > 23 || minute > 59 || second > 59) return false;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return false;
+  }
+
+  const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+  return !Number.isNaN(new Date(normalized).getTime());
+}
+
 /**
  * Base validation schemas using factory functions
  */
@@ -256,6 +284,7 @@ export const SafeDateSchema = z
     DATE_PATTERN,
     "Date must be in format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601 (e.g., '2025-10-30T04:00:00Z')",
   )
+  .refine(isValidDateInput, 'Date must be a real, parseable date/time')
   .optional();
 
 /**
@@ -264,11 +293,15 @@ export const SafeDateSchema = z
 const createRequiredDateSchema = (fieldName: string) =>
   z
     .string()
+    .min(1, `${fieldName} is required`)
     .regex(
       DATE_PATTERN,
       `${fieldName} must be in format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601`,
     )
-    .min(1, `${fieldName} is required`);
+    .refine(
+      isValidDateInput,
+      `${fieldName} must be a real, parseable date/time`,
+    );
 
 export const SafeUrlSchema = z
   .string()

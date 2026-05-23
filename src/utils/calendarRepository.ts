@@ -48,6 +48,16 @@ const parseDateInput = (value: string): Date | undefined => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
+const requireParsedDateInput = (value: string, fieldName: string): Date => {
+  const parsed = parseDateInput(value);
+  if (!parsed) {
+    throw new Error(
+      `${fieldName} must be a valid date before reading calendar events.`,
+    );
+  }
+  return parsed;
+};
+
 const shiftDays = (date: Date, days: number): Date => {
   const shifted = new Date(date);
   shifted.setDate(shifted.getDate() + days);
@@ -59,6 +69,8 @@ const resolveReadDateRange = (filters: {
   endDate?: string;
 }): { startDate?: string; endDate?: string } => {
   if (filters.startDate && filters.endDate) {
+    requireParsedDateInput(filters.startDate, 'startDate');
+    requireParsedDateInput(filters.endDate, 'endDate');
     return { startDate: filters.startDate, endDate: filters.endDate };
   }
 
@@ -71,8 +83,7 @@ const resolveReadDateRange = (filters: {
   }
 
   if (filters.startDate && !filters.endDate) {
-    const start = parseDateInput(filters.startDate);
-    if (!start) return { startDate: filters.startDate };
+    const start = requireParsedDateInput(filters.startDate, 'startDate');
     return {
       startDate: filters.startDate,
       endDate: formatDateOnly(shiftDays(start, DEFAULT_READ_WINDOW_DAYS)),
@@ -80,8 +91,7 @@ const resolveReadDateRange = (filters: {
   }
 
   if (!filters.startDate && filters.endDate) {
-    const end = parseDateInput(filters.endDate);
-    if (!end) return { endDate: filters.endDate };
+    const end = requireParsedDateInput(filters.endDate, 'endDate');
     return {
       startDate: formatDateOnly(shiftDays(end, -DEFAULT_READ_WINDOW_DAYS)),
       endDate: filters.endDate,
