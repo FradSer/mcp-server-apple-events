@@ -223,7 +223,8 @@ function isValidDateInput(value: string): boolean {
 
   if (hour > 23 || minute > 59 || second > 59) return false;
 
-  const date = new Date(Date.UTC(year, month - 1, day));
+  const date = new Date(Date.UTC(0, month - 1, day));
+  date.setUTCFullYear(year);
   if (
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() !== month - 1 ||

@@ -165,6 +165,7 @@ describe('ValidationSchemas', () => {
         expect(() =>
           SafeDateSchema.parse('2024-01-15T10:30:00Z'),
         ).not.toThrow();
+        expect(() => SafeDateSchema.parse('0005-01-01')).not.toThrow();
       });
 
       it('should accept undefined dates', () => {
