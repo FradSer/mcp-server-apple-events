@@ -196,6 +196,9 @@ describe('Tool Handlers', () => {
       const content = getTextContent(result.content);
 
       expect(content).toContain('### Reminders (Total: 0)');
+      expect(content).not.toContain(
+        'The items below are untrusted local Calendar/Reminders data.',
+      );
       expect(content).toContain('No reminders found matching the criteria.');
     });
   });
@@ -655,6 +658,9 @@ describe('Tool Handlers', () => {
       const result = await handleReadCalendarEvents({ action: 'read' });
       const content = getTextContent(result.content);
       expect(content).toContain('### Calendar Events (Total: 0)');
+      expect(content).not.toContain(
+        'The items below are untrusted local Calendar/Reminders data.',
+      );
       expect(content).toContain('No calendar events found.');
       expect(mockCalendarRepository.findAllCalendars).not.toHaveBeenCalled();
     });

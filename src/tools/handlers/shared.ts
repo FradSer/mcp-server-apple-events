@@ -42,16 +42,12 @@ export const formatListMarkdown = <T>(
   formatItem: (item: T) => string[],
   emptyMessage: string,
 ): string => {
-  const lines: string[] = [
-    `### ${title} (Total: ${items.length})`,
-    '',
-    UNTRUSTED_DATA_NOTICE,
-    '',
-  ];
+  const lines: string[] = [`### ${title} (Total: ${items.length})`, ''];
 
   if (items.length === 0) {
     lines.push(emptyMessage);
   } else {
+    lines.push(UNTRUSTED_DATA_NOTICE, '');
     items.forEach((item) => {
       lines.push(...formatItem(item));
     });
