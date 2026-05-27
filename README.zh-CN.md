@@ -74,6 +74,36 @@ Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访�
 
 你也可以重新运行 `./check-permissions.sh`（脚本现在会同时检查 Reminders 与 Calendars 权限）。
 
+### 桌面端 MCP 客户端（Claude Desktop、Codex Desktop 等）
+
+macOS 把提醒事项与日历的访问权限归属到 **responsible（负责）** 进程——也就是启动 MCP 服务的桌面应用本身，而不是 `EventKitCLI` 子进程。要让 EventKit 弹出授权对话框，负责应用的 bundle 必须在自己的 `Info.plist` 中声明 `NSRemindersUsageDescription` / `NSCalendarsUsageDescription`（macOS Sonoma 之后还需要写入权限或完全访问权限的对应键）。如果这些键缺失，TCC 会在请求到达 EventKit 之前就拒绝它，Swift CLI 会返回：
+
+```text
+Reminder permission denied. Unknown error
+```
+
+——即使同一个二进制在 Terminal 中可以正常工作。完整的 TCC 日志见 [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93)。目前 Codex Desktop 只声明了 `NSAppleEventsUsageDescription`，这就是它会撞到这堵墙的原因。
+
+这是 macOS 层面的限制，单凭 MCP 服务无法绕过——只有桌面客户端自己在 `Info.plist` 里加上对应的 usage description 才能根治。在等待上游修复期间，下面的两个方案能让本服务保持可用：
+
+**可靠方案——使用基于终端的 MCP 客户端启动本服务。** Codex CLI、Claude Code 等在终端中启动的客户端会继承 Terminal / iTerm2 已经持有的 `kTCCServiceReminders` / `kTCCServiceCalendar` 授权，本服务无需修改即可正常调用 EventKit：
+
+```bash
+# 在 Terminal / iTerm2 里运行，由它充当 responsible app
+codex
+# 或
+claude
+```
+
+**部分方案——AppleScript 路由（仅当桌面应用已声明 `NSAppleEventsUsageDescription` 时有效）。** 运行：
+
+```bash
+osascript -e 'tell application "Reminders" to get name of lists'
+osascript -e 'tell application "Calendar" to get name of calendars'
+```
+
+会触发一次 **Automation** 授权请求（`kTCCServiceAppleEvents`），允许负责应用控制 `com.apple.reminders` 与 `com.apple.iCal`。但这并不会顺带创建 `kTCCServiceReminders` / `kTCCServiceCalendar` 授权记录，所以一个直接调用 EventKit 的 Swift CLI 在 host bundle 缺少 usage description 时仍然会被拒。只有当你的客户端能够端到端走 AppleScript 时这套方案才生效（本服务目前并不会这么做）。
+
 **验证命令**
 
 ```bash
