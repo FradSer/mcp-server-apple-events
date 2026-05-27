@@ -541,11 +541,33 @@ export const DeleteCalendarEventSchema = z.object({
   span: SpanSchema,
 });
 
-export const ReadCalendarsSchema = z.object({
-  startDate: SafeDateSchema,
-  endDate: SafeDateSchema,
-  filterAccount: SafeListNameSchema,
-});
+export const ReadCalendarsSchema = z
+  .object({
+    startDate: SafeDateSchema,
+    endDate: SafeDateSchema,
+    filterAccount: SafeListNameSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.startDate || !value.endDate) return;
+    const start = Date.parse(
+      value.startDate.includes(' ')
+        ? value.startDate.replace(' ', 'T')
+        : value.startDate,
+    );
+    const end = Date.parse(
+      value.endDate.includes(' ')
+        ? value.endDate.replace(' ', 'T')
+        : value.endDate,
+    );
+    if (Number.isNaN(start) || Number.isNaN(end)) return; // shape errors surface elsewhere
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endDate'],
+        message: 'endDate must be on or after startDate',
+      });
+    }
+  });
 
 export const CreateReminderListSchema = z.object({
   name: RequiredListNameSchema,

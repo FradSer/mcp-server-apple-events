@@ -11,6 +11,7 @@ import {
   DeleteCalendarEventSchema,
   DeleteReminderSchema,
   ReadCalendarEventsSchema,
+  ReadCalendarsSchema,
   ReadRemindersSchema,
   RequiredListNameSchema,
   SafeDateSchema,
@@ -475,6 +476,39 @@ describe('ValidationSchemas', () => {
             tags: ['work', '#urgent'],
           }),
         ).not.toThrow();
+      });
+    });
+
+    describe('ReadCalendarsSchema', () => {
+      it('accepts no arguments', () => {
+        expect(() => ReadCalendarsSchema.parse({})).not.toThrow();
+      });
+
+      it('accepts a forward range', () => {
+        expect(() =>
+          ReadCalendarsSchema.parse({
+            startDate: '2026-05-04',
+            endDate: '2026-05-11',
+          }),
+        ).not.toThrow();
+      });
+
+      it('accepts startDate equal to endDate', () => {
+        expect(() =>
+          ReadCalendarsSchema.parse({
+            startDate: '2026-05-04',
+            endDate: '2026-05-04',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects endDate before startDate', () => {
+        expect(() =>
+          ReadCalendarsSchema.parse({
+            startDate: '2026-05-11',
+            endDate: '2026-05-04',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
       });
     });
 
