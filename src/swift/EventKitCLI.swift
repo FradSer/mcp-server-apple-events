@@ -386,6 +386,7 @@ struct EventJSON: Codable {
     let id: String
     let title: String
     let calendar: String
+    let calendarId: String
     let startDate: String
     let endDate: String
     let notes: String?
@@ -1510,6 +1511,7 @@ extension EKEvent {
             id: self.eventIdentifier,
             title: self.title,
             calendar: self.calendar.title,
+            calendarId: self.calendar.calendarIdentifier,
             startDate: formatEventDate(self.startDate, preferredTimeZone: eventTimeZone, includeTime: includeTime),
             endDate: formatEventDate(self.endDate, preferredTimeZone: eventTimeZone, includeTime: includeTime),
             notes: self.notes,
