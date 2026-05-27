@@ -6,8 +6,6 @@ English | [简体中文](README.zh-CN.md)
 
 A Model Context Protocol (MCP) server that provides native integration with Apple Reminders and Calendar on macOS. This server allows you to interact with Apple Reminders and Calendar Events through a standardized interface with comprehensive management capabilities.
 
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/fradser-mcp-server-apple-events-badge.png)](https://mseep.ai/app/fradser-mcp-server-apple-events)
-
 > [!NOTE]
 > **Looking ahead: [event](https://github.com/FradSer/event) — a pure Swift CLI for Apple Reminders and Calendar on macOS.**
 >
