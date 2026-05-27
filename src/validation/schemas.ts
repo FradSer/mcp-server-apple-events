@@ -147,23 +147,21 @@ function isBlockedHostname(hostname: string): boolean {
   // 2001:db8::/32 (documentation)
   if (/^2001:db8:/i.test(ipv6Hostname)) return true;
 
-  // ::ffff:0:0/96 (IPv4-mapped IPv6). WHATWG URL normalises `[::ffff:127.0.0.1]`
-  // to `[::ffff:7f00:1]`, so the dotted-quad form is gone by the time we look
-  // at the hostname. Decode the trailing two hextets and run them through the
-  // IPv4 blocklist so a mapped form of any blocked v4 address (loopback,
-  // private, link-local, cloud metadata) is rejected too.
-  //
-  // Accepts both shorthand (`::ffff:7f00:1`) and the fully expanded form
-  // (`0:0:0:0:0:ffff:7f00:1`).
-  const ipv4MappedMatch = ipv6Hostname.match(
-    /^(?:::|(?:0:){5})ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i,
+  // ::ffff:0:0/96 (IPv4-mapped IPv6) and 64:ff9b::/96 (NAT64, RFC 6052).
+  // WHATWG URL normalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]` and the
+  // fully expanded form back to the same shorthand, so by the time we look at
+  // the hostname only the shorthand reaches here. Decode the trailing two
+  // hextets and run them through the IPv4 blocklist so a mapped or NAT64
+  // form of any blocked v4 address (loopback, private, link-local, cloud
+  // metadata) is rejected too — on NAT64-active hosts `[64:ff9b::7f00:1]`
+  // is routed straight to 127.0.0.1 by the gateway.
+  const v4EmbeddedMatch = ipv6Hostname.match(
+    /^(?:::ffff:|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i,
   );
-  if (ipv4MappedMatch) {
-    const high = parseInt(ipv4MappedMatch[1]!, 16);
-    const low = parseInt(ipv4MappedMatch[2]!, 16);
+  if (v4EmbeddedMatch) {
+    const high = parseInt(v4EmbeddedMatch[1]!, 16);
+    const low = parseInt(v4EmbeddedMatch[2]!, 16);
     if (
-      !Number.isNaN(high) &&
-      !Number.isNaN(low) &&
       isBlockedIPv4(
         (high >>> 8) & 255,
         high & 255,

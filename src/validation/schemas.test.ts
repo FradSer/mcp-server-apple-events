@@ -450,6 +450,39 @@ describe('ValidationSchemas', () => {
           });
         });
 
+        describe('NAT64 prefix protection (RFC 6052)', () => {
+          // 64:ff9b::/96 is the well-known NAT64 prefix. On NAT64-active
+          // networks (default on iOS cellular and many enterprise networks)
+          // these addresses are routed to the embedded IPv4 by the gateway,
+          // so they're an SSRF vector even though the host itself doesn't
+          // speak IPv4. Block them the same way ::ffff:* is blocked.
+          it('should block 64:ff9b::7f00:1 (loopback via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[64:ff9b::7f00:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should block 64:ff9b::a9fe:a9fe (AWS metadata via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse(
+                'http://[64:ff9b::a9fe:a9fe]/latest/meta-data/',
+              ),
+            ).toThrow();
+          });
+
+          it('should block 64:ff9b::c0a8:1 (192.168.0.1 via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[64:ff9b::c0a8:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should not block 64:ff9b::0808:0808 (8.8.8.8 via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[64:ff9b::0808:0808]/api'),
+            ).not.toThrow();
+          });
+        });
+
         describe('IPv6 documentation prefix', () => {
           it('should block 2001:db8::/32 range', () => {
             expect(() =>

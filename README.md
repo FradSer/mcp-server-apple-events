@@ -66,7 +66,7 @@ Apple now separates Reminders and Calendar permissions into _write-only_ and _fu
 
 When the CLI detects a `notDetermined` authorization status it calls `requestFullAccessToReminders` / `requestFullAccessToEvents`, which in turn triggers macOS to show the correct prompt. If the OS ever loses track of permissions, rerun `./check-permissions.sh` to re-open the dialogs.
 
-If a Claude tool call still encounters a permission failure, the Node.js layer automatically runs a minimal AppleScript (`osascript -e 'tell application "Reminders" …'`) to surface the dialog and then retries the Swift CLI once.
+If a Claude tool call still encounters a permission failure, see *Desktop MCP clients* below for the responsible-process attribution problem and the recommended workarounds.
 
 ### Troubleshooting Calendar Read Errors
 
