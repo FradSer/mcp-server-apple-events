@@ -202,19 +202,29 @@ class CalendarRepository {
       undefined,
       filters.accountName,
     );
-    const eventCountByTitle = new Map<string, number>();
+    // Calendar titles are not unique across accounts ("Calendar", "Home",
+    // "Work" frequently collide between iCloud / Google / Exchange), so key
+    // the per-calendar event counts by the unique calendar identifier rather
+    // than by title. Each event carries its source calendar's identifier.
+    const eventCountById = new Map<string, number>();
     for (const event of events) {
-      eventCountByTitle.set(
-        event.calendar,
-        (eventCountByTitle.get(event.calendar) ?? 0) + 1,
+      eventCountById.set(
+        event.calendarId,
+        (eventCountById.get(event.calendarId) ?? 0) + 1,
       );
     }
 
+    // Project explicit fields rather than `...calendar` so future additions to
+    // `CalendarJSON` (e.g. nullable fields from EventKit) can't silently leak
+    // through to the public `Calendar` shape.
     return calendars
-      .filter((calendar) => eventCountByTitle.has(calendar.title))
+      .filter((calendar) => eventCountById.has(calendar.id))
       .map((calendar) => ({
-        ...calendar,
-        eventCount: eventCountByTitle.get(calendar.title) ?? 0,
+        id: calendar.id,
+        title: calendar.title,
+        account: calendar.account,
+        accountType: calendar.accountType,
+        eventCount: eventCountById.get(calendar.id) ?? 0,
       }));
   }
 

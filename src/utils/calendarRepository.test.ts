@@ -332,6 +332,7 @@ describe('CalendarRepository', () => {
             id: 'event-1',
             title: 'Meeting',
             calendar: 'Work',
+            calendarId: '1',
             startDate: '2026-05-04T09:00:00-05:00',
             endDate: '2026-05-04T10:00:00-05:00',
             isAllDay: false,
@@ -340,6 +341,7 @@ describe('CalendarRepository', () => {
             id: 'event-2',
             title: 'Review',
             calendar: 'Work',
+            calendarId: '1',
             startDate: '2026-05-05T09:00:00-05:00',
             endDate: '2026-05-05T10:00:00-05:00',
             isAllDay: false,
@@ -370,6 +372,80 @@ describe('CalendarRepository', () => {
           account: 'Google',
           accountType: 'caldav',
           eventCount: 2,
+        },
+      ]);
+    });
+
+    it('attributes event counts correctly when two calendars share a title across different accounts', async () => {
+      // Regression: an earlier implementation keyed event counts by
+      // `event.calendar` (the title), so two same-titled calendars across
+      // accounts would both receive the aggregated count. Each calendar must
+      // get only the events that came from its own calendarId.
+      mockExecuteCli.mockResolvedValue({
+        calendars: [
+          {
+            id: 'cal-icloud',
+            title: 'Home',
+            account: 'iCloud',
+            accountType: 'caldav',
+          },
+          {
+            id: 'cal-google',
+            title: 'Home',
+            account: 'Google',
+            accountType: 'caldav',
+          },
+        ],
+        events: [
+          {
+            id: 'event-a',
+            title: 'Family dinner',
+            calendar: 'Home',
+            calendarId: 'cal-icloud',
+            startDate: '2026-05-04T18:00:00-05:00',
+            endDate: '2026-05-04T19:00:00-05:00',
+            isAllDay: false,
+          },
+          {
+            id: 'event-b',
+            title: 'School pickup',
+            calendar: 'Home',
+            calendarId: 'cal-icloud',
+            startDate: '2026-05-05T15:00:00-05:00',
+            endDate: '2026-05-05T15:30:00-05:00',
+            isAllDay: false,
+          },
+          {
+            id: 'event-c',
+            title: 'Standup',
+            calendar: 'Home',
+            calendarId: 'cal-google',
+            startDate: '2026-05-06T09:00:00-05:00',
+            endDate: '2026-05-06T09:15:00-05:00',
+            isAllDay: false,
+          },
+        ],
+      });
+
+      const result = await repository.findCalendars({
+        startDate: '2026-05-04',
+        endDate: '2026-05-11',
+      });
+
+      expect(result).toEqual([
+        {
+          id: 'cal-icloud',
+          title: 'Home',
+          account: 'iCloud',
+          accountType: 'caldav',
+          eventCount: 2,
+        },
+        {
+          id: 'cal-google',
+          title: 'Home',
+          account: 'Google',
+          accountType: 'caldav',
+          eventCount: 1,
         },
       ]);
     });
@@ -411,6 +487,7 @@ describe('CalendarRepository', () => {
         startDate: '2025-11-04T14:00:00+08:00',
         endDate: '2025-11-04T16:00:00+08:00',
         calendar: 'Work',
+        calendarId: 'cal-work',
         notes: 'Some notes',
         location: 'Office',
         url: 'https://example.com',
@@ -460,6 +537,7 @@ describe('CalendarRepository', () => {
         startDate: '2025-11-04T10:00:00+08:00',
         endDate: '2025-11-04T11:00:00+08:00',
         calendar: 'Personal',
+        calendarId: 'cal-personal',
         isAllDay: false,
       };
 
@@ -491,6 +569,7 @@ describe('CalendarRepository', () => {
         startDate: '2025-11-04T00:00:00+08:00',
         endDate: '2025-11-04T23:59:59+08:00',
         calendar: 'Personal',
+        calendarId: 'cal-personal',
         isAllDay: true,
       };
 
@@ -517,6 +596,7 @@ describe('CalendarRepository', () => {
         startDate: '2025-11-04T15:00:00+08:00',
         endDate: '2025-11-04T17:00:00+08:00',
         calendar: 'Work',
+        calendarId: 'cal-work',
         isAllDay: false,
       };
 
