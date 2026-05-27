@@ -13,18 +13,50 @@ const SAFE_TEXT_PATTERN =
 // later collapse to an unbounded EventKit query in the Swift CLI.
 const DATE_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
-// URL validation that blocks internal/private network addresses and localhost
-// Prevents SSRF attacks while allowing legitimate external URLs
-// Blocks: IPv4 private/reserved (127.x, 192.168.x, 10.x, 172.16-31.x, 169.254.x, 0.0.0.0, 224-239.x multicast)
-// Blocks: IPv6 loopback (::1), unspecified (::), link-local (fe80::), private (fc/fd), multicast (ff)
-// Blocks: Cloud metadata (169.254.169.254, 100.100.100.200, metadata.google.internal)
-// Blocks: Internal hostnames (localhost, localhost.localdomain, local, internal)
+// URL validation: accept any valid URI (any scheme) so reminders can link to
+// custom-scheme deep links like obsidian://, shortcuts://, tel:, mailto: —
+// EventKit's EKReminder.url accepts any NSURL, so the MCP layer should not be
+// stricter than the underlying API (see issue #101).
+//
+// For http(s) URLs we still apply SSRF protection (private/internal addresses,
+// localhost, cloud metadata) because those map to real network hostnames the
+// model might be tricked into emitting. Custom schemes are app-handled by
+// macOS and don't reach the network through us, so scheme-validation alone is
+// sufficient there.
+//
+// We still reject a small set of schemes that are dangerous regardless of
+// hostname: file (local filesystem), javascript / vbscript (script execution
+// in any client that renders the link), jar / dict / gopher (historical SSRF
+// vectors via URL handlers), and data (can carry executable content).
+//
+// SSRF blocklist for http(s) hostnames:
+// - IPv4 private/reserved (127.x, 192.168.x, 10.x, 172.16-31.x, 169.254.x, 0.0.0.0, 224-239.x multicast)
+// - IPv6 loopback (::1), unspecified (::), link-local (fe80::), private (fc/fd), multicast (ff)
+// - Cloud metadata (169.254.169.254, 100.100.100.200, metadata.google.internal)
+// - Internal hostnames (localhost, localhost.localdomain, local, internal)
 // Note: For production use, consider using a dedicated SSRF protection library
 
-// Base URL pattern for HTTP/HTTPS with basic structure validation
-// SSRF checks are done via refinement function for accuracy
-const URL_PATTERN =
-  /^https?:\/\/(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|\[[0-9a-fA-F:]+\])(?::\d+)?(?:\/[^\s<>"{}|\\^`[\]]*)?$/i;
+// Schemes that are dangerous regardless of host — block unconditionally.
+// Compared case-insensitively against URL.protocol which includes the colon.
+const BLOCKED_URL_SCHEMES = new Set([
+  'file:',
+  'javascript:',
+  'vbscript:',
+  'data:',
+  'jar:',
+  'dict:',
+  'gopher:',
+]);
+
+// Schemes that resolve to a network hostname and therefore need SSRF checks.
+// Other schemes (mailto:, tel:, obsidian://, shortcuts://, ...) are app-routed
+// by macOS and never reach the network through this process.
+const HOST_BASED_URL_SCHEMES = new Set(['http:', 'https:']);
+
+// Reject control characters and whitespace anywhere in the URL — the URL
+// parser is lenient about some of these and we want a strict input.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional — must catch raw control chars and DEL injected into URLs
+const URL_FORBIDDEN_CHARS = /[\s\x00-\x1f\x7f]/;
 
 /**
  * Checks if a hostname is blocked for SSRF protection
@@ -302,21 +334,53 @@ const createRequiredDateSchema = (fieldName: string) =>
       `${fieldName} must be a real, parseable date/time`,
     );
 
+/**
+ * Validates a URL string against the project's URI policy.
+ *
+ * Accepts any valid URI so reminders can hold app-deep-link schemes such as
+ * `obsidian://`, `shortcuts://`, `tel:`, and `mailto:` — EventKit itself
+ * accepts any NSURL (issue #101). Schemes in {@link BLOCKED_URL_SCHEMES}
+ * (file, javascript, data, …) are rejected unconditionally, and for the
+ * host-based schemes in {@link HOST_BASED_URL_SCHEMES} (http/https) the
+ * SSRF hostname blocklist still applies.
+ *
+ * @returns `true` if accepted, otherwise an error message describing why.
+ */
+function validateUrl(url: string): true | string {
+  if (URL_FORBIDDEN_CHARS.test(url)) {
+    return 'URL cannot contain whitespace or control characters';
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'URL must be a valid URI (RFC 3986)';
+  }
+  const scheme = parsed.protocol.toLowerCase();
+  if (BLOCKED_URL_SCHEMES.has(scheme)) {
+    return `URL scheme '${scheme}' is not allowed`;
+  }
+  if (
+    HOST_BASED_URL_SCHEMES.has(scheme) &&
+    isBlockedHostname(parsed.hostname)
+  ) {
+    return 'URL must not point to internal, private, or blocked addresses';
+  }
+  return true;
+}
+
 export const SafeUrlSchema = z
   .string()
-  .regex(URL_PATTERN, 'URL must be a valid HTTP or HTTPS URL')
   .max(
     VALIDATION.MAX_URL_LENGTH,
     `URL cannot exceed ${VALIDATION.MAX_URL_LENGTH} characters`,
   )
-  .refine((url) => {
-    try {
-      const parsed = new URL(url);
-      return !isBlockedHostname(parsed.hostname);
-    } catch {
-      return false;
+  .superRefine((url, ctx) => {
+    const result = validateUrl(url);
+    if (result !== true) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: result });
     }
-  }, 'URL must not point to internal, private, or blocked addresses')
+  })
   .optional();
 
 // Reusable schemas for common fields

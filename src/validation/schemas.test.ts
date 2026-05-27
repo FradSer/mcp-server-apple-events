@@ -227,7 +227,38 @@ describe('ValidationSchemas', () => {
 
       it('should reject invalid URL formats', () => {
         expect(() => SafeUrlSchema.parse('not-a-url')).toThrow();
-        expect(() => SafeUrlSchema.parse('ftp://example.com')).toThrow();
+        expect(() => SafeUrlSchema.parse('')).toThrow();
+      });
+
+      it('should accept custom app-deep-link URI schemes (issue #101)', () => {
+        // EventKit's EKReminder.url accepts any NSURL, so the MCP layer must
+        // not be stricter than the underlying API.
+        expect(() =>
+          SafeUrlSchema.parse('obsidian://open?vault=MyVault&file=my-note'),
+        ).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('shortcuts://run-shortcut?name=MyShortcut'),
+        ).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('bear://x-callback-url/open-note?id=123'),
+        ).not.toThrow();
+        expect(() => SafeUrlSchema.parse('tel:+1234567890')).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('mailto:user@example.com'),
+        ).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('omnifocus:///add?name=Task'),
+        ).not.toThrow();
+      });
+
+      it('should reject URLs containing whitespace or control chars', () => {
+        expect(() => SafeUrlSchema.parse('https://example.com/ a')).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\nfoo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('obsidian://open?file=my note'),
+        ).toThrow();
       });
 
       describe('SSRF Protection', () => {
@@ -502,23 +533,35 @@ describe('ValidationSchemas', () => {
         });
 
         describe('Protocol restrictions', () => {
-          it('should reject non-HTTP protocols', () => {
+          it('should reject dangerous protocols regardless of host', () => {
             expect(() => SafeUrlSchema.parse('file:///etc/passwd')).toThrow();
-            expect(() => SafeUrlSchema.parse('ftp://example.com')).toThrow();
+            expect(() => SafeUrlSchema.parse('javascript:alert(1)')).toThrow();
+            expect(() => SafeUrlSchema.parse('vbscript:msgbox("x")')).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('data:text/html,<script>alert(1)</script>'),
+            ).toThrow();
             expect(() =>
               SafeUrlSchema.parse('jar:http://evil.com!/'),
             ).toThrow();
             expect(() =>
               SafeUrlSchema.parse('dict://127.0.0.1:11211/'),
             ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('gopher://example.com/'),
+            ).toThrow();
           });
 
-          it('should only allow http and https', () => {
+          it('should allow http, https, and arbitrary app schemes', () => {
             expect(() =>
               SafeUrlSchema.parse('http://example.com'),
             ).not.toThrow();
             expect(() =>
               SafeUrlSchema.parse('https://example.com'),
+            ).not.toThrow();
+            // ftp is now accepted — the model can store any URI and the
+            // user (not this server) is the one that follows the link.
+            expect(() =>
+              SafeUrlSchema.parse('ftp://example.com'),
             ).not.toThrow();
           });
         });
