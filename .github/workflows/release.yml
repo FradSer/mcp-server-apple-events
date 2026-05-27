@@ -12,7 +12,10 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-latest
+    # Pin to macos-14 (Sonoma) instead of macos-latest so deployment targets
+    # (-target arm64-apple-macos11.0, -target x86_64-apple-macos10.15) stay
+    # buildable as GitHub rotates runner images. Bumping is intentional.
+    runs-on: macos-14
 
     # id-token: write is required for `npm publish --provenance`, which binds
     # the published tarball to this workflow run via Sigstore.
@@ -44,6 +47,7 @@ jobs:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          set -euo pipefail
           security create-keychain -p "ci-keychain-password" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "ci-keychain-password" build.keychain
@@ -78,29 +82,48 @@ jobs:
         run: pnpm run notarize
 
       - name: Verify binary
+        # Belt-and-braces: assert the universal binary actually carries a
+        # Developer ID Application signature and passes a strict verify pass,
+        # so an accidentally-ad-hoc-signed build cannot reach `npm publish`.
         run: |
+          set -euo pipefail
           echo "=== Architecture ==="
-          lipo -info bin/EventKitCLI
+          lipo -info bin/EventKitCLI | tee /tmp/lipo.out
+          grep -q "are: x86_64 arm64\|are: arm64 x86_64" /tmp/lipo.out
           echo "=== Code signature ==="
-          codesign -dv --verbose=2 bin/EventKitCLI
+          codesign -dv --verbose=2 bin/EventKitCLI 2>&1 | tee /tmp/codesign.out
+          grep -q "Authority=Developer ID Application:" /tmp/codesign.out
+          grep -q "flags=0x10000(runtime)" /tmp/codesign.out
+          codesign --verify --strict --verbose=2 bin/EventKitCLI
 
       - name: Verify npm package contents
-        # Fail the build if the pre-built binary is not included in the tarball.
+        # Fail the build if the pre-built binary is not included in the
+        # tarball or if dead-weight `src/**/*.test.ts` slips in.
         run: |
+          set -euo pipefail
           PACK_JSON="$(npm pack --json --dry-run)"
           PACK_JSON="$PACK_JSON" node -e '
             const [pack] = JSON.parse(process.env.PACK_JSON);
             const files = new Set(pack.files.map((file) => file.path));
             const requiredFiles = [
               "bin/EventKitCLI",
-              "bin/run.cjs",
               "dist/index.js",
               "scripts/postinstall.mjs",
               "scripts/build-swift.mjs",
+              "src/swift/EventKitCLI.swift",
+              "src/swift/Info.plist",
+              "src/swift/EventKitCLI.entitlements",
             ];
             const missing = requiredFiles.filter((file) => !files.has(file));
             if (missing.length > 0) {
               console.error(`Missing package files: ${missing.join(", ")}`);
+              process.exit(1);
+            }
+            const forbidden = [...files].filter(
+              (path) => /\.test\.ts$/.test(path) || /\.spec\.ts$/.test(path),
+            );
+            if (forbidden.length > 0) {
+              console.error(`Dead-weight files in tarball: ${forbidden.join(", ")}`);
               process.exit(1);
             }
           '
@@ -116,5 +139,6 @@ jobs:
       - name: Restore default keychain and clean up
         if: always()
         run: |
+          set -euo pipefail
           security default-keychain -s login.keychain 2>/dev/null || true
           security delete-keychain build.keychain 2>/dev/null || true
