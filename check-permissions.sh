@@ -42,16 +42,6 @@ else
     exit 1
 fi
 
-# Some desktop MCP clients (Codex Desktop, Claude Desktop) cannot trigger the
-# native Reminders/Calendar prompt directly because TCC attributes the request
-# to the host app, which lacks the usage-description keys. Pre-prompting via
-# AppleScript routes the request through the Reminders/Calendar apps, which is
-# enough for macOS to associate the permission with the responsible app.
-# See: https://github.com/FradSer/mcp-server-apple-events/issues/93
-echo "Pre-prompting Reminders/Calendar via AppleScript (for desktop MCP clients)..."
-osascript -e 'tell application "Reminders" to get name of lists' >/dev/null 2>&1 || true
-osascript -e 'tell application "Calendar" to get name of calendars' >/dev/null 2>&1 || true
-
 echo ""
 echo "All permission checks passed."
 echo "Apple Events MCP Server is ready to run."

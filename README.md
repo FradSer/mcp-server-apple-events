@@ -82,26 +82,33 @@ You can also re-run `./check-permissions.sh` (it now validates both Reminders an
 
 ### Desktop MCP clients (Claude Desktop, Codex Desktop, …)
 
-macOS attributes Reminders and Calendar access to the **responsible** process — the desktop app that launched the MCP server, not the `EventKitCLI` subprocess. The TCC daemon refuses to display a permission prompt if the responsible app has not declared the corresponding usage descriptions and entitlements (see [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93)). This is a macOS-level constraint that an MCP server alone cannot solve.
-
-If your desktop client does not declare Reminders/Calendar usage strings (Codex Desktop, for example, only declares `NSAppleEventsUsageDescription`), the Swift CLI will report:
+macOS attributes Reminders and Calendar access to the **responsible** process — the desktop app that launched the MCP server, not the `EventKitCLI` subprocess. For the EventKit prompt to appear, the responsible app's bundle must ship the `NSRemindersUsageDescription` / `NSCalendarsUsageDescription` keys (and on Sonoma+ the matching write-only or full-access variants). If those keys are missing, TCC refuses the request before EventKit is even reached, and the Swift CLI returns:
 
 ```text
 Reminder permission denied. Unknown error
 ```
 
-…even though running the same binary from Terminal works.
+— even though running the same binary from Terminal works. See [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93) for the full TCC log; Codex Desktop today ships only `NSAppleEventsUsageDescription`, which is why it hits this wall.
 
-**Recommended workaround.** Trigger the native prompt once through AppleScript, which routes the request through `com.apple.systemevents` rather than the desktop app's bundle ID:
+This is a macOS-level constraint that an MCP server alone cannot resolve — the desktop client itself needs to declare those usage strings in its `Info.plist`. The workarounds below are about making the server *usable* while you wait for the upstream fix:
+
+**Reliable workaround — run the server from a terminal-based MCP client.** Codex CLI, Claude Code, and similar terminal-launched clients inherit Terminal's (or iTerm2's) own `kTCCServiceReminders` / `kTCCServiceCalendar` grant, so EventKit calls succeed without changes to this server:
+
+```bash
+# from inside Terminal / iTerm2, where the responsible app holds the EventKit grants
+codex
+# or
+claude
+```
+
+**Partial workaround — AppleScript routing (only if the desktop app already declares `NSAppleEventsUsageDescription`).** Running:
 
 ```bash
 osascript -e 'tell application "Reminders" to get name of lists'
 osascript -e 'tell application "Calendar" to get name of calendars'
 ```
 
-Approve the dialog when it appears, then retry the MCP call. Once the responsible app holds the permission, subsequent calls succeed without further prompts.
-
-**If that still fails**, run this server from a terminal-based MCP client (Codex CLI, Claude Code, etc.) instead — Terminal can hold the permissions on the desktop app's behalf.
+triggers an **Automation** prompt (`kTCCServiceAppleEvents`) so the responsible app can control `com.apple.reminders` and `com.apple.iCal`. This does *not* create a `kTCCServiceReminders` / `kTCCServiceCalendar` grant on its own, so a Swift CLI that calls EventKit directly will still be refused if the host bundle is missing the usage strings. It only helps if your client can fall back to AppleScript end-to-end (this server does not today).
 
 **Verification command**
 
