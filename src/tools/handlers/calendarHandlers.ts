@@ -25,6 +25,7 @@ import {
   formatDeleteMessage,
   formatListMarkdown,
   formatSuccessMessage,
+  UNTRUSTED_DATA_NOTICE,
 } from './shared.js';
 
 /**
@@ -158,7 +159,13 @@ export const handleReadCalendarEvents = async (
 
     if (validatedArgs.id) {
       const event = await calendarRepository.findEventById(validatedArgs.id);
-      return formatEventMarkdown(event).join('\n');
+      return [
+        '### Calendar Event',
+        '',
+        UNTRUSTED_DATA_NOTICE,
+        '',
+        ...formatEventMarkdown(event),
+      ].join('\n');
     }
 
     const events = await calendarRepository.findEvents({

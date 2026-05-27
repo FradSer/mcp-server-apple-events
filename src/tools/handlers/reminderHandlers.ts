@@ -44,6 +44,7 @@ import {
   formatDeleteMessage,
   formatListMarkdown,
   formatSuccessMessage,
+  UNTRUSTED_DATA_NOTICE,
 } from './shared.js';
 
 /**
@@ -318,6 +319,8 @@ export const handleReadReminders = async (
       );
       const markdownLines: string[] = [
         '### Reminder',
+        '',
+        UNTRUSTED_DATA_NOTICE,
         '',
         ...formatReminderMarkdown(reminder),
       ];

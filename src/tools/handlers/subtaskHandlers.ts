@@ -28,6 +28,7 @@ import {
   extractAndValidateArgs,
   formatDeleteMessage,
   formatSuccessMessage,
+  UNTRUSTED_DATA_NOTICE,
 } from './shared.js';
 
 /**
@@ -58,6 +59,10 @@ const formatSubtasksListMarkdown = (
   if (subtasks.length === 0) {
     lines.push('No subtasks found.');
   } else {
+    // Subtask titles come from the same untrusted notes field as reminder/
+    // calendar item text, so they need the same prompt-injection notice the
+    // shared list formatter emits.
+    lines.push(UNTRUSTED_DATA_NOTICE, '');
     subtasks.forEach((subtask, index) => {
       lines.push(formatSubtaskMarkdown(subtask, index));
     });
