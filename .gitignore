@@ -180,4 +180,9 @@ dist
 
 # Swift compiled binaries
 *.swiftmodule
-.claude/
+
+# Local Claude Code session artifacts only — leave shared project config
+# (e.g. .claude/git.local.md, future .claude/settings.json) tracked.
+.claude/scheduled_tasks.lock
+.claude/local/
+.claude/state/

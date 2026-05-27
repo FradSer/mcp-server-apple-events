@@ -62,7 +62,7 @@ Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访�
 
 当授权状态为 `notDetermined` 时，CLI 会调用 `requestFullAccessToReminders` / `requestFullAccessToEvents`，macOS 会弹出对应的授权对话框。如果系统遗失权限记录，可运行 `./check-permissions.sh` 重新触发请求。
 
-若 Claude 的工具调用依旧遇到权限错误，Node.js 层会自动运行一段最小化的 AppleScript（`osascript -e 'tell application "Reminders" …'`）来唤起系统弹窗，然后再次重试 Swift CLI。
+若 Claude 的工具调用依旧遇到权限错误，请参阅下方的 *桌面端 MCP 客户端* 一节——那里描述了 responsible 进程归属问题以及推荐的解决方案。
 
 ### 日历读取报错排查
 
