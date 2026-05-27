@@ -180,3 +180,4 @@ dist
 
 # Swift compiled binaries
 *.swiftmodule
+.claude/
