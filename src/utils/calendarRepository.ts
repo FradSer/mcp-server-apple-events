@@ -215,6 +215,56 @@ class CalendarRepository implements ICalendarRepository {
     return calendars.map(mapCalendar);
   }
 
+  async findCalendars(filters: {
+    startDate?: string;
+    endDate?: string;
+    accountName?: string;
+  }): Promise<Calendar[]> {
+    if (!filters.startDate && !filters.endDate) {
+      const calendars = await this.findAllCalendars();
+      if (!filters.accountName) return calendars;
+      return calendars.filter(
+        (calendar) => calendar.account === filters.accountName,
+      );
+    }
+
+    const dateRange = resolveReadDateRange({
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
+    const { calendars, events } = await this.readEvents(
+      dateRange.startDate,
+      dateRange.endDate,
+      undefined,
+      undefined,
+      filters.accountName,
+    );
+    // Calendar titles are not unique across accounts ("Calendar", "Home",
+    // "Work" frequently collide between iCloud / Google / Exchange), so key
+    // the per-calendar event counts by the unique calendar identifier rather
+    // than by title. Each event carries its source calendar's identifier.
+    const eventCountById = new Map<string, number>();
+    for (const event of events) {
+      eventCountById.set(
+        event.calendarId,
+        (eventCountById.get(event.calendarId) ?? 0) + 1,
+      );
+    }
+
+    // Project explicit fields rather than `...calendar` so future additions to
+    // `CalendarJSON` (e.g. nullable fields from EventKit) can't silently leak
+    // through to the public `Calendar` shape.
+    return calendars
+      .filter((calendar) => eventCountById.has(calendar.id))
+      .map((calendar) => ({
+        id: calendar.id,
+        title: calendar.title,
+        account: calendar.account,
+        accountType: calendar.accountType,
+        eventCount: eventCountById.get(calendar.id) ?? 0,
+      }));
+  }
+
   async createEvent(data: CreateEventData): Promise<EventJSON> {
     const args = [
       '--action',

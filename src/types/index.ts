@@ -140,6 +140,7 @@ export interface CalendarEvent {
   startDate: string;
   endDate: string;
   calendar: string;
+  calendarId: string;
   notes?: string;
   location?: string;
   structuredLocation?: StructuredLocation;
@@ -179,6 +180,7 @@ export interface Calendar {
   title: string;
   account: string;
   accountType: string;
+  eventCount?: number;
 }
 
 /**
@@ -351,6 +353,9 @@ export interface CalendarToolArgs extends BaseToolArgs {
 
 export interface CalendarsToolArgs extends BaseToolArgs {
   action: CalendarsAction;
+  startDate?: string;
+  endDate?: string;
+  filterAccount?: string;
 }
 
 /**

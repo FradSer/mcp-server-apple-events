@@ -190,13 +190,21 @@ export const handleReadCalendars = async (
   args?: CalendarsToolArgs,
 ): Promise<CallToolResult> => {
   return handleAsyncOperation(async () => {
-    extractAndValidateArgs(args, ReadCalendarsSchema);
-    const calendars = await calendarRepository.findAllCalendars();
+    const validatedArgs = extractAndValidateArgs(args, ReadCalendarsSchema);
+    const calendars = await calendarRepository.findCalendars({
+      startDate: validatedArgs.startDate,
+      endDate: validatedArgs.endDate,
+      accountName: validatedArgs.filterAccount,
+    });
     return formatListMarkdown(
       'Calendars',
       calendars,
       (calendar) => [
-        `- ${calendar.title} (${calendar.account}) (ID: ${calendar.id})`,
+        `- ${calendar.title} (${calendar.account}) (ID: ${calendar.id})${
+          calendar.eventCount !== undefined
+            ? ` - ${calendar.eventCount} event${calendar.eventCount === 1 ? '' : 's'}`
+            : ''
+        }`,
       ],
       'No calendars found.',
     );
