@@ -147,6 +147,34 @@ function isBlockedHostname(hostname: string): boolean {
   // 2001:db8::/32 (documentation)
   if (/^2001:db8:/i.test(ipv6Hostname)) return true;
 
+  // ::ffff:0:0/96 (IPv4-mapped IPv6). WHATWG URL normalises `[::ffff:127.0.0.1]`
+  // to `[::ffff:7f00:1]`, so the dotted-quad form is gone by the time we look
+  // at the hostname. Decode the trailing two hextets and run them through the
+  // IPv4 blocklist so a mapped form of any blocked v4 address (loopback,
+  // private, link-local, cloud metadata) is rejected too.
+  //
+  // Accepts both shorthand (`::ffff:7f00:1`) and the fully expanded form
+  // (`0:0:0:0:0:ffff:7f00:1`).
+  const ipv4MappedMatch = ipv6Hostname.match(
+    /^(?:::|(?:0:){5})ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i,
+  );
+  if (ipv4MappedMatch) {
+    const high = parseInt(ipv4MappedMatch[1]!, 16);
+    const low = parseInt(ipv4MappedMatch[2]!, 16);
+    if (
+      !Number.isNaN(high) &&
+      !Number.isNaN(low) &&
+      isBlockedIPv4(
+        (high >>> 8) & 255,
+        high & 255,
+        (low >>> 8) & 255,
+        low & 255,
+      )
+    ) {
+      return true;
+    }
+  }
+
   return false;
 }
 

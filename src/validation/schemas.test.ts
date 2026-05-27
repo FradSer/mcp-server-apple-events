@@ -257,6 +257,15 @@ describe('ValidationSchemas', () => {
           SafeUrlSchema.parse('https://example.com/\nfoo'),
         ).toThrow();
         expect(() =>
+          SafeUrlSchema.parse('https://example.com/\tfoo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\rfoo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\x00foo'),
+        ).toThrow();
+        expect(() =>
           SafeUrlSchema.parse('obsidian://open?file=my note'),
         ).toThrow();
       });
@@ -401,6 +410,43 @@ describe('ValidationSchemas', () => {
             expect(() =>
               SafeUrlSchema.parse('http://[fd00::1]/admin'),
             ).toThrow();
+          });
+        });
+
+        describe('IPv4-mapped IPv6 protection', () => {
+          // WHATWG URL normalises [::ffff:127.0.0.1] to [::ffff:7f00:1], so the
+          // dotted-quad form never reaches the blocklist. Decode the trailing
+          // two hextets and run them through the IPv4 blocklist.
+          it('should block ::ffff:127.0.0.1 loopback (dotted-quad input)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:127.0.0.1]/admin'),
+            ).toThrow();
+          });
+
+          it('should block ::ffff:7f00:1 loopback (canonical hex form)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:7f00:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should block ::ffff:a9fe:a9fe (AWS metadata 169.254.169.254)', () => {
+            expect(() =>
+              SafeUrlSchema.parse(
+                'http://[::ffff:a9fe:a9fe]/latest/meta-data/',
+              ),
+            ).toThrow();
+          });
+
+          it('should block ::ffff:c0a8:1 (192.168.0.1 private)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:c0a8:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should not block ::ffff:0808:0808 (8.8.8.8 public)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:0808:0808]/api'),
+            ).not.toThrow();
           });
         });
 
