@@ -70,6 +70,29 @@ describe('tagUtils', () => {
     it('extracts digit-starting mixed tags like #1st', () => {
       expect(extractTags('#1st #2024q1 notes')).toEqual(['1st', '2024q1']);
     });
+
+    it('extracts CJK bare tags (Chinese / Japanese / Korean)', () => {
+      expect(extractTags('#雷蒙三十 #日本語 #한국어 notes')).toEqual([
+        '雷蒙三十',
+        '日本語',
+        '한국어',
+      ]);
+    });
+
+    it('extracts mixed CJK + ASCII tags', () => {
+      expect(extractTags('#中文_english #2024年 notes')).toEqual([
+        '中文_english',
+        '2024年',
+      ]);
+    });
+
+    it('stops CJK tags at CJK punctuation', () => {
+      expect(extractTags('#雷蒙，notes here')).toEqual(['雷蒙']);
+    });
+
+    it('extracts space-separated CJK tags after CJK punctuation', () => {
+      expect(extractTags('#雷蒙， #柚子。 done')).toEqual(['雷蒙', '柚子']);
+    });
   });
 
   describe('stripTags', () => {
@@ -79,6 +102,10 @@ describe('tagUtils', () => {
 
     it('strips bare #tag format', () => {
       expect(stripTags('#social #work Some notes')).toBe('Some notes');
+    });
+
+    it('strips CJK bare tags', () => {
+      expect(stripTags('#雷蒙三十 #日本語 Some notes')).toBe('Some notes');
     });
 
     it('strips mixed formats', () => {

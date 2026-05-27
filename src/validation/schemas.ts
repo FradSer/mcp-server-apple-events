@@ -398,13 +398,15 @@ const AvailabilitySchema = z
 const SpanSchema = z.enum(['this-event', 'future-events']).optional();
 
 /**
- * Tag schema for reminder tags
+ * Tag schema for reminder tags.
+ * Allows Unicode letters and numbers so non-Latin scripts (CJK, Cyrillic,
+ * Arabic, etc.) work as tag names — Apple Reminders natively supports them.
  */
 const TagSchema = z
   .string()
   .min(1)
   .max(50)
-  .regex(/^#?[a-zA-Z0-9_-]+$/, {
+  .regex(/^#?[\p{L}\p{N}_-]+$/u, {
     message: 'Tags can only contain letters, numbers, underscores, and hyphens',
   });
 

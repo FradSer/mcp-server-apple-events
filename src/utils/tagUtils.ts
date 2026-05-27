@@ -16,8 +16,14 @@ const BRACKET_TAG_REGEX = /\[#([^\]]+)\]/g;
 // Regex to match bare #tag format (Apple Reminders native).
 // Must be preceded by start-of-string or whitespace.
 // Uses negative lookahead to exclude purely numeric tags (e.g. #42)
-// while allowing digit-starting mixed tags (e.g. #1st, #2024q1).
-const BARE_TAG_REGEX = /(?:^|(?<=\s))#(?![0-9]+\b)([a-zA-Z0-9_-]+)/gm;
+// while allowing digit-starting mixed tags (e.g. #1st, #2024q1, #2024年).
+// Body uses Unicode property classes so CJK / Japanese / Korean / other
+// non-Latin scripts work as tag characters (e.g. #雷蒙三十, #日本語, #한국어).
+// The inner negative lookahead `(?![\p{L}\p{N}_-])` replaces the old `\b`,
+// which broke for CJK because `\b` fires between ASCII digits and CJK letters
+// (CJK chars count as `\W` in JS regex), causing `#2024年` to be rejected.
+const BARE_TAG_REGEX =
+  /(?:^|(?<=\s))#(?![0-9]+(?![\p{L}\p{N}_-]))([\p{L}\p{N}_-]+)/gmu;
 
 /**
  * Normalizes a tag by removing # prefix, trimming, and lowercasing

@@ -531,6 +531,38 @@ describe('ValidationSchemas', () => {
           }),
         ).not.toThrow();
       });
+
+      it('allows CJK tags (Chinese / Japanese / Korean)', () => {
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'CJK tagged reminder',
+            tags: ['雷蒙三十', '日本語', '한국어', '#中文_mix'],
+          }),
+        ).not.toThrow();
+      });
+
+      it('allows CJK tags in filterTags for read action', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            filterTags: ['雷蒙三十'],
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects tags with whitespace or punctuation', () => {
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'Bad tag',
+            tags: ['has space'],
+          }),
+        ).toThrow();
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'Bad tag',
+            tags: ['bad,comma'],
+          }),
+        ).toThrow();
+      });
     });
 
     describe('Action schemas validation patterns', () => {
