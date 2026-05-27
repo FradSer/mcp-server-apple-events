@@ -76,6 +76,29 @@ Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访�
 
 你也可以重新运行 `./check-permissions.sh`（脚本现在会同时检查 Reminders 与 Calendars 权限）。
 
+### 桌面端 MCP 客户端（Claude Desktop、Codex Desktop 等）
+
+macOS 把提醒事项与日历的访问权限归属到 **responsible（负责）** 进程——也就是启动 MCP 服务的桌面应用本身，而不是 `EventKitCLI` 子进程。如果负责的应用没有在 `Info.plist` 中声明对应的 usage description 与 entitlements，TCC 守护进程会直接拒绝请求、不弹出授权窗口（参见 [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93)）。这是 macOS 层面的限制，单凭 MCP 服务无法绕过。
+
+如果你的桌面客户端未声明 Reminders/Calendar 的 usage 字段（例如 Codex Desktop 只声明了 `NSAppleEventsUsageDescription`），Swift CLI 会返回：
+
+```text
+Reminder permission denied. Unknown error
+```
+
+——即使同一个二进制在 Terminal 中可以正常使用。
+
+**推荐的临时解决方案。** 先通过 AppleScript 触发一次原生授权对话框，把请求路由到 `com.apple.systemevents` 而不是桌面应用自身：
+
+```bash
+osascript -e 'tell application "Reminders" to get name of lists'
+osascript -e 'tell application "Calendar" to get name of calendars'
+```
+
+在弹窗中点击同意，然后重新触发 MCP 调用。一旦负责的应用获得了权限，后续调用就能直接成功，不会再次弹窗。
+
+**如果仍然失败**，请改用基于终端的 MCP 客户端（Codex CLI、Claude Code 等）来启动本服务——Terminal 已经持有这些权限，可以替代桌面应用承担授权请求。
+
 **验证命令**
 
 ```bash

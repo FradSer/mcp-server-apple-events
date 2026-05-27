@@ -80,6 +80,29 @@ If you see `Failed to read calendar events`, verify Calendar is set to **Full Ca
 
 You can also re-run `./check-permissions.sh` (it now validates both Reminders and Calendars access).
 
+### Desktop MCP clients (Claude Desktop, Codex Desktop, …)
+
+macOS attributes Reminders and Calendar access to the **responsible** process — the desktop app that launched the MCP server, not the `EventKitCLI` subprocess. The TCC daemon refuses to display a permission prompt if the responsible app has not declared the corresponding usage descriptions and entitlements (see [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93)). This is a macOS-level constraint that an MCP server alone cannot solve.
+
+If your desktop client does not declare Reminders/Calendar usage strings (Codex Desktop, for example, only declares `NSAppleEventsUsageDescription`), the Swift CLI will report:
+
+```text
+Reminder permission denied. Unknown error
+```
+
+…even though running the same binary from Terminal works.
+
+**Recommended workaround.** Trigger the native prompt once through AppleScript, which routes the request through `com.apple.systemevents` rather than the desktop app's bundle ID:
+
+```bash
+osascript -e 'tell application "Reminders" to get name of lists'
+osascript -e 'tell application "Calendar" to get name of calendars'
+```
+
+Approve the dialog when it appears, then retry the MCP call. Once the responsible app holds the permission, subsequent calls succeed without further prompts.
+
+**If that still fails**, run this server from a terminal-based MCP client (Codex CLI, Claude Code, etc.) instead — Terminal can hold the permissions on the desktop app's behalf.
+
 **Verification command**
 
 ```bash
