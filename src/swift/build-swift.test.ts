@@ -7,15 +7,17 @@ describe('build-swift.mjs code signing', () => {
   const buildScript = readFileSync(buildScriptPath, 'utf8');
 
   it('signs binary with hardened runtime for macOS 26+ TCC compatibility', () => {
-    expect(buildScript).toMatch(/codesign[\s\S]*?--options[\s\S]*?runtime/);
+    expect(buildScript).toMatch(/'--options'\s*,\s*\n?\s*'runtime'/);
   });
 
   it('embeds Info.plist into binary via linker', () => {
-    expect(buildScript).toMatch(/-Xlinker[\s\S]*?__info_plist/);
+    expect(buildScript).toMatch(/'__info_plist'/);
+    expect(buildScript).toMatch(/infoPlistFile/);
   });
 
   it('applies entitlements during code signing', () => {
-    expect(buildScript).toMatch(/codesign[\s\S]*?--entitlements/);
+    expect(buildScript).toMatch(/'--entitlements'/);
+    expect(buildScript).toMatch(/entitlementsFile/);
   });
 });
 
@@ -23,18 +25,9 @@ describe('build-swift.mjs toolchain resolution', () => {
   const buildScript = readFileSync(buildScriptPath, 'utf8');
 
   it('invokes swiftc via xcrun so SDK and toolchain stay consistent', () => {
-    expect(buildScript).toMatch(/xcrun\s+(?:-sdk\s+macosx\s+)?swiftc/);
-  });
-
-  it('pins -target to macosx13.0 (lowest supported deployment)', () => {
-    // Target triple may be built via a variable; just assert both the flag and
-    // the deployment string are present in the script.
-    expect(buildScript).toMatch(/-target/);
-    expect(buildScript).toMatch(/apple-macosx13\.0/);
-  });
-
-  it('derives swift target arch from the host (process.arch)', () => {
-    expect(buildScript).toMatch(/process\.arch/);
+    expect(buildScript).toMatch(/xcrun/);
+    expect(buildScript).toMatch(/'-sdk'\s*,\s*\n?\s*'macosx'/);
+    expect(buildScript).toMatch(/'swiftc'/);
   });
 });
 
@@ -55,5 +48,59 @@ describe('build-swift.mjs toolchain/SDK compatibility (issue #85)', () => {
     expect(buildScript).toMatch(
       /could not build module 'Foundation'|SDK is not supported by the compiler/,
     );
+  });
+});
+
+describe('build-swift.mjs code-signing identity', () => {
+  const buildScript = readFileSync(buildScriptPath, 'utf8');
+
+  it('resolves signing identity from APPLE_SIGNING_IDENTITY env var', () => {
+    expect(buildScript).toMatch(/APPLE_SIGNING_IDENTITY/);
+  });
+
+  it('auto-detects Developer ID Application and Apple Development certificates from keychain', () => {
+    expect(buildScript).toMatch(/Developer ID Application/);
+    expect(buildScript).toMatch(/Apple Development/);
+    expect(buildScript).toMatch(/'find-identity'/);
+  });
+
+  it('falls back to ad-hoc signing when no Developer ID is found', () => {
+    expect(buildScript).toMatch(/resolveSigningIdentity/);
+    // ad-hoc sentinel
+    expect(buildScript).toMatch(/return\s+['"]-['"]/);
+  });
+
+  it('includes secure timestamp flag for Developer ID signatures', () => {
+    expect(buildScript).toMatch(/--timestamp/);
+    expect(buildScript).toMatch(/isAdHoc/);
+  });
+});
+
+describe('build-swift.mjs universal binary', () => {
+  const buildScript = readFileSync(buildScriptPath, 'utf8');
+
+  it('builds arm64 slice with correct deployment target', () => {
+    expect(buildScript).toMatch(/'arm64-apple-macos11\.0'/);
+  });
+
+  it('builds x86_64 slice with correct deployment target', () => {
+    expect(buildScript).toMatch(/'x86_64-apple-macos10\.15'/);
+  });
+
+  it('merges slices into universal binary using lipo', () => {
+    expect(buildScript).toMatch(/'lipo'/);
+    expect(buildScript).toMatch(/'-create'/);
+  });
+
+  it('cleans up thin slice intermediates after lipo merge', () => {
+    expect(buildScript).toMatch(/EventKitCLI-arm64/);
+    expect(buildScript).toMatch(/EventKitCLI-x86_64/);
+  });
+
+  it('invokes external binaries via execFile (argv array, no shell interpolation)', () => {
+    // execFile is used instead of exec, preventing shell injection through
+    // signing-identity or path values.
+    expect(buildScript).toMatch(/execFile/);
+    expect(buildScript).not.toMatch(/\bpromisify\(exec\)/);
   });
 });

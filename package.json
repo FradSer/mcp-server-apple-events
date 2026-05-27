@@ -27,7 +27,8 @@
     "mcp-server-apple-events": "./dist/index.js"
   },
   "files": [
-    "dist",
+    "bin/EventKitCLI",
+    "dist/",
     "scripts/postinstall.mjs",
     "scripts/build-swift.mjs",
     "src/swift/EventKitCLI.swift",
@@ -40,9 +41,11 @@
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build:ts": "tsc -p tsconfig.json",
+    "build:ts": "tsc -p tsconfig.build.json",
     "build:swift": "node scripts/build-swift.mjs",
     "build": "pnpm run clean && pnpm run build:ts && pnpm run build:swift",
+    "notarize": "node scripts/notarize.mjs",
+    "build:release": "pnpm run clean && pnpm run build:ts && pnpm run build:swift && pnpm run notarize",
     "postinstall": "node scripts/postinstall.mjs",
     "test": "NODE_NO_WARNINGS=1 jest",
     "test:ci": "NODE_NO_WARNINGS=1 jest --coverage",

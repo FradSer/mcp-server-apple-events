@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Serialize release runs so rapid tag pushes don't race on `npm publish`.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Pin to macos-14 (Sonoma) instead of macos-latest so deployment targets
+    # (-target arm64-apple-macos11.0, -target x86_64-apple-macos10.15) stay
+    # buildable as GitHub rotates runner images. Bumping is intentional.
+    runs-on: macos-14
+
+    # id-token: write is required for `npm publish --provenance`, which binds
+    # the published tarball to this workflow run via Sigstore.
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Developer ID Application certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          security create-keychain -p "ci-keychain-password" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "ci-keychain-password" build.keychain
+          # Keep keychain unlocked for the duration of the job (6 hours)
+          security set-keychain-settings -lut 21600 build.keychain
+
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > certificate.p12
+          security import certificate.p12 \
+            -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          rm certificate.p12
+
+          # Allow codesign to access the key without a password prompt
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s -k "ci-keychain-password" build.keychain
+
+      - name: Build TypeScript
+        run: pnpm run build:ts
+
+      - name: Build universal Swift binary and sign
+        # resolveSigningIdentity() in build-swift.mjs auto-detects the
+        # Developer ID Application certificate imported in the previous step.
+        run: pnpm run build:swift
+
+      - name: Notarize binary
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm run notarize
+
+      - name: Verify binary
+        # Belt-and-braces: assert the universal binary actually carries a
+        # Developer ID Application signature and passes a strict verify pass,
+        # so an accidentally-ad-hoc-signed build cannot reach `npm publish`.
+        run: |
+          set -euo pipefail
+          echo "=== Architecture ==="
+          lipo -info bin/EventKitCLI | tee /tmp/lipo.out
+          grep -q "are: x86_64 arm64\|are: arm64 x86_64" /tmp/lipo.out
+          echo "=== Code signature ==="
+          codesign -dv --verbose=2 bin/EventKitCLI 2>&1 | tee /tmp/codesign.out
+          grep -q "Authority=Developer ID Application:" /tmp/codesign.out
+          grep -q "flags=0x10000(runtime)" /tmp/codesign.out
+          codesign --verify --strict --verbose=2 bin/EventKitCLI
+
+      - name: Verify npm package contents
+        # Fail the build if the pre-built binary is not included in the
+        # tarball or if dead-weight `src/**/*.test.ts` slips in.
+        run: |
+          set -euo pipefail
+          PACK_JSON="$(npm pack --json --dry-run)"
+          PACK_JSON="$PACK_JSON" node -e '
+            const [pack] = JSON.parse(process.env.PACK_JSON);
+            const files = new Set(pack.files.map((file) => file.path));
+            const requiredFiles = [
+              "bin/EventKitCLI",
+              "dist/index.js",
+              "scripts/postinstall.mjs",
+              "scripts/build-swift.mjs",
+              "src/swift/EventKitCLI.swift",
+              "src/swift/Info.plist",
+              "src/swift/EventKitCLI.entitlements",
+            ];
+            const missing = requiredFiles.filter((file) => !files.has(file));
+            if (missing.length > 0) {
+              console.error(`Missing package files: ${missing.join(", ")}`);
+              process.exit(1);
+            }
+            const forbidden = [...files].filter(
+              (path) => /\.test\.ts$/.test(path) || /\.spec\.ts$/.test(path),
+            );
+            if (forbidden.length > 0) {
+              console.error(`Dead-weight files in tarball: ${forbidden.join(", ")}`);
+              process.exit(1);
+            }
+          '
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+
+      - name: Restore default keychain and clean up
+        if: always()
+        run: |
+          set -euo pipefail
+          security default-keychain -s login.keychain 2>/dev/null || true
+          security delete-keychain build.keychain 2>/dev/null || true

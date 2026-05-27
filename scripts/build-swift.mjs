@@ -99,9 +99,62 @@ function looksLikeFoundationModuleMismatch(stderr) {
   );
 }
 
-function swiftArchForHost() {
-  // Swift target triples use `arm64` and `x86_64`; Node reports `arm64` and `x64`.
-  return process.arch === 'arm64' ? 'arm64' : 'x86_64';
+/**
+ * Resolves the code-signing identity to use.
+ *
+ * Priority order:
+ *   1. APPLE_SIGNING_IDENTITY env var (explicit override)
+ *   2. First "Developer ID Application:" cert found in the login keychain
+ *   3. Ad-hoc ("-") with a warning
+ *
+ * A Developer ID signature makes EventKitCLI the TCC-responsible process
+ * regardless of which parent process spawned it, fixing Calendar permission
+ * dialogs on OCLP Sequoia and macOS 26+.
+ */
+async function resolveSigningIdentity() {
+  if (process.env.APPLE_SIGNING_IDENTITY) {
+    return process.env.APPLE_SIGNING_IDENTITY;
+  }
+
+  try {
+    const { stdout } = await run('security', [
+      'find-identity',
+      '-v',
+      '-p',
+      'codesigning',
+    ]);
+    const lines = stdout.split('\n');
+
+    // Prefer Developer ID Application (trusted on all Macs) over Apple Development
+    // (trusted only on the developer's own machine, but sufficient for local use).
+    for (const prefix of ['Developer ID Application:', 'Apple Development:']) {
+      const matches = lines.filter((line) => line.includes(prefix));
+      if (matches.length === 1) {
+        const m = matches[0].match(/"([^"]+)"/);
+        if (m) return m[1];
+      }
+      if (matches.length > 1) {
+        console.warn(`Multiple "${prefix}" certificates found in keychain.`);
+        console.warn(
+          'Set APPLE_SIGNING_IDENTITY to the exact certificate name to avoid ambiguity.',
+        );
+        break;
+      }
+    }
+  } catch {
+    // security binary unavailable — fall through to ad-hoc
+  }
+
+  console.warn(
+    'No Apple code-signing certificate found. Using ad-hoc signing (-).',
+  );
+  console.warn(
+    'Calendar TCC permission dialogs may be suppressed on OCLP Sequoia and macOS 26+.',
+  );
+  console.warn(
+    'To fix this, set APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)".',
+  );
+  return '-';
 }
 
 async function main() {
@@ -127,6 +180,18 @@ async function main() {
     process.exit(1);
   }
 
+  try {
+    await run('xcrun', ['--find', 'lipo']);
+  } catch (_error) {
+    console.error(
+      'Error: lipo not found. Required for universal binary creation.',
+    );
+    console.error(
+      'Please install Xcode or Xcode Command Line Tools: xcode-select --install',
+    );
+    process.exit(1);
+  }
+
   // Resolve paths relative to script location, not process.cwd()
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -137,6 +202,8 @@ async function main() {
   const entitlementsFile = path.join(scriptDir, 'EventKitCLI.entitlements');
   const binDir = path.join(projectRoot, 'bin');
   const outputFile = path.join(binDir, 'EventKitCLI');
+  const arm64File = path.join(binDir, 'EventKitCLI-arm64');
+  const x86File = path.join(binDir, 'EventKitCLI-x86_64');
 
   try {
     await fs.access(sourceFile);
@@ -167,27 +234,14 @@ async function main() {
 
   await fs.mkdir(binDir, { recursive: true });
 
-  // Pin deployment target to macOS 13.0 — the lowest the Swift source supports
-  // via its `requestAccess(to: .reminder)` legacy branch. Pinning keeps the
-  // build deterministic across SDK versions and avoids defaulting to the host
-  // SDK's target, which on macOS 26 makes the macOS-14 fallback path appear
-  // unreachable.
-  const target = `${swiftArchForHost()}-apple-macosx13.0`;
+  // Build a universal (fat) binary containing both arm64 and x86_64 slices.
+  // Each slice is compiled separately with its appropriate deployment target,
+  // then merged via lipo. This ensures the same npm package works on both
+  // Apple Silicon (arm64, macOS 11+) and Intel (x86_64, macOS 10.15+) Macs.
   // `xcrun -sdk macosx swiftc` keeps the toolchain and SDK xcode-select resolves
   // consistent. -Xlinker embeds Info.plist so macOS shows EventKit prompts.
-  const compileArgs = [
-    '-sdk',
-    'macosx',
-    'swiftc',
-    '-target',
-    target,
-    '-o',
-    outputFile,
-    sourceFile,
-    '-framework',
-    'EventKit',
-    '-framework',
-    'Foundation',
+  const frameworkArgs = ['-framework', 'EventKit', '-framework', 'Foundation'];
+  const linkerArgs = [
     '-Xlinker',
     '-sectcreate',
     '-Xlinker',
@@ -198,42 +252,97 @@ async function main() {
     infoPlistFile,
   ];
 
-  console.log(`Compiling ${sourceFile} (target ${target})...`);
+  const slices = [
+    { file: arm64File, target: 'arm64-apple-macos11.0', label: 'arm64' },
+    { file: x86File, target: 'x86_64-apple-macos10.15', label: 'x86_64' },
+  ];
+
+  console.log(`Compiling ${sourceFile} (arm64 + x86_64)...`);
 
   try {
-    const { stdout, stderr } = await run('xcrun', compileArgs);
-    if (stderr) {
-      console.warn(`Swift compiler warnings:\n${stderr}`);
-    }
-    if (stdout) {
-      console.log(stdout);
-    }
+    // Slices are independent — compile in parallel to roughly halve build time.
+    // `xcrun -sdk macosx swiftc` keeps the toolchain and SDK xcode-select
+    // resolves consistent across both slices.
+    const results = await Promise.all(
+      slices.map((s) =>
+        run('xcrun', [
+          '-sdk',
+          'macosx',
+          'swiftc',
+          '-target',
+          s.target,
+          '-o',
+          s.file,
+          sourceFile,
+          ...frameworkArgs,
+          ...linkerArgs,
+        ]),
+      ),
+    );
+    results.forEach(({ stdout, stderr }, i) => {
+      if (stderr)
+        console.warn(`${slices[i].label} compiler warnings:\n${stderr}`);
+      if (stdout) console.log(stdout);
+    });
 
-    console.log(`Compilation successful! Binary saved to ${outputFile}`);
+    await run('xcrun', [
+      'lipo',
+      '-create',
+      '-output',
+      outputFile,
+      arm64File,
+      x86File,
+    ]);
+
+    await Promise.all([fs.unlink(arm64File), fs.unlink(x86File)]);
+
+    console.log(
+      `Compilation successful! Universal binary saved to ${outputFile}`,
+    );
 
     await fs.chmod(outputFile, '755');
     console.log('Binary is now executable.');
 
-    // --options runtime enables Hardened Runtime, required on macOS 26+ for
-    // the TCC system to show calendar permission dialogs when the binary
-    // runs as a subprocess of a GUI application (e.g. Claude Desktop).
-    const { stdout: csOut, stderr: csErr } = await run('codesign', [
+    const signingIdentity = await resolveSigningIdentity();
+    const isAdHoc = signingIdentity === '-';
+
+    console.log(
+      isAdHoc
+        ? 'Signing with ad-hoc identity...'
+        : `Signing with Developer ID: ${signingIdentity}`,
+    );
+
+    // --options runtime: Hardened Runtime, required on macOS 26+ for the TCC
+    //   system to show calendar permission dialogs when the binary runs as a
+    //   subprocess of a GUI application (e.g. Claude Desktop).
+    // --timestamp: secure timestamp from Apple CA; included for Developer ID
+    //   signatures to ensure long-term validity; omitted for ad-hoc (no CA).
+    const codesignArgs = [
       '--force',
       '--sign',
-      '-',
+      signingIdentity,
       '--options',
       'runtime',
+      ...(isAdHoc ? [] : ['--timestamp']),
       '--entitlements',
       entitlementsFile,
       outputFile,
-    ]);
+    ];
+    const { stdout: csOut, stderr: csErr } = await run(
+      'codesign',
+      codesignArgs,
+    );
     if (csErr) {
       console.warn(`codesign warnings:\n${csErr}`);
     }
     if (csOut) {
       console.log(csOut);
     }
-    console.log('Binary signed with hardened runtime and entitlements.');
+    console.log(
+      isAdHoc
+        ? 'Binary signed (ad-hoc) with hardened runtime and entitlements.'
+        : 'Binary signed with Developer ID, hardened runtime, and entitlements.',
+    );
     console.log('Swift binary build complete!');
   } catch (error) {
     console.error('Compilation failed!');

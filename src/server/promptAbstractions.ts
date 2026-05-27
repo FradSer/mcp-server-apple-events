@@ -1,11 +1,4 @@
 /**
- * @fileoverview Shared abstractions for prompt templates
- * @module server/promptAbstractions
- * @description Output formats and constraints shared across all prompt templates
- * Provides consistent behavior for action execution based on confidence thresholds
- */
-
-/**
  * Standard confidence system constraints
  * Decision priority: (1) If scope is ambiguous → confirm, (2) Then apply confidence thresholds
  */
@@ -138,10 +131,7 @@ export const TIME_BLOCK_CREATION_CONSTRAINTS = [
   '  - Follow confidence gating (execute >80%, recommend 60-80, confirm <60).',
 ];
 
-/**
- * Standard action queue output format
- */
-export const getActionQueueFormat = (_currentDate: string): string[] => [
+const ACTION_QUEUE_FORMAT: string[] = [
   '### Action queue',
   '',
   '**HIGH CONFIDENCE (>80%)**: Execute immediately with tool calls. After execution, show:',
@@ -159,21 +149,12 @@ export const getActionQueueFormat = (_currentDate: string): string[] => [
   `  - Use ${TIME_FORMAT_SPEC} format for dueDate (e.g., "2025-11-04 18:00:00-05:00").`,
 ];
 
-/**
- * Standard verification log format
- */
-export const getVerificationLogFormat = (currentDate: string): string =>
-  `### Verification log — bullet list confirming that each executed due date marked "today" uses ${currentDate} in the tool call output and persisted value (include reminder title + due date).`;
-
-/**
- * Build standard output format sections
- */
 export const buildStandardOutputFormat = (
   currentDate: string,
 ): {
   actionQueue: string[];
   verificationLog: string;
 } => ({
-  actionQueue: getActionQueueFormat(currentDate),
-  verificationLog: getVerificationLogFormat(currentDate),
+  actionQueue: ACTION_QUEUE_FORMAT,
+  verificationLog: `### Verification log — bullet list confirming that each executed due date marked "today" uses ${currentDate} in the tool call output and persisted value (include reminder title + due date).`,
 });

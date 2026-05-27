@@ -76,10 +76,8 @@ export const TIME = {
  * Error message templates
  */
 export const MESSAGES = {
-  /** Error messages */
   ERROR: {
     UNKNOWN_TOOL: (name: string) => `Unknown tool: ${name}`,
-
     UNKNOWN_ACTION: (tool: string, action: string) =>
       `Unknown ${tool} action: ${action}`,
   },

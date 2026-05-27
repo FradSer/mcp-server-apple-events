@@ -143,12 +143,14 @@ describe('published npm tarball', () => {
   });
 
   describe('size sanity', () => {
-    it('keeps the unpacked tarball under 2MB', () => {
-      // The pre-allowlist tarball was 4.1MB unpacked. 2MB is a comfortable
-      // ceiling that still leaves room for the dist/ output to grow, while
-      // catching accidental re-inclusion of the vendor/ tree (~1.7MB).
+    it('keeps the unpacked tarball under 3MB', () => {
+      // The universal `bin/EventKitCLI` is ~1.5MB on its own (arm64 + x86_64
+      // slices); the rest of the tarball (compiled dist/, scripts, Swift
+      // sources, READMEs) sits in the 600-800KB band. 3MB leaves headroom
+      // for dist/ to grow while still flagging accidental re-inclusion of
+      // the vendor/ tree (~1.7MB) or test files via dist/.
       const unpacked = pack.files.reduce((sum, f) => sum + f.size, 0);
-      expect(unpacked).toBeLessThan(2 * 1024 * 1024);
+      expect(unpacked).toBeLessThan(3 * 1024 * 1024);
     });
   });
 });
