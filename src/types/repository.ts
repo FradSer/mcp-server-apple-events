@@ -85,6 +85,7 @@ export interface EventJSON {
   id: string;
   title: string;
   calendar: string;
+  calendarId: string;
   startDate: string;
   endDate: string;
   notes: string | null;

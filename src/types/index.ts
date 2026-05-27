@@ -146,6 +146,7 @@ export interface CalendarEvent {
   startDate: string;
   endDate: string;
   calendar: string;
+  calendarId: string;
   notes?: string;
   location?: string;
   structuredLocation?: StructuredLocation;
