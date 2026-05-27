@@ -642,12 +642,12 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Optional range start for scoped calendar discovery. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601.",
+            "Optional range start for scoped calendar discovery. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601. If only one of startDate/endDate is supplied, the other is filled in as a 14-day window from the bound that was given.",
         },
         endDate: {
           type: 'string',
           description:
-            'Optional range end for scoped calendar discovery. When used with startDate, only calendars with events in the range are returned.',
+            'Optional range end for scoped calendar discovery. When used with startDate, only calendars with at least one event in the range are returned, each annotated with the in-range event count (recurring events count as one per instance). endDate must be on or after startDate.',
         },
         filterAccount: {
           type: 'string',
