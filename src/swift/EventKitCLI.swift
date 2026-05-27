@@ -1771,6 +1771,12 @@ func main() {
                 let endDateStr = parser.get("endDate")
                 let startDate = startDateStr != nil ? manager.parseDate(from: startDateStr!) : nil
                 let endDate = endDateStr != nil ? manager.parseDate(from: endDateStr!) : nil
+                if startDateStr != nil && startDate == nil {
+                    throw NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid startDate format."])
+                }
+                if endDateStr != nil && endDate == nil {
+                    throw NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid endDate format."])
+                }
                 let events = try manager.getEvents(startDate: startDate, endDate: endDate, calendarName: parser.get("filterCalendar"), search: parser.get("search"), availability: parser.get("availability"), accountName: parser.get("filterAccount"))
                 print(String(data: try encoder.encode(StandardOutput(result: EventsReadResult(calendars: manager.getCalendars(), events: events))), encoding: .utf8)!)
             case "read-calendars":
