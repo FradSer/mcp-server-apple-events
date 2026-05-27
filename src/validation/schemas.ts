@@ -210,6 +210,15 @@ function createSafeTextSchema(
   return optional ? schema.optional() : schema;
 }
 
+// Days per month (1-indexed via month - 1). February is treated as 28; leap
+// years are accounted for explicitly below so we don't have to round-trip
+// through `Date`, which has surprising behavior for years 0-99 (mapped to
+// 1900-1999) and for Feb 29 seeded from a non-leap year.
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+const isLeapYear = (year: number): boolean =>
+  (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+
 function isValidDateInput(value: string): boolean {
   const match = DATE_PATTERN.exec(value);
   if (!match) return false;
@@ -221,17 +230,13 @@ function isValidDateInput(value: string): boolean {
   const minute = match[5] === undefined ? 0 : Number(match[5]);
   const second = match[6] === undefined ? 0 : Number(match[6]);
 
+  if (month < 1 || month > 12) return false;
   if (hour > 23 || minute > 59 || second > 59) return false;
 
-  const date = new Date(Date.UTC(0, month - 1, day));
-  date.setUTCFullYear(year);
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) {
-    return false;
-  }
+  const monthDays = DAYS_IN_MONTH[month - 1];
+  if (monthDays === undefined) return false; // unreachable: month is 1-12
+  const maxDay = month === 2 && isLeapYear(year) ? 29 : monthDays;
+  if (day < 1 || day > maxDay) return false;
 
   const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
   return !Number.isNaN(new Date(normalized).getTime());

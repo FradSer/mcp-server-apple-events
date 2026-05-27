@@ -51,9 +51,7 @@ const parseDateInput = (value: string): Date | undefined => {
 const requireParsedDateInput = (value: string, fieldName: string): Date => {
   const parsed = parseDateInput(value);
   if (!parsed) {
-    throw new Error(
-      `${fieldName} must be a valid date before reading calendar events.`,
-    );
+    throw new Error(`${fieldName} must be a valid date`);
   }
   return parsed;
 };

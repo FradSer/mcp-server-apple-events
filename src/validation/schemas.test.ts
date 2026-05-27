@@ -168,6 +168,22 @@ describe('ValidationSchemas', () => {
         expect(() => SafeDateSchema.parse('0005-01-01')).not.toThrow();
       });
 
+      it('should accept Feb 29 in leap years', () => {
+        // Regression: an earlier implementation seeded the validity check
+        // from year 0 (mapped to 1900, a non-leap year), so every Feb 29
+        // overflowed to Mar 1 and was rejected even for real leap years.
+        expect(() => SafeDateSchema.parse('2024-02-29')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2000-02-29')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2028-02-29')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2024-02-29 23:59:59')).not.toThrow();
+      });
+
+      it('should reject Feb 29 in non-leap years', () => {
+        expect(() => SafeDateSchema.parse('2023-02-29')).toThrow();
+        expect(() => SafeDateSchema.parse('1900-02-29')).toThrow();
+        expect(() => SafeDateSchema.parse('2100-02-29')).toThrow();
+      });
+
       it('should accept undefined dates', () => {
         expect(() => SafeDateSchema.parse(undefined)).not.toThrow();
       });
@@ -177,6 +193,8 @@ describe('ValidationSchemas', () => {
         expect(() => SafeDateSchema.parse('not-a-date')).toThrow();
         expect(() => SafeDateSchema.parse('2024-13-45')).toThrow();
         expect(() => SafeDateSchema.parse('2024-02-30')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-00-15')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-01-00')).toThrow();
         expect(() => SafeDateSchema.parse('2024-01-15oops')).toThrow();
         expect(() => SafeDateSchema.parse('2024-01-15 25:00:00')).toThrow();
       });
