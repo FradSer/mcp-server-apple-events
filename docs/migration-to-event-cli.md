@@ -112,6 +112,21 @@ implications:
 A dedicated `event calendar list-calendars` command would let us drop this
 shim; track upstream at <https://github.com/FradSer/event/issues>.
 
+### Single-item lookup by ID
+
+`event` has no dedicated "get by id" command for reminders or calendar
+events — the prior embedded binary's `read-by-id` action has no equivalent.
+`findReminderById` (`src/utils/reminderRepository.ts`) fetches the full
+reminder set (including completed) and does an in-memory `.find`;
+`findEventById` (`src/utils/calendarRepository.ts`) does the same over a wide
+±4-year `calendar list` window. This means every single-reminder or
+single-event read transfers the whole result set over the CLI pipe. For
+accounts with very large reminder lists or event histories this is slower
+than a direct by-id fetch would be, but there is no narrower `event` query to
+fall back to. A dedicated by-id command in `event` would let both methods
+drop the full scan; track upstream at
+<https://github.com/FradSer/event/issues>.
+
 ## Notes-field conventions are unchanged
 
 Tags (`[#tag]`) and subtasks (`---SUBTASKS---…---END SUBTASKS---`) continue to
