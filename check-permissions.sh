@@ -22,7 +22,9 @@ if [[ ! -x ./bin/event-disclaim ]]; then
     if [[ -n "$PARENT_PID" ]]; then
         CUR=$PARENT_PID
         while [[ -n "$CUR" && $CUR -gt 1 ]]; do
-            PATH_TO_PID=$(ps -o command= -p $CUR 2>/dev/null | awk '{print $1}')
+            # `comm=` returns the executable path without arguments, so app
+            # paths containing spaces (e.g. "Claude Desktop.app") stay intact.
+            PATH_TO_PID=$(ps -o comm= -p $CUR 2>/dev/null)
             if [[ "$PATH_TO_PID" == *".app/"* ]]; then
                 APP_NAME=$(echo "$PATH_TO_PID" | tr '/' '\n' | grep '\.app$' | head -n 1)
                 if [[ -n "$APP_NAME" ]]; then

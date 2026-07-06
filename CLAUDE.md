@@ -132,7 +132,7 @@ return handleAsyncOperation(async () => {
 - Tests use Jest with ts-jest ESM preset
 - Mock the CLI executor in `src/utils/__mocks__/eventCli.ts` (`jest.mock('./eventCli.js')`)
 - Coverage thresholds live in `jest.config.mjs` (currently 93/78/96/94 statements/branches/functions/lines)
-- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release`, copies to `bin/event`, signs with `--options runtime`, no `--entitlements`)
+- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release` with the `__info_plist` sectcreate flags, copies to `bin/event`, compiles `bin/event-disclaim`, signs with `--options runtime`; `event` gets `--entitlements scripts/event.entitlements`, the shim gets none)
 - `src/utils/projectUtils.ts` is excluded from coverage (import.meta.url incompatible with Jest)
 
 ### Notes Field Conventions
