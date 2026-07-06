@@ -6,9 +6,8 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-// `exec`-style command-string building was sensitive to shell metacharacters in
-// derived paths (spaces, `$`, backticks). `execFile` with an argv array spawns
-// the tool directly, so paths and tokens are passed through unchanged.
+// Use `execFile` with an argv array so paths containing shell metacharacters
+// (spaces, `$`, backticks) reach the tool intact.
 async function run(command, args, options = {}) {
   try {
     const { stdout, stderr } = await execFileAsync(command, args, options);
@@ -20,9 +19,12 @@ async function run(command, args, options = {}) {
   }
 }
 
-// macOS 26+ SDKs ship a Foundation.swiftinterface that older swiftc cannot parse,
-// surfacing as `could not build module 'Foundation'` / `SDK is not supported by
-// the compiler`. See: https://github.com/FradSer/mcp-server-apple-events/issues/85
+// macOS 26+ SDKs ship a Foundation.swiftinterface that older swiftc cannot
+// parse, surfacing as `could not build module 'Foundation'` /
+// `SDK is not supported by the compiler` (see issue #85). The vendored
+// `event` package requires Swift 6.2+ (swift-tools-version in its
+// Package.swift) and is compiled by the host's swiftc, so we still need the
+// same minimum-version guard.
 const MIN_SWIFT_MAJOR_FOR_MACOS_26 = 6;
 const MIN_SWIFT_MINOR_FOR_MACOS_26 = 3;
 
@@ -107,7 +109,7 @@ function looksLikeFoundationModuleMismatch(stderr) {
  *   2. First "Developer ID Application:" cert found in the login keychain
  *   3. Ad-hoc ("-") with a warning
  *
- * A Developer ID signature makes EventKitCLI the TCC-responsible process
+ * A Developer ID signature makes `event` the TCC-responsible process
  * regardless of which parent process spawned it, fixing Calendar permission
  * dialogs on OCLP Sequoia and macOS 26+.
  */
@@ -157,26 +159,28 @@ async function resolveSigningIdentity() {
   return '-';
 }
 
+// `event`'s Package.swift declares an SSH dependency
+// (git@github.com:FradSer/apple-sync-kit.git). Most build hosts have no SSH
+// key registered with GitHub, so a plain `swift build` fails resolving that
+// dependency. `event`'s own CI works around this by rewriting SSH GitHub
+// URLs to HTTPS for the duration of the git-fetch child process (see
+// FradSer/event@bf34a4c, "Configure git to fetch SSH dependencies via
+// HTTPS"). Do the same here via `GIT_CONFIG_*` env vars scoped only to the
+// `swift build` child processes below — this never touches the invoking
+// user's global ~/.gitconfig.
+const SSH_TO_HTTPS_GIT_ENV = {
+  GIT_CONFIG_COUNT: '1',
+  GIT_CONFIG_KEY_0: 'url.https://github.com/.insteadOf',
+  GIT_CONFIG_VALUE_0: 'git@github.com:',
+};
+
 async function main() {
-  console.log('Building Swift binary for Apple Reminders MCP Server...');
+  console.log(
+    'Building vendored `event` CLI (FradSer/event) for Apple Reminders MCP Server...',
+  );
 
   if (process.platform !== 'darwin') {
-    console.error(
-      'Error: This project requires macOS to compile Swift binaries.',
-    );
-    process.exit(1);
-  }
-
-  const [swift, sdk] = await Promise.all([getSwiftVersion(), getSdkVersion()]);
-  if (!swift) {
-    console.error('Error: Swift compiler (swiftc) not found via xcrun.');
-    console.error(
-      'Please install Xcode or Xcode Command Line Tools: xcode-select --install',
-    );
-    process.exit(1);
-  }
-  if (isSdkTooNewForSwift(swift, sdk)) {
-    printIncompatibilityRemediation(swift, sdk);
+    console.error('Error: This project requires macOS to compile `event`.');
     process.exit(1);
   }
 
@@ -196,127 +200,167 @@ async function main() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const projectRoot = path.resolve(__dirname, '..');
-  const scriptDir = path.join(projectRoot, 'src', 'swift');
-  const sourceFile = path.join(scriptDir, 'EventKitCLI.swift');
-  const infoPlistFile = path.join(scriptDir, 'Info.plist');
-  const entitlementsFile = path.join(scriptDir, 'EventKitCLI.entitlements');
+  const eventPackagePath = path.join(projectRoot, 'vendor', 'event');
+  const eventPackageManifest = path.join(eventPackagePath, 'Package.swift');
   const binDir = path.join(projectRoot, 'bin');
-  const outputFile = path.join(binDir, 'EventKitCLI');
-  const arm64File = path.join(binDir, 'EventKitCLI-arm64');
-  const x86File = path.join(binDir, 'EventKitCLI-x86_64');
+  const outputFile = path.join(binDir, 'event');
 
-  try {
-    await fs.access(sourceFile);
-  } catch (_error) {
-    console.error(`Error: Source file not found: ${sourceFile}`);
-    process.exit(1);
-  }
+  // Run the independent pre-flight checks (toolchain probe, manifest access,
+  // bin dir creation) concurrently so `pnpm install`'s postinstall hook
+  // doesn't serialise them.
+  const [swift, sdk, manifestExists] = await Promise.all([
+    getSwiftVersion(),
+    getSdkVersion(),
+    fs.access(eventPackageManifest).then(
+      () => true,
+      () => false,
+    ),
+    fs.mkdir(binDir, { recursive: true }),
+  ]);
 
-  try {
-    await fs.access(infoPlistFile);
-  } catch (_error) {
-    console.error(`Error: Info.plist not found: ${infoPlistFile}`);
+  if (!swift) {
+    console.error('Error: Swift compiler (swiftc) not found via xcrun.');
     console.error(
-      'Info.plist is required for EventKit permissions to work properly.',
+      'Please install Xcode or Xcode Command Line Tools: xcode-select --install',
     );
     process.exit(1);
   }
-
-  try {
-    await fs.access(entitlementsFile);
-  } catch (_error) {
-    console.error(`Error: Entitlements file not found: ${entitlementsFile}`);
+  if (isSdkTooNewForSwift(swift, sdk)) {
+    printIncompatibilityRemediation(swift, sdk);
+    process.exit(1);
+  }
+  if (!manifestExists) {
     console.error(
-      'Entitlements file is required for TCC permission dialogs on macOS 26+.',
+      `Error: vendor/event/Package.swift not found at ${eventPackageManifest}`,
     );
+    console.error(
+      'The `event` source tree is vendored as a git submodule. Run:',
+    );
+    console.error('  git submodule update --init --recursive');
     process.exit(1);
   }
 
-  await fs.mkdir(binDir, { recursive: true });
+  console.log(
+    `Compiling vendor/event in release mode (swift ${swift.raw}, sdk ${sdk?.raw ?? 'unknown'})...`,
+  );
 
   // Build a universal (fat) binary containing both arm64 and x86_64 slices.
-  // Each slice is compiled separately with its appropriate deployment target,
-  // then merged via lipo. This ensures the same npm package works on both
-  // Apple Silicon (arm64, macOS 11+) and Intel (x86_64, macOS 10.15+) Macs.
-  // `xcrun -sdk macosx swiftc` keeps the toolchain and SDK xcode-select resolves
-  // consistent. -Xlinker embeds Info.plist so macOS shows EventKit prompts.
-  const frameworkArgs = ['-framework', 'EventKit', '-framework', 'Foundation'];
-  const linkerArgs = [
-    '-Xlinker',
-    '-sectcreate',
-    '-Xlinker',
-    '__TEXT',
-    '-Xlinker',
-    '__info_plist',
-    '-Xlinker',
-    infoPlistFile,
-  ];
-
+  // Modern SwiftPM (as of this Swift toolchain) has no public `--arch` flag
+  // that emits a universal Mach-O from a single `swift build` invocation, so
+  // each slice is built separately — pinned to `event`'s own deployment
+  // target (`platforms: [.macOS(.v14)]` in vendor/event/Package.swift) via
+  // `--triple`, with a dedicated `--scratch-path` so the two builds don't
+  // clobber each other's `.build` cache — then merged with `lipo`. This
+  // mirrors what the old EventKitCLI build (`swiftc -target ...` per slice +
+  // `lipo -create`) did for the same reason.
+  const gitEnv = { ...process.env, ...SSH_TO_HTTPS_GIT_ENV };
   const slices = [
-    { file: arm64File, target: 'arm64-apple-macos11.0', label: 'arm64' },
-    { file: x86File, target: 'x86_64-apple-macos10.15', label: 'x86_64' },
+    {
+      triple: 'arm64-apple-macosx14.0',
+      scratchPath: path.join(eventPackagePath, '.build-arm64'),
+      label: 'arm64',
+    },
+    {
+      triple: 'x86_64-apple-macosx14.0',
+      scratchPath: path.join(eventPackagePath, '.build-x86_64'),
+      label: 'x86_64',
+    },
   ];
 
-  console.log(`Compiling ${sourceFile} (arm64 + x86_64)...`);
-
+  let builtBinaries;
   try {
-    // Slices are independent — compile in parallel to roughly halve build time.
-    // `xcrun -sdk macosx swiftc` keeps the toolchain and SDK xcode-select
-    // resolves consistent across both slices.
+    // Slices are independent — build in parallel to roughly halve build time.
     const results = await Promise.all(
       slices.map((s) =>
-        run('xcrun', [
-          '-sdk',
-          'macosx',
-          'swiftc',
-          '-target',
-          s.target,
-          '-o',
-          s.file,
-          sourceFile,
-          ...frameworkArgs,
-          ...linkerArgs,
-        ]),
+        run(
+          'swift',
+          [
+            'build',
+            '-c',
+            'release',
+            '--package-path',
+            eventPackagePath,
+            '--scratch-path',
+            s.scratchPath,
+            '--triple',
+            s.triple,
+          ],
+          { env: gitEnv },
+        ),
       ),
     );
     results.forEach(({ stdout, stderr }, i) => {
       if (stderr)
-        console.warn(`${slices[i].label} compiler warnings:\n${stderr}`);
+        console.warn(`${slices[i].label} build warnings:\n${stderr}`);
       if (stdout) console.log(stdout);
     });
+
+    // Ask SwiftPM for the actual release output directory per slice instead
+    // of assuming a `.build/<triple>/release` layout, since that convention
+    // is not a stable public contract.
+    builtBinaries = await Promise.all(
+      slices.map(async (s) => {
+        const { stdout: binPathOut } = await run(
+          'swift',
+          [
+            'build',
+            '--show-bin-path',
+            '-c',
+            'release',
+            '--package-path',
+            eventPackagePath,
+            '--scratch-path',
+            s.scratchPath,
+            '--triple',
+            s.triple,
+          ],
+          { env: gitEnv },
+        );
+        return path.join(binPathOut.trim(), 'event');
+      }),
+    );
 
     await run('xcrun', [
       'lipo',
       '-create',
       '-output',
       outputFile,
-      arm64File,
-      x86File,
+      ...builtBinaries,
     ]);
-
-    await Promise.all([fs.unlink(arm64File), fs.unlink(x86File)]);
 
     console.log(
       `Compilation successful! Universal binary saved to ${outputFile}`,
     );
+  } catch (error) {
+    console.error('Compilation failed!');
+    const stderr = error?.stderr ?? '';
+    if (looksLikeFoundationModuleMismatch(stderr)) {
+      printIncompatibilityRemediation(swift, sdk);
+    }
+    console.error(error);
+    process.exit(1);
+  }
 
-    await fs.chmod(outputFile, '755');
-    console.log('Binary is now executable.');
+  await fs.chmod(outputFile, '755');
+  console.log('Binary is now executable.');
 
-    const signingIdentity = await resolveSigningIdentity();
-    const isAdHoc = signingIdentity === '-';
+  const signingIdentity = await resolveSigningIdentity();
+  const isAdHoc = signingIdentity === '-';
 
-    console.log(
-      isAdHoc
-        ? 'Signing with ad-hoc identity...'
-        : `Signing with Developer ID: ${signingIdentity}`,
-    );
+  console.log(
+    isAdHoc
+      ? 'Signing with ad-hoc identity...'
+      : `Signing with Developer ID: ${signingIdentity}`,
+  );
 
-    // --options runtime: Hardened Runtime, required on macOS 26+ for the TCC
-    //   system to show calendar permission dialogs when the binary runs as a
-    //   subprocess of a GUI application (e.g. Claude Desktop).
-    // --timestamp: secure timestamp from Apple CA; included for Developer ID
-    //   signatures to ensure long-term validity; omitted for ad-hoc (no CA).
+  // --options runtime: Hardened Runtime, required on macOS 26+ for the TCC
+  //   system to attribute Reminders/Calendar permission dialogs to the host
+  //   GUI app (e.g. Claude Desktop) that spawned the binary as a subprocess.
+  // --timestamp: secure timestamp from Apple CA; included for Developer ID
+  //   signatures to ensure long-term validity; omitted for ad-hoc (no CA).
+  // No entitlements file is passed: `event` carries no embedded Info.plist
+  //   of its own; the host process supplies the usage-description strings.
+  try {
     const codesignArgs = [
       '--force',
       '--sign',
@@ -324,8 +368,6 @@ async function main() {
       '--options',
       'runtime',
       ...(isAdHoc ? [] : ['--timestamp']),
-      '--entitlements',
-      entitlementsFile,
       outputFile,
     ];
     const { stdout: csOut, stderr: csErr } = await run(
@@ -340,19 +382,16 @@ async function main() {
     }
     console.log(
       isAdHoc
-        ? 'Binary signed (ad-hoc) with hardened runtime and entitlements.'
-        : 'Binary signed with Developer ID, hardened runtime, and entitlements.',
+        ? 'Binary signed (ad-hoc) with hardened runtime.'
+        : 'Binary signed with Developer ID and hardened runtime.',
     );
-    console.log('Swift binary build complete!');
   } catch (error) {
-    console.error('Compilation failed!');
-    const stderr = error?.stderr ?? '';
-    if (looksLikeFoundationModuleMismatch(stderr)) {
-      printIncompatibilityRemediation(swift, sdk);
-    }
+    console.error('codesign failed!');
     console.error(error);
     process.exit(1);
   }
+
+  console.log('event CLI build complete!');
 }
 
 main().catch((error) => {
