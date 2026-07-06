@@ -32,4 +32,4 @@ macOS permissions for Reminders and Calendar are requested by the vendored [`eve
 - If notDetermined: requests permission automatically via `requestFullAccessToReminders` / `requestFullAccessToEvents`
 - If denied / restricted / write-only: emits `Error: Permission denied: …` on stderr with a non-zero exit code
 
-`src/utils/eventCli.ts` maps that stderr message into a domain-typed `CliPermissionError`. TypeScript handlers do not duplicate permission checks. Permission prompts are attributed to whichever host process spawns `bin/event` (e.g. Claude Desktop) — `event` carries no embedded Info.plist of its own.
+`src/utils/eventCli.ts` maps that stderr message into a domain-typed `CliPermissionError`. TypeScript handlers do not duplicate permission checks. `eventCli.ts` spawns `bin/event` through the `bin/event-disclaim` TCC shim (falling back to a direct, host-attributed spawn when the shim is absent), so permission prompts are attributed to `event` itself (it embeds an Info.plist with the EventKit usage strings) rather than to the host MCP client (issue #93).

@@ -67,9 +67,13 @@ src/
 
 The vendored `event` Swift CLI lives at `vendor/event/` (git submodule pinned to
 a specific FradSer/event SHA). `scripts/build-event.mjs` compiles it via
-`swift build -c release`, copies the result to `bin/event`, and signs the
-binary with hardened runtime so macOS 26+ TCC can attribute permission
-dialogs to the host GUI app (e.g. Claude Desktop).
+`swift build -c release` with `scripts/event-Info.plist` linked into the
+`__TEXT,__info_plist` section, copies the result to `bin/event`, compiles the
+TCC disclaim shim `scripts/disclaim.c` to `bin/event-disclaim`, and signs both
+with hardened runtime — `event` additionally with the
+`com.apple.security.personal-information.{calendars,reminders}` entitlements
+(`scripts/event.entitlements`) so it can request EventKit access as its own
+TCC-responsible process.
 
 ### Data Flow
 
@@ -83,7 +87,9 @@ dialogs to the host GUI app (e.g. Claude Desktop).
 
 ### Permission Handling
 
-The `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied, restricted, or write-only, it emits an `Error: Permission denied: …` line on stderr; `eventCli.ts` maps that into a domain-typed `CliPermissionError` (`'reminders'` or `'calendars'`) which the host surfaces verbatim. There is no embedded Info.plist on the binary — permission prompts are attributed to the host process (e.g. Claude Desktop) per the macOS 26+ TCC model.
+The `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied, restricted, or write-only, it emits an `Error: Permission denied: …` line on stderr; `eventCli.ts` maps that into a domain-typed `CliPermissionError` (`'reminders'` or `'calendars'`) which the host surfaces verbatim.
+
+`eventCli.ts` spawns `bin/event` through the `bin/event-disclaim` shim (falling back to a direct spawn when the shim is absent). The shim disclaims TCC responsibility at spawn time (the same private `responsibility_spawnattrs_setdisclaim` API Chromium and LLDB use), so `event` — which embeds its usage strings in an Info.plist section and carries the personal-information entitlements — is its own TCC-responsible process. Permission prompts are therefore attributed to `event` itself and work from any MCP client, including desktop apps that declare no EventKit usage strings (issue #93).
 
 ### Swift Bridge
 
@@ -126,7 +132,7 @@ return handleAsyncOperation(async () => {
 - Tests use Jest with ts-jest ESM preset
 - Mock the CLI executor in `src/utils/__mocks__/eventCli.ts` (`jest.mock('./eventCli.js')`)
 - Coverage thresholds live in `jest.config.mjs` (currently 93/78/96/94 statements/branches/functions/lines)
-- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release`, copies to `bin/event`, signs with `--options runtime`, no `--entitlements`)
+- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release` with the `__info_plist` sectcreate flags, copies to `bin/event`, compiles `bin/event-disclaim`, signs with `--options runtime`; `event` gets `--entitlements scripts/event.entitlements`, the shim gets none)
 - `src/utils/projectUtils.ts` is excluded from coverage (import.meta.url incompatible with Jest)
 
 ### Notes Field Conventions

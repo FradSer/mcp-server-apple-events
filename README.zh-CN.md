@@ -70,7 +70,7 @@ npm 发布包自带预构建的通用签名 `bin/event` 二进制，使用 `npx`
 
 ## macOS 权限要求（Sonoma 14+ / Sequoia 15）
 
-Apple 将提醒事项和日历权限拆分为「仅写入」与「完全访问」范围。vendor 的 `event` CLI 没有内嵌 Info.plist——权限提示归属于启动它的宿主进程（Claude Desktop、Cursor、Terminal 等），因此需要由宿主应用的 bundle 声明这些隐私键：
+Apple 将提醒事项和日历权限拆分为「仅写入」与「完全访问」范围。vendored 的 `event` CLI 内嵌了自己的 Info.plist（bundle id 为 `me.frad.event`），声明了以下隐私键：
 
 - `NSRemindersUsageDescription`
 - `NSRemindersFullAccessUsageDescription`
@@ -79,9 +79,11 @@ Apple 将提醒事项和日历权限拆分为「仅写入」与「完全访问�
 - `NSCalendarsFullAccessUsageDescription`
 - `NSCalendarsWriteOnlyAccessUsageDescription`
 
+MCP 服务通过随附的 `bin/event-disclaim` shim 启动 `event`，在 spawn 时主动放弃（disclaim）TCC 责任归属——macOS 因此会把权限请求归到 `event` 自己头上，而不是启动 MCP 服务的宿主应用。首次调用 EventKit 时弹出的授权对话框显示的是 **“event”**，授权记录也以 `event` 的名义出现在 `系统设置 > 隐私与安全性 > 提醒事项 / 日历` 中。授权一次即可覆盖本机上所有 MCP 客户端（Claude Desktop、Codex Desktop、Cursor、终端客户端等）。
+
 当 CLI 检测到 `notDetermined` 授权状态时，会调用 `requestFullAccessToReminders` / `requestFullAccessToEvents`，macOS 会弹出对应的授权对话框。如果系统遗失权限记录，可运行 `./check-permissions.sh` 重新触发请求。
 
-若 Claude 的工具调用依旧遇到权限错误，请参阅下方的 *桌面端 MCP 客户端* 一节——那里描述了 responsible 进程归属问题以及推荐的解决方案。
+若 Claude 的工具调用依旧遇到权限错误，请参阅下方的 *桌面端 MCP 客户端* 一节。
 
 ### 日历读取报错排查
 
@@ -95,33 +97,19 @@ Apple 将提醒事项和日历权限拆分为「仅写入」与「完全访问�
 
 ### 桌面端 MCP 客户端（Claude Desktop、Codex Desktop 等）
 
-macOS 把提醒事项与日历的访问权限归属到 **responsible（负责）** 进程——也就是启动 MCP 服务的桌面应用本身，而不是 `event` 子进程。要让 EventKit 弹出授权对话框，负责应用的 bundle 必须在自己的 `Info.plist` 中声明 `NSRemindersUsageDescription` / `NSCalendarsUsageDescription`（macOS Sonoma 之后还需要写入权限或完全访问权限的对应键）。如果这些键缺失，TCC 会在请求到达 EventKit 之前就拒绝它，CLI 会返回：
+macOS 会把提醒事项与日历的访问权限归属到 **responsible（负责）** 进程。默认情况下，负责进程是启动 MCP 服务的桌面应用本身，而不是 `event` 子进程——如果该应用的 bundle 缺少 `NSRemindersUsageDescription` / `NSCalendarsUsageDescription`（Codex Desktop 只声明了 `NSAppleEventsUsageDescription`），TCC 会在请求到达 EventKit 之前就拒绝它：
 
 ```text
 Reminder permission denied. Unknown error
 ```
 
-——即使同一个二进制在 Terminal 中可以正常工作。完整的 TCC 日志见 [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93)。目前 Codex Desktop 只声明了 `NSAppleEventsUsageDescription`，这就是它会撞到这堵墙的原因。
+自 [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93) 修复之后，本服务自己打破了这条归属链：`bin/event` 始终经由 `bin/event-disclaim` shim 启动，shim 使用与 Chromium、LLDB 相同的 responsibility-disclaim spawn 属性，让 `event` 成为自己的 TCC 负责进程。`event` 内嵌了所需的 usage description，并以 `com.apple.security.personal-information.{reminders,calendars}` hardened-runtime entitlements 签名，因此无论哪个桌面客户端启动本服务，EventKit 授权对话框都能正常弹出。
 
-这是 macOS 层面的限制，单凭 MCP 服务无法绕过——只有桌面客户端自己在 `Info.plist` 里加上对应的 usage description 才能根治。在等待上游修复期间，下面的两个方案能让本服务保持可用：
+升级后的注意事项：
 
-**可靠方案——使用基于终端的 MCP 客户端启动本服务。** Codex CLI、Claude Code 等在终端中启动的客户端会继承 Terminal / iTerm2 已经持有的 `kTCCServiceReminders` / `kTCCServiceCalendar` 授权，本服务无需修改即可正常调用 EventKit：
-
-```bash
-# 在 Terminal / iTerm2 里运行，由它充当 responsible app
-codex
-# 或
-claude
-```
-
-**部分方案——AppleScript 路由（仅当桌面应用已声明 `NSAppleEventsUsageDescription` 时有效）。** 运行：
-
-```bash
-osascript -e 'tell application "Reminders" to get name of lists'
-osascript -e 'tell application "Calendar" to get name of calendars'
-```
-
-会触发一次 **Automation** 授权请求（`kTCCServiceAppleEvents`），允许负责应用控制 `com.apple.reminders` 与 `com.apple.iCal`。但这并不会顺带创建 `kTCCServiceReminders` / `kTCCServiceCalendar` 授权记录，所以一个直接调用 EventKit 的 Swift CLI 在 host bundle 缺少 usage description 时仍然会被拒。只有当你的客户端能够端到端走 AppleScript 时这套方案才生效（本服务目前并不会这么做）。
+- 授权对话框（以及 `系统设置 > 隐私与安全性` 中的条目）现在归属于 **`event`**，而不是 Terminal / Claude Desktop / Codex Desktop。之前授予这些宿主应用的权限不再作用于 MCP 服务；`event` 的新授权请求批准一次即可。
+- 使用 ad-hoc（本地）构建时，macOS 会将授权绑定到二进制的精确哈希——重新构建 `bin/event` 会再次弹窗。npm 预编译发行版使用 Developer ID 签名，授权可跨版本保持稳定。本地构建可通过设置 `APPLE_SIGNING_IDENTITY` 获得同样的稳定性。
+- 直接运行 `./bin/event`（不经过 shim）仍然沿用宿主归属，因此在 Terminal 中直接使用的行为与以前完全一致。
 
 **验证命令**
 
@@ -129,7 +117,7 @@ osascript -e 'tell application "Calendar" to get name of calendars'
 pnpm test -- src/__tests__/build-event.test.ts
 ```
 
-该测试用例锁定了 `scripts/build-event.mjs` 的构建契约：分别为 arm64 与 x86_64 两种架构各调用一次 `swift build -c release` 构建 vendored 子模块，用 `lipo` 合并为通用二进制 `bin/event`，并优先使用登录钥匙串中的 Developer ID Application 证书签名（找不到时回退为 ad-hoc 签名并给出警告），全程启用 hardened runtime。
+该测试用例锁定了 `scripts/build-event.mjs` 的构建契约：分别为 arm64 与 x86_64 两种架构各调用一次 `swift build -c release` 构建 vendored 子模块（并把 Info.plist 链接进 `__TEXT,__info_plist` 段），用 `lipo` 合并为通用二进制 `bin/event`，再从 `scripts/disclaim.c` 编译出 `bin/event-disclaim` shim，最后为两个二进制签名（优先使用登录钥匙串中的 Developer ID Application 证书，找不到时回退为 ad-hoc 签名并给出警告），全程启用 hardened runtime，`event` 还额外携带 personal-information entitlements。
 
 ### macOS 26 (Tahoe) 上 `could not build module 'Foundation'` 错误排查
 

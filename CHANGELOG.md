@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **EventKit permission prompts now appear from any desktop MCP client**
+  (Codex Desktop, Claude Desktop, Cursor, …) — fixes
+  [#93](https://github.com/FradSer/mcp-server-apple-events/issues/93).
+  Previously macOS TCC attributed the Reminders/Calendar request to the
+  desktop app that launched the server; when that app lacked the EventKit
+  usage strings (Codex Desktop ships none), TCC refused the request before
+  EventKit was reached and no prompt ever appeared. The server now spawns
+  `bin/event` through a new `bin/event-disclaim` shim (compiled from
+  `scripts/disclaim.c`) that disclaims TCC responsibility at spawn time —
+  the same mechanism Chromium and LLDB use — making `event` its own
+  responsible process. `event` now embeds an Info.plist
+  (`scripts/event-Info.plist`, bundle id `me.frad.event`) with all six
+  Reminders/Calendar usage strings and is signed with the
+  `com.apple.security.personal-information.{calendars,reminders}`
+  entitlements (`scripts/event.entitlements`).
+
+  **Upgrade note:** the permission prompt and the entry in
+  `System Settings > Privacy & Security` now belong to `event`, not to the
+  host app — approve the new prompt once. Grants previously given to
+  Terminal / Claude Desktop no longer cover the MCP server.
+
 ## [1.5.0] - 2026-05-14
 
 ### Changed (BREAKING)

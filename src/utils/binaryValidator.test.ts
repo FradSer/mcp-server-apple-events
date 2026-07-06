@@ -475,7 +475,7 @@ describe('binaryValidator', () => {
       const config = getEnvironmentBinaryConfig();
 
       expect(config.expectedHash).toBe('prod-hash-value');
-      expect(config.maxFileSize).toBe(50 * 1024 * 1024);
+      expect(config.maxFileSize).toBe(80 * 1024 * 1024);
       expect(config.requireAbsolutePath).toBe(true);
     });
 
@@ -486,7 +486,7 @@ describe('binaryValidator', () => {
       const config = getEnvironmentBinaryConfig();
 
       expect(config.expectedHash).toBeUndefined();
-      expect(config.maxFileSize).toBe(50 * 1024 * 1024);
+      expect(config.maxFileSize).toBe(80 * 1024 * 1024);
     });
   });
 });

@@ -162,6 +162,7 @@ dist
 
 # Compiled Swift binaries
 /bin/event
+/bin/event-disclaim
 
 # vendored event package build output
 /vendor/event/.build/

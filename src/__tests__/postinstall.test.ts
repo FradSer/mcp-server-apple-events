@@ -9,21 +9,24 @@ const postinstallScriptPath = path.resolve(
 describe('postinstall.mjs skip-if-prebuilt check', () => {
   const postinstallScript = readFileSync(postinstallScriptPath, 'utf8');
 
-  it('checks for a pre-built, executable bin/event before attempting a build', () => {
+  it('checks for pre-built, executable bin/event and bin/event-disclaim before attempting a build', () => {
     expect(postinstallScript).toMatch(
       /path\.join\(\s*projectRoot\s*,\s*'bin'\s*,\s*'event'\s*\)/,
+    );
+    expect(postinstallScript).toMatch(
+      /path\.join\(\s*projectRoot\s*,\s*'bin'\s*,\s*'event-disclaim'\s*\)/,
     );
     expect(postinstallScript).toMatch(/fs\.access\([\s\S]*?constants\.X_OK/);
   });
 
-  it('exits immediately when the pre-built binary is found (npm install path)', () => {
+  it('exits immediately when the pre-built binaries are found (npm install path)', () => {
     expect(postinstallScript).toMatch(
-      /Pre-built `event` binary found, skipping source build\./,
+      /Pre-built `event` binaries found, skipping source build\./,
     );
     expect(postinstallScript).toMatch(/process\.exit\(0\)/);
   });
 
-  it('falls through to a source build only when the binary is missing', () => {
+  it('falls through to a source build only when a binary is missing', () => {
     expect(postinstallScript).toMatch(/await buildEvent\(\)/);
   });
 });

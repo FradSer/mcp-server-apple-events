@@ -15,6 +15,13 @@ export const FILE_SYSTEM = {
 
   /** Swift binary filename — points at the vendored `event` CLI (FradSer/event). */
   SWIFT_BINARY_NAME: 'event',
+
+  /**
+   * TCC disclaim shim filename — spawns `event` as its own TCC-responsible
+   * process so EventKit permission prompts work from desktop MCP clients
+   * that lack usage-description strings (issue #93).
+   */
+  DISCLAIM_BINARY_NAME: 'event-disclaim',
 } as const;
 
 /**

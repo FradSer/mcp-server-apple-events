@@ -11,15 +11,19 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const binDir = path.join(projectRoot, 'bin');
 const outputFile = path.join(binDir, 'event');
+const disclaimFile = path.join(binDir, 'event-disclaim');
+const stagingDir = path.join(binDir, '.notarize-staging');
 const zipFile = path.join(binDir, 'event.zip');
 
 async function main() {
-  try {
-    await fs.access(outputFile, fs.constants.F_OK);
-  } catch {
-    console.error(`Error: Binary not found at ${outputFile}`);
-    console.error('Run `pnpm run build:event` first.');
-    process.exit(1);
+  for (const file of [outputFile, disclaimFile]) {
+    try {
+      await fs.access(file, fs.constants.F_OK);
+    } catch {
+      console.error(`Error: Binary not found at ${file}`);
+      console.error('Run `pnpm run build:event` first.');
+      process.exit(1);
+    }
   }
 
   const appleId = process.env.APPLE_ID;
@@ -51,13 +55,14 @@ async function main() {
   }
 
   console.log('Creating zip archive for notarization...');
-  await execFileAsync('ditto', [
-    '-c',
-    '-k',
-    '--keepParent',
-    outputFile,
-    zipFile,
-  ]);
+  // Stage both binaries into a scratch directory so a single notarytool
+  // submission covers `event` and the `event-disclaim` shim, without
+  // sweeping up any stray files that may be sitting in bin/.
+  await fs.rm(stagingDir, { recursive: true, force: true });
+  await fs.mkdir(stagingDir, { recursive: true });
+  await fs.copyFile(outputFile, path.join(stagingDir, 'event'));
+  await fs.copyFile(disclaimFile, path.join(stagingDir, 'event-disclaim'));
+  await execFileAsync('ditto', ['-c', '-k', stagingDir, zipFile]);
 
   console.log(
     'Submitting to Apple notary service (this may take a few minutes)...',
@@ -91,8 +96,9 @@ async function main() {
       throw error;
     }
   } finally {
-    // Always clean up the zip regardless of outcome
+    // Always clean up the zip and staging dir regardless of outcome
     await fs.unlink(zipFile).catch(() => {});
+    await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
   }
 
   console.log('Notarization response:\n', submissionOutput);

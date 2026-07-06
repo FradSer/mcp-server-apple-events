@@ -30,8 +30,59 @@ describe('build-event.mjs code signing', () => {
     expect(buildScript).toMatch(/codesign[\s\S]*?--options[\s\S]*?runtime/);
   });
 
-  it('does not pass --entitlements (event has no embedded Info.plist)', () => {
-    expect(buildScript).not.toMatch(/--entitlements/);
+  it('signs event with the personal-information entitlements file', () => {
+    expect(buildScript).toMatch(/--entitlements/);
+    expect(buildScript).toMatch(/event\.entitlements/);
+  });
+});
+
+describe('build-event.mjs TCC self-attribution (issue #93)', () => {
+  const buildScript = readFileSync(buildScriptPath, 'utf8');
+  const infoPlist = readFileSync(
+    path.resolve(process.cwd(), 'scripts/event-Info.plist'),
+    'utf8',
+  );
+  const entitlements = readFileSync(
+    path.resolve(process.cwd(), 'scripts/event.entitlements'),
+    'utf8',
+  );
+
+  it('embeds the Info.plist into event via -sectcreate __TEXT __info_plist', () => {
+    expect(buildScript).toMatch(/-sectcreate/);
+    expect(buildScript).toMatch(/__info_plist/);
+    expect(buildScript).toMatch(/event-Info\.plist/);
+  });
+
+  it('Info.plist declares a bundle identifier and all EventKit usage strings', () => {
+    expect(infoPlist).toMatch(/CFBundleIdentifier/);
+    expect(infoPlist).toMatch(/NSRemindersUsageDescription/);
+    expect(infoPlist).toMatch(/NSRemindersFullAccessUsageDescription/);
+    expect(infoPlist).toMatch(/NSRemindersWriteOnlyAccessUsageDescription/);
+    expect(infoPlist).toMatch(/NSCalendarsUsageDescription/);
+    expect(infoPlist).toMatch(/NSCalendarsFullAccessUsageDescription/);
+    expect(infoPlist).toMatch(/NSCalendarsWriteOnlyAccessUsageDescription/);
+  });
+
+  it('entitlements request personal-information calendars and reminders', () => {
+    expect(entitlements).toMatch(
+      /com\.apple\.security\.personal-information\.calendars/,
+    );
+    expect(entitlements).toMatch(
+      /com\.apple\.security\.personal-information\.reminders/,
+    );
+  });
+
+  it('compiles the disclaim shim from scripts/disclaim.c to bin/event-disclaim', () => {
+    expect(buildScript).toMatch(/disclaim\.c/);
+    expect(buildScript).toMatch(/event-disclaim/);
+  });
+
+  it('builds the shim universal (arm64 + x86_64) and signs it', () => {
+    // clang accepts repeated -arch flags and emits a fat Mach-O directly.
+    expect(buildScript).toMatch(/'-arch',\s*'arm64'/);
+    expect(buildScript).toMatch(/'-arch',\s*'x86_64'/);
+    // The shim is signed without entitlements; only event gets them.
+    expect(buildScript).toMatch(/signBinary\(disclaimOutputFile,\s*\[\]\)/);
   });
 });
 
