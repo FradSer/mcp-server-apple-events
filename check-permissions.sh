@@ -7,7 +7,7 @@ echo "Checking Apple Events MCP Server permissions..."
 
 # Check EventKit permissions
 echo "Checking EventKit (Reminders) permission..."
-EVENTKIT_CHECK=$(./bin/EventKitCLI --action read --limit 1 2>&1)
+EVENTKIT_CHECK=$(./bin/event reminders list --json 2>&1)
 if [[ $? -eq 0 ]]; then
     echo "EventKit permission granted."
 else
@@ -18,7 +18,7 @@ else
 fi
 
 echo "Checking EventKit (Calendars) permission..."
-CALENDAR_CHECK=$(./bin/EventKitCLI --action read-calendars 2>&1)
+CALENDAR_CHECK=$(./bin/event calendar list --json 2>&1)
 if [[ $? -eq 0 ]]; then
     echo "Calendar permission granted."
 else
