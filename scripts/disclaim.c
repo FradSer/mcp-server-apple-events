@@ -45,7 +45,15 @@ int main(int argc, char *argv[]) {
             strerror(rc));
     return 127;
   }
-  posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETEXEC);
+  rc = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETEXEC);
+  if (rc != 0) {
+    /* Without SETEXEC, posix_spawn would fork instead of exec-replacing
+       this process — fail loudly rather than leave a confusing parent. */
+    posix_spawnattr_destroy(&attr);
+    fprintf(stderr, "event-disclaim: posix_spawnattr_setflags: %s\n",
+            strerror(rc));
+    return 127;
+  }
   if (responsibility_spawnattrs_setdisclaim) {
     responsibility_spawnattrs_setdisclaim(&attr, 1);
   }
