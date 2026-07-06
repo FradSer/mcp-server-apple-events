@@ -57,8 +57,10 @@ describe('build-event.mjs TCC self-attribution (issue #93)', () => {
     expect(infoPlist).toMatch(/CFBundleIdentifier/);
     expect(infoPlist).toMatch(/NSRemindersUsageDescription/);
     expect(infoPlist).toMatch(/NSRemindersFullAccessUsageDescription/);
+    expect(infoPlist).toMatch(/NSRemindersWriteOnlyAccessUsageDescription/);
     expect(infoPlist).toMatch(/NSCalendarsUsageDescription/);
     expect(infoPlist).toMatch(/NSCalendarsFullAccessUsageDescription/);
+    expect(infoPlist).toMatch(/NSCalendarsWriteOnlyAccessUsageDescription/);
   });
 
   it('entitlements request personal-information calendars and reminders', () => {
