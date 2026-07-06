@@ -307,7 +307,7 @@ describe('ReminderRepository (event CLI backend)', () => {
   });
 
   describe('updateReminder', () => {
-    it('passes the supported flag subset and only adds --completed when isCompleted=true', async () => {
+    it('passes the supported flag subset and adds --completed <bool> when isCompleted is set', async () => {
       mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-1' }));
 
       await reminderRepository.updateReminder({
@@ -343,6 +343,38 @@ describe('ReminderRepository (event CLI backend)', () => {
         '--no-shortcuts',
         '--json',
       ]);
+    });
+
+    it('passes --completed false when isCompleted=false (un-complete)', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-uc' }));
+
+      await reminderRepository.updateReminder({
+        id: 'rem-uc',
+        isCompleted: false,
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id',
+        'rem-uc',
+        '--completed',
+        'false',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('omits --completed entirely when isCompleted is undefined', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-np' }));
+
+      await reminderRepository.updateReminder({
+        id: 'rem-np',
+        newTitle: 'No completion change',
+      });
+
+      const callArgs = mockJson.mock.calls[0][0];
+      expect(callArgs).not.toContain('--completed');
     });
 
     // Cross-list move + un-complete guards live in handleUpdateReminder
