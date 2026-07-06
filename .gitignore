@@ -165,6 +165,8 @@ dist
 
 # vendored event package build output
 /vendor/event/.build/
+/vendor/event/.build-arm64/
+/vendor/event/.build-x86_64/
 /vendor/event/.swiftpm/
 
 # yarn v2
