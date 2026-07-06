@@ -339,6 +339,7 @@ describe('ReminderRepository (event CLI backend)', () => {
         '--priority',
         '5',
         '--completed',
+        'true',
         '--no-shortcuts',
         '--json',
       ]);
