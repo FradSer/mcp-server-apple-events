@@ -21,19 +21,6 @@ export function addOptionalArg(
 }
 
 /**
- * Adds an optional boolean argument to the args array if the value is defined
- */
-export function addOptionalBooleanArg(
-  args: string[],
-  flag: string,
-  value: boolean | undefined,
-): void {
-  if (value !== undefined) {
-    args.push(flag, String(value));
-  }
-}
-
-/**
  * Adds an optional number argument to the args array if the value is defined
  */
 export function addOptionalNumberArg(
@@ -43,19 +30,6 @@ export function addOptionalNumberArg(
 ): void {
   if (value !== undefined) {
     args.push(flag, String(value));
-  }
-}
-
-/**
- * Adds an optional JSON argument to the args array if the value is defined
- */
-export function addOptionalJsonArg(
-  args: string[],
-  flag: string,
-  value: object | undefined,
-): void {
-  if (value) {
-    args.push(flag, JSON.stringify(value));
   }
 }
 

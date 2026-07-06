@@ -89,12 +89,6 @@ export const handleCreateCalendarEvent = async (
       calendar: validatedArgs.targetCalendar,
       notes: validatedArgs.note,
       location: validatedArgs.location,
-      structuredLocation: validatedArgs.structuredLocation,
-      url: validatedArgs.url,
-      isAllDay: validatedArgs.isAllDay,
-      availability: validatedArgs.availability,
-      alarms: validatedArgs.alarms,
-      recurrenceRules: validatedArgs.recurrenceRules,
     });
     return formatSuccessMessage('created', 'event', event.title, event.id);
   }, 'create calendar event');
@@ -113,18 +107,8 @@ export const handleUpdateCalendarEvent = async (
       title: validatedArgs.title,
       startDate: validatedArgs.startDate,
       endDate: validatedArgs.endDate,
-      calendar: validatedArgs.targetCalendar,
       notes: validatedArgs.note,
       location: validatedArgs.location,
-      structuredLocation: validatedArgs.structuredLocation,
-      url: validatedArgs.url,
-      isAllDay: validatedArgs.isAllDay,
-      availability: validatedArgs.availability,
-      alarms: validatedArgs.alarms,
-      clearAlarms: validatedArgs.clearAlarms,
-      recurrenceRules: validatedArgs.recurrenceRules,
-      clearRecurrence: validatedArgs.clearRecurrence,
-      span: validatedArgs.span,
     });
     return formatSuccessMessage('updated', 'event', event.title, event.id);
   }, 'update calendar event');
@@ -174,7 +158,6 @@ export const handleReadCalendarEvents = async (
       calendarName: validatedArgs.filterCalendar,
       search: validatedArgs.search,
       availability: validatedArgs.availability,
-      accountName: validatedArgs.filterAccount,
     });
 
     return formatListMarkdown(
@@ -194,18 +177,25 @@ export const handleReadCalendars = async (
     const calendars = await calendarRepository.findCalendars({
       startDate: validatedArgs.startDate,
       endDate: validatedArgs.endDate,
-      accountName: validatedArgs.filterAccount,
     });
     return formatListMarkdown(
       'Calendars',
       calendars,
-      (calendar) => [
-        `- ${calendar.title} (${calendar.account}) (ID: ${calendar.id})${
+      (calendar) => {
+        // The vendored `event` CLI doesn't expose EventKit calendar
+        // identifiers, so calendars synthesized from the read window have
+        // `id === title`. Skip the trailing `(ID: …)` then since it just
+        // duplicates the title.
+        const idSuffix =
+          calendar.id && calendar.id !== calendar.title
+            ? ` (ID: ${calendar.id})`
+            : '';
+        const countSuffix =
           calendar.eventCount !== undefined
             ? ` - ${calendar.eventCount} event${calendar.eventCount === 1 ? '' : 's'}`
-            : ''
-        }`,
-      ],
+            : '';
+        return [`- ${calendar.title}${idSuffix}${countSuffix}`];
+      },
       'No calendars found.',
     );
   }, 'read calendars');

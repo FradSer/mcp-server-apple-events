@@ -6,6 +6,11 @@ const notarizeScriptPath = path.resolve(process.cwd(), 'scripts/notarize.mjs');
 describe('notarize.mjs', () => {
   const notarizeScript = readFileSync(notarizeScriptPath, 'utf8');
 
+  it('targets the event binary, not the retired EventKitCLI one', () => {
+    expect(notarizeScript).toMatch(/path\.join\(\s*binDir\s*,\s*'event'\s*\)/);
+    expect(notarizeScript).not.toMatch(/EventKitCLI/);
+  });
+
   it('skips missing notarization env vars only outside CI', () => {
     expect(notarizeScript).toMatch(/APPLE_ID/);
     expect(notarizeScript).toMatch(/APPLE_APP_PASSWORD/);
@@ -15,10 +20,10 @@ describe('notarize.mjs', () => {
     expect(notarizeScript).toMatch(/process\.exit\(1\)/);
   });
 
-  it('uses ditto to create zip archive for submission', () => {
+  it('uses ditto to create a zip archive for submission', () => {
     expect(notarizeScript).toMatch(/execFileAsync\(\s*'ditto'/);
     expect(notarizeScript).toMatch(/'--keepParent'/);
-    expect(notarizeScript).toMatch(/EventKitCLI\.zip/);
+    expect(notarizeScript).toMatch(/event\.zip/);
   });
 
   it('submits via xcrun notarytool with --wait flag', () => {
@@ -31,7 +36,7 @@ describe('notarize.mjs', () => {
     expect(notarizeScript).toMatch(/status.*Accepted/i);
   });
 
-  it('cleans up zip file after submission', () => {
+  it('cleans up the zip file after submission', () => {
     expect(notarizeScript).toMatch(/unlink.*zip/i);
   });
 

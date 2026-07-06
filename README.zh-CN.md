@@ -1,4 +1,4 @@
-# Apple Events MCP Server ![Version 1.4.0](https://img.shields.io/badge/version-1.4.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+# Apple Events MCP Server ![Version 1.5.0](https://img.shields.io/badge/version-1.5.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 [![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
 
@@ -7,9 +7,9 @@
 一个为 macOS 提供原生 Apple Reminders 和 Calendar 集成的 Model Context Protocol (MCP) 服务器。该服务器允许你通过标准化接口与 Apple Reminders 和 Calendar Events 进行交互，具有全面的管理功能。
 
 > [!NOTE]
-> **后续方向：[event](https://github.com/FradSer/event) —— 纯 Swift 实现的 macOS Apple Reminders 与 Calendar 命令行工具。**
+> **本服务器的实现基础：[event](https://github.com/FradSer/event) —— 纯 Swift 实现的 macOS Apple Reminders 与 Calendar 命令行工具。**
 >
-> 对于脚本化、自动化以及在终端中直接使用的场景，我们后续建议优先使用独立的 [`event`](https://github.com/FradSer/event) CLI。它通过 EventKit 提供与本服务器一致的提醒事项 / 日历 / 列表 / 子任务 / 标签操作，并原生支持 Markdown 与 JSON 输出。后续版本的 `mcp-server-apple-events` 计划改为依赖 `event` CLI 来替代当前内置的 `EventKitCLI` 二进制，使两个项目共用同一套经过验证的 Swift 实现。
+> 从 v1.5.0 起，本服务器的 EventKit 后端切换为独立的 [`event`](https://github.com/FradSer/event) CLI。`event` 以 git submodule 的形式 vendor 在 `vendor/event` 下，在 `pnpm install` 时自动构建为 `bin/event`，无需另行 `brew install`。两个项目从此共享同一份 Swift 代码。少量 MCP 工具字段（写入式 alarms / recurrence / locationTrigger、reminder 的 `location`、calendar 的 `url` / `structuredLocation` / `availability` / `isAllDay` 写入、update 时的跨日历搬移、list 的 `color`、以及 `filterAccount`）在此次切换中被移除，原因是 `event` 目前尚未暴露相应的 CLI 标志；读取路径保持不变。完整移除字段表与对应替代方案见 [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md)。对于本 MCP 服务器以外的脚本与自动化场景，建议直接使用 [`event`](https://github.com/FradSer/event) CLI。
 
 ## 功能特性
 
@@ -76,7 +76,7 @@ Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访�
 
 ### 桌面端 MCP 客户端（Claude Desktop、Codex Desktop 等）
 
-macOS 把提醒事项与日历的访问权限归属到 **responsible（负责）** 进程——也就是启动 MCP 服务的桌面应用本身，而不是 `EventKitCLI` 子进程。要让 EventKit 弹出授权对话框，负责应用的 bundle 必须在自己的 `Info.plist` 中声明 `NSRemindersUsageDescription` / `NSCalendarsUsageDescription`（macOS Sonoma 之后还需要写入权限或完全访问权限的对应键）。如果这些键缺失，TCC 会在请求到达 EventKit 之前就拒绝它，Swift CLI 会返回：
+macOS 把提醒事项与日历的访问权限归属到 **responsible（负责）** 进程——也就是启动 MCP 服务的桌面应用本身，而不是 `event` 子进程。要让 EventKit 弹出授权对话框，负责应用的 bundle 必须在自己的 `Info.plist` 中声明 `NSRemindersUsageDescription` / `NSCalendarsUsageDescription`（macOS Sonoma 之后还需要写入权限或完全访问权限的对应键）。如果这些键缺失，TCC 会在请求到达 EventKit 之前就拒绝它，CLI 会返回：
 
 ```text
 Reminder permission denied. Unknown error
@@ -107,16 +107,16 @@ osascript -e 'tell application "Calendar" to get name of calendars'
 **验证命令**
 
 ```bash
-pnpm test -- src/swift/Info.plist.test.ts
+pnpm test -- src/__tests__/build-event.test.ts
 ```
 
-测试会确保所有必须的 usage-description 字段在发布前均已就绪。
+该测试用例锁定了 `scripts/build-event.mjs` 的构建契约：分别为 arm64 与 x86_64 两种架构各调用一次 `swift build -c release` 构建 vendored 子模块，用 `lipo` 合并为通用二进制 `bin/event`，并优先使用登录钥匙串中的 Developer ID Application 证书签名（找不到时回退为 ad-hoc 签名并给出警告），全程启用 hardened runtime。
 
 ### macOS 26 (Tahoe) 上 `could not build module 'Foundation'` 错误排查
 
 如果 `pnpm build` 失败并提示 `could not build module 'Foundation'`（或 `SDK is not supported by the compiler`），说明你的 Swift 工具链版本低于 macOS 26 SDK 的要求。macOS 26+ SDK 包含的 `Foundation.swiftinterface` 需要 **Swift 6.3 或更高版本**；而 macOS 26 早期版本附带的 Command Line Tools 包含的是 Swift 6.2.x，无法解析该文件。详见 [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85)。
 
-`pnpm build:swift` 现在会检测此不匹配并打印相同的解决方案，但如果手动遇到此问题：
+`pnpm build:event` 现在会检测此不匹配并打印相同的解决方案，但如果手动遇到此问题：
 
 1. 从 App Store 安装 Xcode 26.x（附带 Swift 6.3+），或
 2. 将 Command Line Tools 更新到附带 Swift 6.3+ 的版本：
@@ -708,18 +708,31 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 **工具名称**：`calendar_calendars`
 
-用于返回 EventKit 中可用的日历集合。在创建或更新事件前可先确认日历标识。
+返回读取窗口内至少包含一个事件的日历集合。在创建或更新事件前可先确认可用的日历名称。可选的日期范围会缩小该窗口，并为每个日历标注窗口内的事件数量。
 
 **操作**：`read`
 
+**可选参数**：
+
+- `startDate`：限定日历发现范围的起始日期
+- `endDate`：限定日历发现范围的结束日期
+
 **主要处理函数**：
-- `handleReadCalendars()` - 列出所有日历的 ID 与名称
+- `handleReadCalendars()` - 列出所有日历的 ID 与名称；提供日期范围时返回带事件计数的限定日历列表
 
 #### 使用示例
 
 ```json
 {
   "action": "read"
+}
+```
+
+```json
+{
+  "action": "read",
+  "startDate": "2026-05-04",
+  "endDate": "2026-05-11"
 }
 ```
 
@@ -730,12 +743,14 @@ code %APPDATA%\Claude\claude_desktop_config.json
   "content": [
     {
       "type": "text",
-      "text": "### Calendars (Total: 3)\n- Work (ID: cal-1)\n- Personal (ID: cal-2)\n- Shared (ID: cal-3)"
+      "text": "### Calendars (Total: 3)\n- Work - 5 events\n- Personal - 2 events\n- Shared - 1 event"
     }
   ],
   "isError": false
 }
 ```
+
+注意：vendor 的 `event` CLI 没有 EventKit 日历标识符，因此合成的 `id` 与日历 `title` 相同；当两者一致时，Markdown 输出会省略该 ID。
 
 #### 响应格式
 
@@ -946,17 +961,17 @@ const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
 
 ## 开发
 
-1. 使用 pnpm 安装依赖（保持 Swift 桥接与 TypeScript 版本一致）：
+1. 使用 pnpm 安装依赖（同时通过 postinstall 自动从 `vendor/event` 子模块构建 `bin/event`）：
 ```bash
 pnpm install
 ```
 
-2. 在启动前构建 Swift 二进制（TypeScript 使用运行时执行）：
+2. 在启动前构建 TypeScript 与 vendored `event` CLI：
 ```bash
 pnpm build
 ```
 
-3. 运行全量测试，验证 TypeScript、Swift 桥接和提示模板：
+3. 运行全量测试，验证 TypeScript 仓库层、Zod 校验、构建脚本与提示模板：
 ```bash
 pnpm test
 ```
@@ -968,13 +983,15 @@ pnpm exec biome check
 
 ### 嵌套目录启动
 
-CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或编辑器任务运行器启动，服务器也能在向上最多十层目录内定位 `package.json` 并加载随附的 Swift 二进制。若你自定义目录结构，请确保清单文件仍在该查找深度之内，以维持这一保证。
+CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或编辑器任务运行器启动，服务器也能在向上最多十层目录内定位 `package.json` 并加载随附的 `bin/event` 二进制。若你自定义目录结构，请确保清单文件仍在该查找深度之内，以维持这一保证。
 
 ### 可用脚本
 
-- `pnpm build` - 构建 TypeScript 和 Swift 二进制文件（运行前必需）
-- `pnpm build:swift` - 仅构建 Swift 二进制文件
-- `pnpm test` - 运行 Jest 测试套件
+- `pnpm build` - 构建 TypeScript 与 vendored `event` CLI（启动服务器前必需）
+- `pnpm build:event` - 仅构建 vendored `event` CLI（运行 `swift build -c release` 编译 `vendor/event` 并生成 `bin/event`）
+- `pnpm dev` - 通过 tsx 以文件监视模式运行 TypeScript 开发服务器（运行时 TS 执行）
+- `pnpm start` - 通过 stdio 启动 MCP 服务器（如果没有构建则自动回退到运行时 TS）
+- `pnpm test` - 运行完整的 Jest 测试套件
 - `pnpm check` - 运行 Biome 格式化和 TypeScript 类型检查
 
 ### 依赖
@@ -996,8 +1013,7 @@ CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或�
 - `@biomejs/biome 2.4.15` - 代码格式化和静态检查
 
 **构建工具：**
-
-- Swift 二进制文件用于原生 macOS 集成
+- vendored `event` Swift CLI（`vendor/event` 子模块）用于原生 macOS EventKit 集成
 - TypeScript 编译用于跨平台兼容性
 
 

@@ -4,7 +4,12 @@
  */
 
 import type { Reminder } from '../types/index.js';
-import { applyReminderFilters, type ReminderFilters } from './dateFiltering.js';
+import type { ReminderJSON } from '../types/repository.js';
+import {
+  applyReminderFilters,
+  prefilterReminderJsons,
+  type ReminderFilters,
+} from './dateFiltering.js';
 
 /**
  * Factory function to create test reminders with sensible defaults
@@ -375,6 +380,110 @@ describe('DateFiltering', () => {
         tags: ['nonexistent'],
       });
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('prefilterReminderJsons', () => {
+    const jsonFixture = (overrides: Partial<ReminderJSON>): ReminderJSON =>
+      ({
+        id: 'rem-1',
+        title: 'Fixture',
+        isCompleted: false,
+        list: 'Default',
+        notes: null,
+        url: null,
+        dueDate: null,
+        priority: 0,
+        locationTrigger: null,
+        ...overrides,
+      }) as ReminderJSON;
+
+    it('passes everything through when no structural filter is set', () => {
+      const reminders = [jsonFixture({ id: 'a' }), jsonFixture({ id: 'b' })];
+      expect(prefilterReminderJsons(reminders, {})).toEqual(reminders);
+    });
+
+    it('keeps only reminders matching the priority filter', () => {
+      const reminders = [
+        jsonFixture({ id: 'high', priority: 1 }),
+        jsonFixture({ id: 'medium', priority: 5 }),
+        jsonFixture({ id: 'none', priority: 0 }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, { priority: 'high' });
+      expect(result.map((r) => r.id)).toEqual(['high']);
+    });
+
+    it('keeps only recurring reminders when recurring=true', () => {
+      const reminders = [
+        jsonFixture({ id: 'plain' }),
+        jsonFixture({
+          id: 'weekly',
+          recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
+        }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, { recurring: true });
+      expect(result.map((r) => r.id)).toEqual(['weekly']);
+    });
+
+    it('keeps location-based reminders with a top-level locationTrigger', () => {
+      const reminders = [
+        jsonFixture({ id: 'none' }),
+        jsonFixture({
+          id: 'top-level',
+          locationTrigger: {
+            title: 'Office',
+            latitude: 1,
+            longitude: 2,
+            proximity: 'enter',
+          },
+        }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, {
+        locationBased: true,
+      });
+      expect(result.map((r) => r.id)).toEqual(['top-level']);
+    });
+
+    it('keeps location-based reminders with a configured alarm trigger', () => {
+      const reminders = [
+        jsonFixture({ id: 'no-alarm' }),
+        jsonFixture({
+          id: 'alarm-enter',
+          alarms: [
+            {
+              locationTrigger: {
+                title: 'Home',
+                latitude: 1,
+                longitude: 2,
+                proximity: 'enter',
+              },
+            },
+          ],
+        }),
+        jsonFixture({
+          id: 'alarm-none',
+          alarms: [
+            {
+              locationTrigger: {
+                title: 'Unconfigured',
+                latitude: 1,
+                longitude: 2,
+                proximity: 'none',
+              },
+            },
+          ],
+        }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, {
+        locationBased: true,
+      });
+      // alarms with proximity='none' are unconfigured — they shouldn't
+      // surface as location-based.
+      expect(result.map((r) => r.id)).toEqual(['alarm-enter']);
     });
   });
 });

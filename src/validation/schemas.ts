@@ -424,95 +424,6 @@ const PriorityValueSchema = z
   })
   .optional();
 
-/**
- * Recurrence rule schema for repeating reminders
- */
-const RecurrenceRuleObjectSchema = z.object({
-  frequency: z.enum([
-    'minutely',
-    'hourly',
-    'daily',
-    'weekly',
-    'monthly',
-    'yearly',
-  ]),
-  interval: z.number().int().positive().default(1),
-  endDate: SafeDateSchema,
-  occurrenceCount: z.number().int().positive().optional(),
-  daysOfWeek: z
-    .array(z.number().int().min(1).max(7))
-    .optional()
-    .refine((arr: number[] | undefined) => !arr || arr.length <= 7, {
-      message: 'daysOfWeek cannot have more than 7 entries',
-    }),
-  daysOfMonth: z
-    .array(z.number().int().min(1).max(31))
-    .optional()
-    .refine((arr: number[] | undefined) => !arr || arr.length <= 31, {
-      message: 'daysOfMonth cannot have more than 31 entries',
-    }),
-  monthsOfYear: z
-    .array(z.number().int().min(1).max(12))
-    .optional()
-    .refine((arr: number[] | undefined) => !arr || arr.length <= 12, {
-      message: 'monthsOfYear cannot have more than 12 entries',
-    }),
-});
-
-const RecurrenceRuleSchema = RecurrenceRuleObjectSchema.optional();
-
-const RecurrenceRulesSchema = z.array(RecurrenceRuleObjectSchema).optional();
-
-/**
- * Location trigger schema for geofence-based reminders
- */
-const LocationTriggerObjectSchema = z.object({
-  title: createSafeTextSchema(1, VALIDATION.MAX_TITLE_LENGTH, 'Location title'),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  radius: z.number().positive().default(100),
-  proximity: z.enum(['enter', 'leave']),
-});
-
-const LocationTriggerSchema = LocationTriggerObjectSchema.optional();
-
-const StructuredLocationSchema = z
-  .object({
-    title: createSafeTextSchema(
-      1,
-      VALIDATION.MAX_TITLE_LENGTH,
-      'Location title',
-    ),
-    latitude: z.number().min(-90).max(90).optional(),
-    longitude: z.number().min(-180).max(180).optional(),
-    radius: z.number().positive().optional(),
-  })
-  .optional();
-
-const AlarmTypeSchema = z
-  .enum(['display', 'audio', 'procedure', 'email'])
-  .optional();
-
-const AlarmSchema = z
-  .object({
-    relativeOffset: z.number().finite().optional(),
-    absoluteDate: SafeDateSchema,
-    locationTrigger: LocationTriggerObjectSchema.optional(),
-    alarmType: AlarmTypeSchema,
-  })
-  .refine(
-    (alarm) =>
-      [alarm.relativeOffset, alarm.absoluteDate, alarm.locationTrigger].filter(
-        (value) => value !== undefined,
-      ).length === 1,
-    {
-      message:
-        'Alarm must specify exactly one of relativeOffset, absoluteDate, or locationTrigger',
-    },
-  );
-
-const AlarmArraySchema = z.array(AlarmSchema).optional();
-
 const AvailabilitySchema = z
   .enum(['not-supported', 'busy', 'free', 'tentative', 'unavailable'])
   .optional();
@@ -551,29 +462,14 @@ const SubtaskTitleSchema = createSafeTextSchema(
 
 const SubtaskTitleArraySchema = z.array(SubtaskTitleSchema).optional();
 
-/**
- * Common field combinations for reusability
- */
+/** Fields accepted by `event reminders create`. */
 const BaseReminderFields = {
   title: SafeTextSchema,
-  startDate: SafeDateSchema,
   dueDate: SafeDateSchema,
   note: SafeNoteSchema,
   url: SafeUrlSchema,
-  location: createSafeTextSchema(
-    0,
-    VALIDATION.MAX_LOCATION_LENGTH,
-    'Location',
-    true,
-  ),
   targetList: SafeListNameSchema,
   priority: PriorityValueSchema,
-  completed: z.boolean().optional(),
-  alarms: AlarmArraySchema,
-  clearAlarms: z.boolean().optional(),
-  recurrenceRules: RecurrenceRulesSchema,
-  recurrence: RecurrenceRuleSchema,
-  locationTrigger: LocationTriggerSchema,
   tags: TagArraySchema,
   subtasks: SubtaskTitleArraySchema,
 };
@@ -597,6 +493,7 @@ export const ReadRemindersSchema = z.object({
   filterTags: TagArraySchema,
 });
 
+/** Fields accepted by `event reminders update`. */
 export const UpdateReminderSchema = z.object({
   id: SafeIdSchema,
   title: SafeTextSchema.optional(),
@@ -604,23 +501,9 @@ export const UpdateReminderSchema = z.object({
   dueDate: SafeDateSchema,
   note: SafeNoteSchema,
   url: SafeUrlSchema,
-  location: createSafeTextSchema(
-    0,
-    VALIDATION.MAX_LOCATION_LENGTH,
-    'Location',
-    true,
-  ),
   completed: z.boolean().optional(),
-  completionDate: SafeDateSchema,
   targetList: SafeListNameSchema,
   priority: PriorityValueSchema,
-  alarms: AlarmArraySchema,
-  clearAlarms: z.boolean().optional(),
-  recurrenceRules: RecurrenceRulesSchema,
-  recurrence: RecurrenceRuleSchema,
-  clearRecurrence: z.boolean().optional(),
-  locationTrigger: LocationTriggerSchema,
-  clearLocationTrigger: z.boolean().optional(),
   tags: TagArraySchema,
   addTags: TagArraySchema,
   removeTags: TagArraySchema,
@@ -630,7 +513,8 @@ export const DeleteReminderSchema = z.object({
   id: SafeIdSchema,
 });
 
-// Calendar event schemas
+// Calendar event schemas. All-day events are inferred from the date format
+// (bare `yyyy-MM-dd` without a time component).
 export const CreateCalendarEventSchema = z.object({
   title: SafeTextSchema,
   startDate: createRequiredDateSchema('Start date'),
@@ -642,19 +526,12 @@ export const CreateCalendarEventSchema = z.object({
     'Location',
     true,
   ),
-  structuredLocation: StructuredLocationSchema,
-  url: SafeUrlSchema,
-  isAllDay: z.boolean().optional(),
-  availability: AvailabilitySchema,
-  alarms: AlarmArraySchema,
-  recurrenceRules: RecurrenceRulesSchema,
   targetCalendar: SafeListNameSchema,
 });
 
 export const ReadCalendarEventsSchema = z.object({
   id: SafeIdSchema.optional(),
   filterCalendar: SafeListNameSchema,
-  filterAccount: SafeListNameSchema,
   search: SafeSearchSchema,
   availability: AvailabilitySchema,
   startDate: SafeDateSchema,
@@ -673,16 +550,6 @@ export const UpdateCalendarEventSchema = z.object({
     'Location',
     true,
   ),
-  structuredLocation: StructuredLocationSchema.nullable(),
-  url: SafeUrlSchema,
-  isAllDay: z.boolean().optional(),
-  availability: AvailabilitySchema,
-  alarms: AlarmArraySchema,
-  clearAlarms: z.boolean().optional(),
-  recurrenceRules: RecurrenceRulesSchema,
-  clearRecurrence: z.boolean().optional(),
-  span: SpanSchema,
-  targetCalendar: SafeListNameSchema,
 });
 
 export const DeleteCalendarEventSchema = z.object({
@@ -694,7 +561,6 @@ export const ReadCalendarsSchema = z
   .object({
     startDate: SafeDateSchema,
     endDate: SafeDateSchema,
-    filterAccount: SafeListNameSchema,
   })
   .superRefine((value, ctx) => {
     if (!value.startDate || !value.endDate) return;
@@ -720,28 +586,12 @@ export const ReadCalendarsSchema = z
 
 export const CreateReminderListSchema = z.object({
   name: RequiredListNameSchema,
-  color: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, {
-      message: 'Color must be a valid hex code (e.g., "#FF5733")',
-    })
-    .optional(),
 });
 
-export const UpdateReminderListSchema = z
-  .object({
-    name: RequiredListNameSchema,
-    newName: SafeListNameSchema,
-    color: z
-      .string()
-      .regex(/^#[0-9A-Fa-f]{6}$/, {
-        message: 'Color must be a valid hex code (e.g., "#FF5733")',
-      })
-      .optional(),
-  })
-  .refine((data) => data.newName || data.color, {
-    message: 'At least one of newName or color must be provided',
-  });
+export const UpdateReminderListSchema = z.object({
+  name: RequiredListNameSchema,
+  newName: RequiredListNameSchema,
+});
 
 export const DeleteReminderListSchema = z.object({
   name: RequiredListNameSchema,

@@ -5,10 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (initializes vendor/event submodule + builds bin/event)
 pnpm install
 
-# Build TypeScript and Swift binary (required before running)
+# Build TypeScript and the vendored `event` CLI (required before running)
 pnpm build
 
 # Run all tests
@@ -51,18 +51,25 @@ src/
 │       ├── calendarHandlers.ts
 │       └── shared.ts     # Common formatting utilities (extractAndValidateArgs, formatListMarkdown)
 ├── utils/
-│   ├── cliExecutor.ts    # Executes Swift binary, parses JSON responses
+│   ├── eventCli.ts       # Executes the vendored `event` Swift CLI, parses raw JSON
 │   ├── reminderRepository.ts  # Repository pattern for reminders
 │   ├── calendarRepository.ts  # Repository pattern for calendar events
 │   ├── binaryValidator.ts     # Secure binary path validation
-│   ├── errorHandling.ts       # Centralized async error wrapper
+│   ├── errorHandling.ts       # Centralized async error wrapper (CliUserError / CliPermissionError)
 │   ├── helpers.ts             # CLI argument builders (addOptionalArg, nullToUndefined)
-│   └── subtaskUtils.ts        # Subtask parsing and notes field manipulation
+│   ├── tagUtils.ts            # TS-side tag parsing/writing in the reminder notes field
+│   └── subtaskUtils.ts        # TS-side subtask parsing/writing in the reminder notes field
 ├── validation/
 │   └── schemas.ts        # Zod schemas for input validation
 └── types/
     └── index.ts          # TypeScript interfaces and type constants
 ```
+
+The vendored `event` Swift CLI lives at `vendor/event/` (git submodule pinned to
+a specific FradSer/event SHA). `scripts/build-event.mjs` compiles it via
+`swift build -c release`, copies the result to `bin/event`, and signs the
+binary with hardened runtime so macOS 26+ TCC can attribute permission
+dialogs to the host GUI app (e.g. Claude Desktop).
 
 ### Data Flow
 
@@ -70,27 +77,29 @@ src/
 2. `handlers.ts` routes to `handleToolCall()` in `tools/index.ts`
 3. Tool router dispatches to specific handler (e.g., `handleCreateReminder`)
 4. Handler validates input via Zod schema, calls repository
-5. Repository calls `executeCli()` which runs Swift binary for EventKit operations
-6. Swift binary performs EventKit operations, returns JSON
+5. Repository calls `executeEventCliJson()` / `executeEventCliPlain()`, which spawn `bin/event` for EventKit operations
+6. The `event` CLI performs the EventKit operations and prints either raw JSON to stdout or a plain status line ("Reminder deleted successfully"). Errors land on stderr as `Error: <message>` with a non-zero exit code.
 7. Response flows back through layers as `CallToolResult`
 
 ### Permission Handling
 
-The Swift binary handles all permission requests through EventKit's native API. If the app lacks permissions, the Swift CLI will return an error message indicating the permission issue, which is then surfaced to the user.
+The `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied, restricted, or write-only, it emits an `Error: Permission denied: …` line on stderr; `eventCli.ts` maps that into a domain-typed `CliPermissionError` (`'reminders'` or `'calendars'`) which the host surfaces verbatim. There is no embedded Info.plist on the binary — permission prompts are attributed to the host process (e.g. Claude Desktop) per the macOS 26+ TCC model.
 
 ### Swift Bridge
 
-The `bin/EventKitCLI` binary handles all native macOS EventKit operations. TypeScript communicates via JSON:
+The vendored `event` CLI (FradSer/event, pinned via the `vendor/event` submodule) is the only Swift code in this repository. TypeScript spawns it with raw flag args; no JSON envelope is used:
 
 ```typescript
-// CLI returns: { "status": "success", "result": {...} } or { "status": "error", "message": "..." }
-const result = await executeCli<Reminder[]>([
-  "--action",
-  "read",
-  "--showCompleted",
-  "true",
+// `event` prints raw JSON to stdout; errors land on stderr with non-zero exit.
+const reminders = await executeEventCliJson<ReminderJSON[]>([
+  'reminders',
+  'list',
+  '--completed',
+  '--json',
 ]);
 ```
+
+Non-JSON commands (e.g. `event reminders delete`) call `executeEventCliPlain` instead, which returns the trimmed stdout text.
 
 ## Key Patterns
 
@@ -115,9 +124,9 @@ return handleAsyncOperation(async () => {
 ## Testing
 
 - Tests use Jest with ts-jest ESM preset
-- Mock the CLI executor in `src/utils/__mocks__/cliExecutor.ts`
-- Coverage thresholds: 96% statements, 90% branches, 98% functions, 96% lines
-- Swift binary tests in `src/swift/Info.plist.test.ts` validate permission keys
+- Mock the CLI executor in `src/utils/__mocks__/eventCli.ts` (`jest.mock('./eventCli.js')`)
+- Coverage thresholds live in `jest.config.mjs` (currently 93/78/96/94 statements/branches/functions/lines)
+- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release`, copies to `bin/event`, signs with `--options runtime`, no `--entitlements`)
 - `src/utils/projectUtils.ts` is excluded from coverage (import.meta.url incompatible with Jest)
 
 ### Notes Field Conventions

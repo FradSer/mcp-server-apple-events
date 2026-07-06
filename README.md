@@ -1,4 +1,4 @@
-# Apple Events MCP Server ![Version 1.4.0](https://img.shields.io/badge/version-1.4.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+# Apple Events MCP Server ![Version 1.5.0](https://img.shields.io/badge/version-1.5.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 [![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
 
@@ -7,9 +7,9 @@ English | [简体中文](README.zh-CN.md)
 A Model Context Protocol (MCP) server that provides native integration with Apple Reminders and Calendar on macOS. This server allows you to interact with Apple Reminders and Calendar Events through a standardized interface with comprehensive management capabilities.
 
 > [!NOTE]
-> **Looking ahead: [event](https://github.com/FradSer/event) — a pure Swift CLI for Apple Reminders and Calendar on macOS.**
+> **How this server is built: [event](https://github.com/FradSer/event) — a pure Swift CLI for Apple Reminders and Calendar on macOS.**
 >
-> For scripting, automation, and direct terminal usage, we now recommend the standalone [`event`](https://github.com/FradSer/event) CLI. It exposes the same EventKit-backed reminder/calendar/list/subtask/tag operations this server uses today, with first-class Markdown and JSON output. Future versions of `mcp-server-apple-events` are planned to depend on the `event` CLI in place of the bundled `EventKitCLI` binary, so both projects can share a single, well-tested Swift implementation.
+> As of v1.5.0, this server's EventKit backend is the standalone [`event`](https://github.com/FradSer/event) CLI. It is vendored as a git submodule under `vendor/event` and built during `pnpm install`, so `bin/event` ships inside this package and no separate `brew install` is required. The two projects now share one Swift codebase. A small number of MCP tool fields (writable alarms / recurrence / location triggers, reminder `location`, calendar `url` / `structuredLocation` / `availability` / `isAllDay` writes, cross-calendar moves on update, list color, and `filterAccount`) were dropped in the swap because `event` does not expose CLI flags for them yet — read paths are preserved. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the full dropped-field table and workarounds. For scripting and automation outside this MCP server, prefer the standalone [`event`](https://github.com/FradSer/event) CLI directly.
 
 ## Features
 
@@ -55,7 +55,7 @@ A Model Context Protocol (MCP) server that provides native integration with Appl
 
 ## macOS Permission Requirements (Sonoma 14+ / Sequoia 15)
 
-Apple now separates Reminders and Calendar permissions into _write-only_ and _full-access_ scopes. The Swift bridge declares the following privacy keys so Claude can both read and write data when you approve access:
+Apple separates Reminders and Calendar permissions into _write-only_ and _full-access_ scopes. The vendored `event` CLI does not embed its own Info.plist — permission prompts are attributed to whichever host process spawns it (Claude Desktop, Cursor, Terminal, etc.), so the host application's bundle is what needs to declare the privacy strings:
 
 - `NSRemindersUsageDescription`
 - `NSRemindersFullAccessUsageDescription`
@@ -80,7 +80,7 @@ You can also re-run `./check-permissions.sh` (it now validates both Reminders an
 
 ### Desktop MCP clients (Claude Desktop, Codex Desktop, …)
 
-macOS attributes Reminders and Calendar access to the **responsible** process — the desktop app that launched the MCP server, not the `EventKitCLI` subprocess. For the EventKit prompt to appear, the responsible app's bundle must ship the `NSRemindersUsageDescription` / `NSCalendarsUsageDescription` keys (and on Sonoma+ the matching write-only or full-access variants). If those keys are missing, TCC refuses the request before EventKit is even reached, and the Swift CLI returns:
+macOS attributes Reminders and Calendar access to the **responsible** process — the desktop app that launched the MCP server, not the `event` subprocess. For the EventKit prompt to appear, the responsible app's bundle must ship the `NSRemindersUsageDescription` / `NSCalendarsUsageDescription` keys (and on Sonoma+ the matching write-only or full-access variants). If those keys are missing, TCC refuses the request before EventKit is even reached, and the CLI returns:
 
 ```text
 Reminder permission denied. Unknown error
@@ -111,16 +111,16 @@ triggers an **Automation** prompt (`kTCCServiceAppleEvents`) so the responsible 
 **Verification command**
 
 ```bash
-pnpm test -- src/swift/Info.plist.test.ts
+pnpm test -- src/__tests__/build-event.test.ts
 ```
 
-The test suite ensures all required usage-description strings are present before shipping the binary.
+This pins the contract of `scripts/build-event.mjs` — the build compiles `vendor/event` once per architecture (arm64 + x86_64) via `swift build -c release`, merges the two with `lipo` into a universal `bin/event`, and code-signs it (Developer ID Application certificate when available, ad-hoc fallback otherwise) with hardened runtime.
 
 ### Troubleshooting `could not build module 'Foundation'` on macOS 26 (Tahoe)
 
 If `pnpm build` fails with `could not build module 'Foundation'` (or `SDK is not supported by the compiler`), your Swift toolchain is older than the macOS 26 SDK requires. The macOS 26+ SDK ships a `Foundation.swiftinterface` that needs **Swift 6.3 or newer**; the Command Line Tools that shipped with the first macOS 26 point releases include Swift 6.2.x, which cannot parse it. See [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85).
 
-`pnpm build:swift` now detects this mismatch and prints the same remediation, but if you hit it manually:
+`pnpm build:event` now detects this mismatch and prints the same remediation, but if you hit it manually:
 
 1. Install Xcode 26.x from the App Store (ships Swift 6.3+), or
 2. Update Command Line Tools to a version that ships Swift 6.3+:
@@ -740,7 +740,7 @@ Handles EventKit calendar events (time blocks) with CRUD capabilities.
 
 **Tool Name**: `calendar_calendars`
 
-Returns the available calendars from EventKit. This is useful before creating or updating events to confirm calendar identifiers. Optional date range filters return only calendars that have events in the range and include event counts.
+Returns the available calendars, derived from the calendars that hold at least one event in the read window. Useful before creating or updating events to confirm valid calendar names. Optional date range filters scope that window and annotate each calendar with its in-range event count.
 
 **Actions**: `read`
 
@@ -748,11 +748,10 @@ Returns the available calendars from EventKit. This is useful before creating or
 
 - `startDate`: Range start for scoped calendar discovery
 - `endDate`: Range end for scoped calendar discovery
-- `filterAccount`: Account name such as `"Google"` or `"Exchange"`
 
 **Main Handler Function**:
 
-- `handleReadCalendars()` - List all calendars with IDs and titles, or scoped active calendars when a date range is supplied
+- `handleReadCalendars()` - List all calendars with IDs and titles, or scoped active calendars (with event counts) when a date range is supplied
 
 **Example Usage**
 
@@ -766,8 +765,7 @@ Returns the available calendars from EventKit. This is useful before creating or
 {
   "action": "read",
   "startDate": "2026-05-04",
-  "endDate": "2026-05-11",
-  "filterAccount": "Google"
+  "endDate": "2026-05-11"
 }
 ```
 
@@ -778,12 +776,16 @@ Returns the available calendars from EventKit. This is useful before creating or
   "content": [
     {
       "type": "text",
-      "text": "### Calendars (Total: 3)\n- Work (ID: cal-1)\n- Personal (ID: cal-2)\n- Shared (ID: cal-3)"
+      "text": "### Calendars (Total: 3)\n- Work - 5 events\n- Personal - 2 events\n- Shared - 1 event"
     }
   ],
   "isError": false
 }
 ```
+
+Note: the vendored `event` CLI has no EventKit calendar identifiers, so the
+synthesized `id` mirrors the calendar `title` and is omitted from the
+markdown output when they're identical.
 
 #### Response Formats
 
@@ -1013,13 +1015,13 @@ Update tags (add/remove):
 pnpm install
 ```
 
-1. Build the project (TypeScript and Swift binary) before invoking the CLI:
+1. Build the project (TypeScript + the vendored `event` Swift CLI) before invoking the server:
 
 ```bash
 pnpm build
 ```
 
-1. Run the full test suite to validate TypeScript, Swift bridge shims, and prompt templates:
+1. Run the full test suite to validate TypeScript repositories, schemas, build script, and prompt templates:
 
 ```bash
 pnpm test
@@ -1033,13 +1035,15 @@ pnpm exec biome check
 
 ### Launching from nested directories
 
-The CLI entry point includes a project-root fallback, so you can start the server from nested paths (for example `dist/` or editor task runners) without losing access to the bundled Swift binary. The bootstrapper walks up to ten directories to find `package.json`; if you customise the folder layout, keep the manifest reachable within that depth to retain the guarantee.
+The CLI entry point includes a project-root fallback, so you can start the server from nested paths (for example `dist/` or editor task runners) without losing access to the bundled `bin/event` binary. The bootstrapper walks up to ten directories to find `package.json`; if you customise the folder layout, keep the manifest reachable within that depth to retain the guarantee.
 
 ### Available Scripts
 
-- `pnpm build` - Build TypeScript and Swift binary (required before running)
-- `pnpm build:swift` - Build the Swift binary only
-- `pnpm test` - Run the Jest test suite
+- `pnpm build` - Build TypeScript and the vendored `event` CLI (required before starting the server)
+- `pnpm build:event` - Build the vendored `event` CLI only (compiles `vendor/event` via `swift build -c release` and emits `bin/event`)
+- `pnpm dev` - TypeScript development mode with file watching via tsx (runtime TS execution)
+- `pnpm start` - Start the MCP server over stdio (auto-fallback to runtime TS if no build)
+- `pnpm test` - Run the comprehensive Jest test suite
 - `pnpm check` - Run Biome formatting and TypeScript type checking
 
 ### Dependencies

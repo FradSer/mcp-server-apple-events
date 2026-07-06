@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-apple-events",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "MCP server that provides native integration with Apple Reminders and Calendar on macOS.",
   "author": "Frad Lee <https://frad.me>",
   "license": "MIT",
@@ -27,13 +27,10 @@
     "mcp-server-apple-events": "./dist/index.js"
   },
   "files": [
-    "bin/EventKitCLI",
+    "bin/event",
     "dist/",
     "scripts/postinstall.mjs",
-    "scripts/build-swift.mjs",
-    "src/swift/EventKitCLI.swift",
-    "src/swift/EventKitCLI.entitlements",
-    "src/swift/Info.plist",
+    "scripts/build-event.mjs",
     "CHANGELOG.md"
   ],
   "engines": {
@@ -42,10 +39,10 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build:ts": "tsc -p tsconfig.build.json",
-    "build:swift": "node scripts/build-swift.mjs",
-    "build": "pnpm run clean && pnpm run build:ts && pnpm run build:swift",
+    "build:event": "node scripts/build-event.mjs",
+    "build": "pnpm run clean && pnpm run build:ts && pnpm run build:event",
     "notarize": "node scripts/notarize.mjs",
-    "build:release": "pnpm run clean && pnpm run build:ts && pnpm run build:swift && pnpm run notarize",
+    "build:release": "pnpm run clean && pnpm run build:ts && pnpm run build:event && pnpm run notarize",
     "postinstall": "node scripts/postinstall.mjs",
     "test": "NODE_NO_WARNINGS=1 jest",
     "test:ci": "NODE_NO_WARNINGS=1 jest --coverage",

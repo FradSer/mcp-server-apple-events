@@ -37,13 +37,14 @@ export default {
   // Thresholds set just below the suite's current ceiling — leaves a thin
   // buffer for unrelated future patches without papering over regressions.
   // Branches still trails the other metrics; the largest remaining gaps are
-  // SSRF-blocking paths in `schemas.ts` and tag/date filter edge cases —
-  // good targets for the next coverage pass.
+  // SSRF-blocking paths in `schemas.ts`, defensive catch/null guards in
+  // `eventCli.ts`, and tag/date filter edge cases — good targets for the
+  // next coverage pass.
   coverageThreshold: {
     global: {
       statements: 93,
       branches: 78,
-      functions: 96,
+      functions: 97,
       lines: 94,
     },
   },

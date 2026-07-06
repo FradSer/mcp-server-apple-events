@@ -5,8 +5,6 @@
 
 import {
   addOptionalArg,
-  addOptionalBooleanArg,
-  addOptionalJsonArg,
   addOptionalNumberArg,
   bufferToString,
   formatMultilineNotes,
@@ -105,21 +103,6 @@ describe('helpers', () => {
     });
   });
 
-  describe('addOptionalBooleanArg', () => {
-    it('serializes true and false as string values', () => {
-      const args: string[] = [];
-      addOptionalBooleanArg(args, '--isCompleted', true);
-      addOptionalBooleanArg(args, '--clearAlarms', false);
-      expect(args).toEqual(['--isCompleted', 'true', '--clearAlarms', 'false']);
-    });
-
-    it('is a no-op for undefined', () => {
-      const args: string[] = [];
-      addOptionalBooleanArg(args, '--isCompleted', undefined);
-      expect(args).toEqual([]);
-    });
-  });
-
   describe('addOptionalNumberArg', () => {
     it('serializes a number as a string', () => {
       const args: string[] = [];
@@ -137,33 +120,6 @@ describe('helpers', () => {
       const args: string[] = [];
       addOptionalNumberArg(args, '--priority', undefined);
       expect(args).toEqual([]);
-    });
-  });
-
-  describe('addOptionalJsonArg', () => {
-    it('JSON-stringifies object payloads', () => {
-      const args: string[] = [];
-      addOptionalJsonArg(args, '--alarms', [{ relativeOffset: -60 }]);
-      expect(args).toEqual([
-        '--alarms',
-        JSON.stringify([{ relativeOffset: -60 }]),
-      ]);
-    });
-
-    it('is a no-op for undefined', () => {
-      const args: string[] = [];
-      addOptionalJsonArg(args, '--alarms', undefined);
-      expect(args).toEqual([]);
-    });
-
-    it('serializes empty arrays/objects (the `if (value)` guard only skips undefined/null)', () => {
-      // JS treats `[]` and `{}` as truthy, so the `if (value)` guard does not
-      // suppress them; the CLI side is expected to interpret `[]` as "clear
-      // all" if it ever receives it. Today, every caller goes through the
-      // explicit `clearAlarms` / `clearRecurrence` booleans for that intent.
-      const args: string[] = [];
-      addOptionalJsonArg(args, '--alarms', [] as unknown as object);
-      expect(args).toEqual(['--alarms', '[]']);
     });
   });
 

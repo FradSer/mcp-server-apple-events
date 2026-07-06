@@ -64,33 +64,74 @@ describe('Tools Definitions', () => {
       ]);
     });
 
-    it('should expose EventKit-aligned fields for reminders and events', () => {
+    it('exposes the event-CLI-supported reminder and event fields', () => {
       const remindersTool = TOOLS.find(
         (tool) => tool.name === 'reminders_tasks',
       );
       const remindersProps = remindersTool?.inputSchema.properties ?? {};
 
-      // EKReminder / EKCalendarItem alignment
+      // Reminder write fields still wired through `event reminders create|update`
       expect(remindersProps).toHaveProperty('startDate');
-      expect(remindersProps).toHaveProperty('completionDate');
-      expect(remindersProps).toHaveProperty('location');
-      expect(remindersProps).toHaveProperty('alarms');
-      expect(remindersProps).toHaveProperty('clearAlarms');
-      expect(remindersProps).toHaveProperty('recurrenceRules');
+      expect(remindersProps).toHaveProperty('dueDate');
+      expect(remindersProps).toHaveProperty('priority');
+      expect(remindersProps).toHaveProperty('tags');
+      expect(remindersProps).toHaveProperty('subtasks');
 
       const calendarEventsTool = TOOLS.find(
         (tool) => tool.name === 'calendar_events',
       );
       const calendarProps = calendarEventsTool?.inputSchema.properties ?? {};
 
-      // EKEvent / EKCalendarItem alignment
-      expect(calendarProps).toHaveProperty('availability');
-      expect(calendarProps).toHaveProperty('structuredLocation');
-      expect(calendarProps).toHaveProperty('alarms');
-      expect(calendarProps).toHaveProperty('clearAlarms');
-      expect(calendarProps).toHaveProperty('recurrenceRules');
-      expect(calendarProps).toHaveProperty('clearRecurrence');
+      // Calendar write fields still wired through `event calendar create|update`
+      expect(calendarProps).toHaveProperty('location');
+      expect(calendarProps).toHaveProperty('note');
+      expect(calendarProps).toHaveProperty('targetCalendar');
       expect(calendarProps).toHaveProperty('span');
+      // availability stays as a read-only TS-side filter.
+      expect(calendarProps).toHaveProperty('availability');
+    });
+
+    it('drops fields the `event` CLI cannot write', () => {
+      const remindersTool = TOOLS.find(
+        (tool) => tool.name === 'reminders_tasks',
+      );
+      const remindersProps = remindersTool?.inputSchema.properties ?? {};
+      for (const removed of [
+        'completionDate',
+        'location',
+        'alarms',
+        'clearAlarms',
+        'recurrence',
+        'recurrenceRules',
+        'clearRecurrence',
+        'locationTrigger',
+        'clearLocationTrigger',
+      ]) {
+        expect(remindersProps).not.toHaveProperty(removed);
+      }
+
+      const calendarEventsTool = TOOLS.find(
+        (tool) => tool.name === 'calendar_events',
+      );
+      const calendarProps = calendarEventsTool?.inputSchema.properties ?? {};
+      for (const removed of [
+        'alarms',
+        'clearAlarms',
+        'recurrenceRules',
+        'clearRecurrence',
+        'structuredLocation',
+        'url',
+        'isAllDay',
+        'filterAccount',
+      ]) {
+        expect(calendarProps).not.toHaveProperty(removed);
+      }
+
+      const remindersListsTool = TOOLS.find(
+        (tool) => tool.name === 'reminders_lists',
+      );
+      const listProps = remindersListsTool?.inputSchema.properties ?? {};
+      expect(listProps).not.toHaveProperty('color');
     });
 
     it('should enforce tool name pattern compliance', () => {
@@ -126,7 +167,8 @@ describe('Tools Definitions', () => {
 
       expect(calendarProps).toHaveProperty('startDate');
       expect(calendarProps).toHaveProperty('endDate');
-      expect(calendarProps).toHaveProperty('filterAccount');
+      // `event` has no EventKit account info to filter by.
+      expect(calendarProps).not.toHaveProperty('filterAccount');
     });
   });
 });

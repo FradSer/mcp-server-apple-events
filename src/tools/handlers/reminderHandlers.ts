@@ -5,14 +5,14 @@
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
-  type Alarm,
-  type LocationTrigger,
   PRIORITY_LABELS,
-  type RecurrenceRule,
+  type Reminder,
   type RemindersToolArgs,
-  type Subtask,
 } from '../../types/index.js';
-import { handleAsyncOperation } from '../../utils/errorHandling.js';
+import {
+  CliUserError,
+  handleAsyncOperation,
+} from '../../utils/errorHandling.js';
 import { formatMultilineNotes } from '../../utils/helpers.js';
 import { reminderRepository } from '../../utils/reminderRepository.js';
 import {
@@ -97,16 +97,7 @@ function rebuildNotesForUpdate(
   return combineSubtasksAndNotes(existingSubtasks, notesWithTags);
 }
 
-/**
- * Builds icon string based on reminder properties
- */
-const buildReminderIcons = (reminder: {
-  recurrence?: RecurrenceRule;
-  recurrenceRules?: RecurrenceRule[];
-  locationTrigger?: LocationTrigger;
-  tags?: string[];
-  subtasks?: Subtask[];
-}): string => {
+const buildReminderIcons = (reminder: Reminder): string => {
   const icons: string[] = [];
   if (reminder.recurrenceRules && reminder.recurrenceRules.length > 0)
     icons.push('🔄');
@@ -116,29 +107,7 @@ const buildReminderIcons = (reminder: {
   return icons.length > 0 ? ` ${icons.join('')}` : '';
 };
 
-const formatReminderMarkdown = (reminder: {
-  title: string;
-  isCompleted: boolean;
-  list?: string;
-  id?: string;
-  notes?: string;
-  dueDate?: string;
-  url?: string;
-  location?: string;
-  priority?: number;
-  recurrence?: RecurrenceRule;
-  recurrenceRules?: RecurrenceRule[];
-  locationTrigger?: LocationTrigger;
-  alarms?: Alarm[];
-  completionDate?: string;
-  startDate?: string;
-  creationDate?: string;
-  lastModifiedDate?: string;
-  externalId?: string;
-  tags?: string[];
-  subtasks?: Subtask[];
-  subtaskProgress?: { completed: number; total: number; percentage: number };
-}): string[] => {
+const formatReminderMarkdown = (reminder: Reminder): string[] => {
   const lines: string[] = [];
   const checkbox = reminder.isCompleted ? '[x]' : '[ ]';
   const icons = buildReminderIcons(reminder);
@@ -153,11 +122,10 @@ const formatReminderMarkdown = (reminder: {
   if (reminder.tags && reminder.tags.length > 0) {
     lines.push(`  - Tags: ${reminder.tags.map((t) => `#${t}`).join(' ')}`);
   }
-  const recurrenceRules =
-    reminder.recurrenceRules ??
-    (reminder.recurrence ? [reminder.recurrence] : undefined);
-  if (recurrenceRules && recurrenceRules.length > 0) {
-    lines.push(`  - Repeats: ${formatRecurrenceRules(recurrenceRules)}`);
+  if (reminder.recurrenceRules && reminder.recurrenceRules.length > 0) {
+    lines.push(
+      `  - Repeats: ${formatRecurrenceRules(reminder.recurrenceRules)}`,
+    );
   }
   if (reminder.locationTrigger) {
     lines.push(
@@ -216,17 +184,9 @@ export const handleCreateReminder = async (
       title: validatedArgs.title,
       notes: notesWithMetadata,
       url: validatedArgs.url,
-      location: validatedArgs.location,
       list: validatedArgs.targetList,
-      startDate: validatedArgs.startDate,
       dueDate: validatedArgs.dueDate,
       priority: validatedArgs.priority,
-      isCompleted: validatedArgs.completed,
-      alarms: validatedArgs.alarms,
-      recurrenceRules:
-        validatedArgs.recurrenceRules ??
-        (validatedArgs.recurrence ? [validatedArgs.recurrence] : undefined),
-      locationTrigger: validatedArgs.locationTrigger,
     });
     return formatSuccessMessage(
       'created',
@@ -243,24 +203,38 @@ export const handleUpdateReminder = async (
   return handleAsyncOperation(async () => {
     const validatedArgs = extractAndValidateArgs(args, UpdateReminderSchema);
 
-    let notesToSend = validatedArgs.note;
+    // `event reminders update` cannot move a reminder between lists. Reject
+    // that up front so the user sees a clear error instead of a silently-
+    // dropped change. The cross-list-move check needs the current reminder,
+    // so coalesce it with the notes-rebuild fetch below.
+    // Empty `addTags`/`removeTags` arrays are no-ops; only fetch the current
+    // reminder when there's a real change to apply.
     const shouldRebuildNotes =
       validatedArgs.note !== undefined ||
-      Boolean(validatedArgs.tags) ||
-      Boolean(validatedArgs.addTags) ||
-      Boolean(validatedArgs.removeTags);
+      validatedArgs.tags !== undefined ||
+      (validatedArgs.addTags?.length ?? 0) > 0 ||
+      (validatedArgs.removeTags?.length ?? 0) > 0;
+    const needsListCheck = validatedArgs.targetList !== undefined;
 
-    if (shouldRebuildNotes) {
+    let notesToSend = validatedArgs.note;
+    if (shouldRebuildNotes || needsListCheck) {
       const currentReminder = await reminderRepository.findReminderById(
         validatedArgs.id,
       );
-      notesToSend = rebuildNotesForUpdate(
-        currentReminder.notes,
-        validatedArgs.note,
-        validatedArgs.tags,
-        validatedArgs.addTags,
-        validatedArgs.removeTags,
-      );
+      if (needsListCheck && currentReminder.list !== validatedArgs.targetList) {
+        throw new CliUserError(
+          'Moving a reminder between lists is not supported by the underlying `event` CLI. Move it from Reminders.app, or delete and recreate the reminder in the target list.',
+        );
+      }
+      if (shouldRebuildNotes) {
+        notesToSend = rebuildNotesForUpdate(
+          currentReminder.notes,
+          validatedArgs.note,
+          validatedArgs.tags,
+          validatedArgs.addTags,
+          validatedArgs.removeTags,
+        );
+      }
     }
 
     const reminder = await reminderRepository.updateReminder({
@@ -268,21 +242,10 @@ export const handleUpdateReminder = async (
       newTitle: validatedArgs.title,
       notes: notesToSend,
       url: validatedArgs.url,
-      location: validatedArgs.location,
       isCompleted: validatedArgs.completed,
-      completionDate: validatedArgs.completionDate,
-      list: validatedArgs.targetList,
       startDate: validatedArgs.startDate,
       dueDate: validatedArgs.dueDate,
       priority: validatedArgs.priority,
-      alarms: validatedArgs.alarms,
-      clearAlarms: validatedArgs.clearAlarms,
-      recurrenceRules:
-        validatedArgs.recurrenceRules ??
-        (validatedArgs.recurrence ? [validatedArgs.recurrence] : undefined),
-      clearRecurrence: validatedArgs.clearRecurrence,
-      locationTrigger: validatedArgs.locationTrigger,
-      clearLocationTrigger: validatedArgs.clearLocationTrigger,
     });
     return formatSuccessMessage(
       'updated',

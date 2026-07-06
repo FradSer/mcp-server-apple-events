@@ -11,27 +11,40 @@ describe('release package contents', () => {
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
   const releaseWorkflow = readFileSync(releaseWorkflowPath, 'utf8');
 
-  it('ships the fallback Swift build inputs used by postinstall', () => {
+  it('ships the pre-built event binary and its source-build fallback', () => {
+    expect(packageJson.files).toContain('bin/event');
     expect(packageJson.files).toContain('scripts/postinstall.mjs');
-    expect(packageJson.files).toContain('scripts/build-swift.mjs');
-    // build-swift.mjs reads these three files at install time when no
-    // pre-built binary is present.
-    expect(packageJson.files).toContain('src/swift/EventKitCLI.swift');
-    expect(packageJson.files).toContain('src/swift/Info.plist');
-    expect(packageJson.files).toContain('src/swift/EventKitCLI.entitlements');
+    expect(packageJson.files).toContain('scripts/build-event.mjs');
+  });
+
+  it('does not ship stale EventKitCLI paths', () => {
+    for (const stale of [
+      'bin/EventKitCLI',
+      'scripts/build-swift.mjs',
+      'src/swift/EventKitCLI.swift',
+      'src/swift/Info.plist',
+      'src/swift/EventKitCLI.entitlements',
+    ]) {
+      expect(packageJson.files).not.toContain(stale);
+    }
   });
 
   it('does not ship the full src/ tree (no tests, no compiled output)', () => {
-    // Wildcards in `files` would re-add `*.test.ts` and Swift bridge tests
-    // to consumers' node_modules for no benefit.
+    // Wildcards in `files` would re-add `*.test.ts` and the vendored Swift
+    // package to consumers' node_modules for no benefit.
     expect(packageJson.files).not.toContain('src/');
     expect(packageJson.files).not.toContain('src/**');
   });
 
   it('verifies the exact pre-built binary path before publishing', () => {
     expect(releaseWorkflow).toMatch(/npm pack --json --dry-run/);
-    expect(releaseWorkflow).toMatch(/bin\/EventKitCLI/);
-    expect(releaseWorkflow).not.toMatch(/grep -qE .*EventKitCLI\(\[\^\.]/);
+    expect(releaseWorkflow).toMatch(/bin\/event/);
+    expect(releaseWorkflow).not.toMatch(/bin\/EventKitCLI/);
+  });
+
+  it('checks out submodules and builds via build:event', () => {
+    expect(releaseWorkflow).toMatch(/submodules:\s*recursive/);
+    expect(releaseWorkflow).toMatch(/build:event/);
   });
 
   it('pins the CI runner image and fails on non-Developer-ID signatures', () => {

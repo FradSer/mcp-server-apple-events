@@ -13,8 +13,8 @@ export const FILE_SYSTEM = {
   /** Package.json filename for project root detection */
   PACKAGE_JSON_FILENAME: 'package.json',
 
-  /** Swift binary filename */
-  SWIFT_BINARY_NAME: 'EventKitCLI',
+  /** Swift binary filename — points at the vendored `event` CLI (FradSer/event). */
+  SWIFT_BINARY_NAME: 'event',
 } as const;
 
 /**

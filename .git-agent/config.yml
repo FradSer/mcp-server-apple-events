@@ -1,27 +1,17 @@
 scopes:
     - name: bin
-      description: Launch helper (run.cjs) and compiled Swift binary
+      description: launch entry points and vendored binaries in bin/; does not cover build scripts
     - name: scr
-      description: Build and postinstall scripts (build-swift, postinstall)
+      description: build and post-install scripts in scripts/; does not cover source code or project metadata
     - name: srv
-      description: MCP server setup, request handler registration, and stdio transport
+      description: MCP server transport, request handlers, and prompt abstractions in src/server/; does not cover tools
     - name: tools
-      description: Tool schema definitions, routing, and domain-specific CRUD handlers
-    - name: prompt
-      description: Prompt template definitions, builders, and abstractions
+      description: tool definitions, routing, and CRUD logic in src/tools/; does not cover core utility functions
     - name: utils
-      description: Shared utilities (CLI executor, helpers, date/time, error handling)
-    - name: rem
-      description: Reminder handlers, repository, subtask and tag utilities
-    - name: cal
-      description: Calendar event handlers and repository
-    - name: val
-      description: Zod input validation schemas
-    - name: types
-      description: TypeScript interfaces, type constants, and domain types
+      description: shared logic like CLI executor, date/time, and error handling in src/utils/; does not cover business tools
     - name: swift
-      description: EventKitCLI Swift source, entitlements, and Info.plist
-    - name: deps
-      description: Dependency manifest and lockfile changes
-    - name: ci
-      description: CI configuration and entitlements for automated builds
+      description: Apple EventKit Swift source, entitlements, and metadata in src/swift/; does not cover build scripts
+    - name: val
+      description: zod validation schemas and constraints in src/validation/; does not cover business logic
+    - name: types
+      description: global typescript interfaces and shared domain types in src/types/

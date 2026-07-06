@@ -23,8 +23,9 @@ function isUserActionablePermissionError(message: string): boolean {
 }
 
 /**
- * Custom error class for user-facing CLI failures (e.g., not found, invalid input).
- * Defined here to avoid circular/heavy imports from cliExecutor.
+ * Custom error class for user-facing CLI failures (e.g., not found, invalid
+ * input). Lives in this leaf module so it's importable from both repository
+ * and handler layers without circular imports.
  */
 export class CliUserError extends Error {
   constructor(message: string) {
