@@ -249,8 +249,8 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--due', data.dueDate);
     addOptionalArg(args, '--start', data.startDate);
     addOptionalNumberArg(args, '--priority', data.priority);
-    if (data.isCompleted === true) {
-      args.push('--completed', 'true');
+    if (data.isCompleted !== undefined) {
+      args.push('--completed', data.isCompleted ? 'true' : 'false');
     }
     args.push('--no-shortcuts', '--json');
     return executeEventCliJson<ReminderJSON>(args);
