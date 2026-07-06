@@ -88,15 +88,17 @@ describe('published npm tarball', () => {
   });
 
   describe('postinstall chain', () => {
-    // The postinstall script invokes another node script which reads three
-    // Swift source files. If any of those drop out of `files`, the package
-    // fails to build on every consumer install (#95-class regression).
+    // The npm-installed path ships a pre-built, universal, code-signed
+    // `bin/event` binary. `postinstall.mjs` detects it and skips the source
+    // build entirely — the vendor/event submodule source is never part of
+    // the tarball (git submodules aren't included in `npm pack`), so
+    // `build-event.mjs` only matters for git-clone-from-source installs. If
+    // any of these drop out of `files`, the package fails to build (or run)
+    // on every consumer install (#95-class regression).
     const required = [
       'scripts/postinstall.mjs',
-      'scripts/build-swift.mjs',
-      'src/swift/EventKitCLI.swift',
-      'src/swift/Info.plist',
-      'src/swift/EventKitCLI.entitlements',
+      'scripts/build-event.mjs',
+      'bin/event',
     ];
 
     it.each(required)('ships %s', (file) => {
@@ -143,14 +145,16 @@ describe('published npm tarball', () => {
   });
 
   describe('size sanity', () => {
-    it('keeps the unpacked tarball under 3MB', () => {
-      // The universal `bin/EventKitCLI` is ~1.5MB on its own (arm64 + x86_64
-      // slices); the rest of the tarball (compiled dist/, scripts, Swift
-      // sources, READMEs) sits in the 600-800KB band. 3MB leaves headroom
-      // for dist/ to grow while still flagging accidental re-inclusion of
-      // the vendor/ tree (~1.7MB) or test files via dist/.
+    it('keeps the unpacked tarball under 80MB', () => {
+      // The universal `bin/event` binary is ~50MB on its own (arm64 + x86_64
+      // slices statically linking SQLite.swift, swift-nio, and apple-sync-kit
+      // — substantially larger than the old single-file `EventKitCLI`); the
+      // rest of the tarball (compiled dist/, scripts, READMEs) sits in the
+      // 600-800KB band. 80MB leaves headroom for the binary to grow while
+      // still flagging a real regression, like accidentally shipping the
+      // vendor/ source tree or dist/ test files.
       const unpacked = pack.files.reduce((sum, f) => sum + f.size, 0);
-      expect(unpacked).toBeLessThan(3 * 1024 * 1024);
+      expect(unpacked).toBeLessThan(80 * 1024 * 1024);
     });
   });
 });
