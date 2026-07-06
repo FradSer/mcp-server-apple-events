@@ -290,8 +290,7 @@ async function main() {
       ),
     );
     results.forEach(({ stdout, stderr }, i) => {
-      if (stderr)
-        console.warn(`${slices[i].label} build warnings:\n${stderr}`);
+      if (stderr) console.warn(`${slices[i].label} build warnings:\n${stderr}`);
       if (stdout) console.log(stdout);
     });
 

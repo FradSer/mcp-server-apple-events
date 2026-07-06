@@ -186,7 +186,7 @@ describe('ReminderRepository (event CLI backend)', () => {
       ]);
 
       const [result] = await reminderRepository.findReminders();
-      expect(result.tags).toEqual(['work', 'urgent']);
+      expect(result!.tags).toEqual(['work', 'urgent']);
     });
 
     it('parses subtasks from notes via subtaskUtils integration', async () => {
@@ -195,11 +195,11 @@ describe('ReminderRepository (event CLI backend)', () => {
       mockJson.mockResolvedValueOnce([reminderFixture({ notes })]);
 
       const [result] = await reminderRepository.findReminders();
-      expect(result.subtasks).toEqual([
+      expect(result!.subtasks).toEqual([
         { id: 'abc12345', title: 'First', isCompleted: false },
         { id: 'def67890', title: 'Second', isCompleted: true },
       ]);
-      expect(result.subtaskProgress).toEqual({
+      expect(result!.subtaskProgress).toEqual({
         completed: 1,
         total: 2,
         percentage: 50,
@@ -224,7 +224,7 @@ describe('ReminderRepository (event CLI backend)', () => {
       ]);
 
       const [result] = await reminderRepository.findReminders();
-      expect(result.locationTrigger).toEqual({
+      expect(result!.locationTrigger).toEqual({
         title: 'Office',
         latitude: 37.7749,
         longitude: -122.4194,

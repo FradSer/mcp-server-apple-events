@@ -60,7 +60,7 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       const result = await calendarRepository.findEventById('evt-2');
 
-      const args = mockJson.mock.calls[0][0];
+      const args = mockJson.mock.calls[0]![0];
       expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
       expect(args).toContain('--start');
       expect(args).toContain('--end');
@@ -84,7 +84,7 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       await calendarRepository.findEvents();
 
-      const args = mockJson.mock.calls[0][0];
+      const args = mockJson.mock.calls[0]![0];
       expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
       expect(args[2]).toBe('--start');
       expect(args[4]).toBe('--end');
@@ -96,7 +96,7 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       await calendarRepository.findEvents({ calendarName: 'Work' });
 
-      const args = mockJson.mock.calls[0][0];
+      const args = mockJson.mock.calls[0]![0];
       expect(args).toContain('--calendar');
       expect(args[args.indexOf('--calendar') + 1]).toBe('Work');
     });
@@ -109,7 +109,7 @@ describe('CalendarRepository (event CLI backend)', () => {
         endDate: '2025-11-05T12:34:56Z',
       });
 
-      const args = mockJson.mock.calls[0][0];
+      const args = mockJson.mock.calls[0]![0];
       expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
       expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
     });
@@ -198,7 +198,7 @@ describe('CalendarRepository (event CLI backend)', () => {
         endDate: '2026-05-11',
       });
 
-      const args = mockJson.mock.calls[0][0];
+      const args = mockJson.mock.calls[0]![0];
       expect(args[args.indexOf('--start') + 1]).toBe('2026-05-04');
       expect(args[args.indexOf('--end') + 1]).toBe('2026-05-11');
       expect(result).toEqual([
@@ -260,7 +260,7 @@ describe('CalendarRepository (event CLI backend)', () => {
         endDate: '2025-11-05',
       });
 
-      const args = mockJson.mock.calls[0][0];
+      const args = mockJson.mock.calls[0]![0];
       expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
       expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
     });
