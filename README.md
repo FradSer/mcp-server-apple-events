@@ -4,12 +4,28 @@
 
 English | [简体中文](README.zh-CN.md)
 
-A Model Context Protocol (MCP) server that provides native integration with Apple Reminders and Calendar on macOS. This server allows you to interact with Apple Reminders and Calendar Events through a standardized interface with comprehensive management capabilities.
+A Model Context Protocol (MCP) server that provides native integration with Apple Reminders and Calendar on macOS. It exposes Apple Reminders and Calendar Events through a standardized interface with full CRUD operations.
 
 > [!NOTE]
 > **How this server is built: [event](https://github.com/FradSer/event) — a pure Swift CLI for Apple Reminders and Calendar on macOS.**
 >
-> As of v1.5.0, this server's EventKit backend is the standalone [`event`](https://github.com/FradSer/event) CLI. It is vendored as a git submodule under `vendor/event` and built during `pnpm install`, so `bin/event` ships inside this package and no separate `brew install` is required. The two projects now share one Swift codebase. A small number of MCP tool fields (writable alarms / recurrence / location triggers, reminder `location`, calendar `url` / `structuredLocation` / `availability` / `isAllDay` writes, cross-calendar moves on update, list color, and `filterAccount`) were dropped in the swap because `event` does not expose CLI flags for them yet — read paths are preserved. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the full dropped-field table and workarounds. For scripting and automation outside this MCP server, prefer the standalone [`event`](https://github.com/FradSer/event) CLI directly.
+> As of v1.5.0, this server's EventKit backend is the standalone [`event`](https://github.com/FradSer/event) CLI. It is vendored as a git submodule under `vendor/event` and built during `pnpm install`, so `bin/event` ships inside this package and no separate `brew install` is required. The two projects share one Swift codebase. A number of MCP tool write fields were dropped in the swap because `event` does not expose CLI flags for them yet — alarms, recurrence rules, location triggers, reminder `location`, calendar `url` / `structuredLocation` / `availability` / `isAllDay` writes, and cross-calendar moves. Read paths are preserved verbatim, so values configured in Reminders.app or Calendar.app still round-trip through this server. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the full dropped-field table and workarounds. For scripting and automation outside this MCP server, prefer the standalone [`event`](https://github.com/FradSer/event) CLI directly.
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [macOS Permission Requirements](#macos-permission-requirements-sonoma-14--sequoia-15)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Usage Examples](#usage-examples)
+- [Structured Prompt Library](#structured-prompt-library)
+- [Available MCP Tools](#available-mcp-tools)
+- [Organization Strategies](#organization-strategies)
+- [Tags System](#tags-system)
+- [Development](#development)
+- [License](#license)
+- [Contributing](#contributing)
 
 ## Features
 
@@ -17,41 +33,40 @@ A Model Context Protocol (MCP) server that provides native integration with Appl
 
 - **List Management**: View all reminders and reminder lists with advanced filtering options
 - **Reminder Operations**: Full CRUD operations (Create, Read, Update, Delete) for reminders across lists
-- **Rich Content Support**: Complete support for titles, notes, due dates, URLs, and completion status
-- **Native macOS Integration**: Direct integration with Apple Reminders using EventKit framework
+- **Rich Content Support**: Titles, notes, due/start dates, URLs, priority, tags, and completion status
+- **Native macOS Integration**: Direct integration with Apple Reminders using the EventKit framework
 
-### Enhanced Reminder Features (v1.3.0)
+### Enhanced Reminder Features
 
 - **Priority Support**: Set reminder priority (high/medium/low/none) with visual indicators
-- **Recurring Reminders**: Create repeating reminders with flexible recurrence rules (daily, weekly, monthly, yearly)
-- **Location-Based Triggers**: Set geofence reminders that trigger when arriving at or leaving a location
 - **Tags/Labels**: Organize reminders with custom tags for cross-list categorization and filtering
 - **Subtasks/Checklists**: Add checklist items to reminders with progress tracking
+- **Recurrence, Alarms, and Location Triggers**: Read-only via this server — configure them in Reminders.app. They round-trip through read responses and display visual indicators.
 
 ### Advanced Features
 
 - **Smart Organization**: Automatic categorization and intelligent filtering by priority, due date, category, or completion status
-- **Powerful Search**: Multi-criteria filtering including completion status, due date ranges, tags, and full-text search
-- **Batch Operations**: Efficient handling of multiple reminders with optimized data access patterns
+- **Multi-criteria Search**: Filter by completion status, due date ranges, tags, and full-text search
 - **Permission Management**: Automatic validation and request for required macOS system permissions
-- **Flexible Date Handling**: Support for multiple date formats (YYYY-MM-DD, ISO 8601) with timezone awareness
+- **Flexible Date Handling**: Multiple date formats (`YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss`, ISO 8601) with timezone awareness
 - **Unicode Support**: Full international character support with comprehensive input validation
 
 ### Technical Excellence
 
 - **Clean Architecture**: 4-layer architecture following Clean Architecture principles with dependency injection
 - **Type Safety**: Complete TypeScript coverage with Zod schema validation for runtime type checking
-- **High Performance**: Swift-compiled binaries for performance-critical Apple Reminders operations
+- **High Performance**: Swift-compiled binary for performance-critical EventKit operations
 - **Robust Error Handling**: Consistent error responses with detailed diagnostic information
 - **Repository Pattern**: Data access abstraction with standardized CRUD operations
-- **Functional Programming**: Pure functions with immutable data structures where appropriate
 
 ## Prerequisites
 
 - **Node.js 20 or later**
 - **macOS** (required for Apple Reminders integration)
-- **Xcode Command Line Tools** (required for compiling Swift code)
+- **Xcode Command Line Tools** (required for compiling Swift code when building from source)
 - **pnpm** (recommended for package management)
+
+The published npm package ships a pre-built, universal, code-signed `bin/event` binary, so `npx` users do not need Xcode or a Swift toolchain. Building from a git clone requires the items above.
 
 ## macOS Permission Requirements (Sonoma 14+ / Sequoia 15)
 
@@ -64,7 +79,7 @@ Apple separates Reminders and Calendar permissions into _write-only_ and _full-a
 - `NSCalendarsFullAccessUsageDescription`
 - `NSCalendarsWriteOnlyAccessUsageDescription`
 
-When the CLI detects a `notDetermined` authorization status it calls `requestFullAccessToReminders` / `requestFullAccessToEvents`, which in turn triggers macOS to show the correct prompt. If the OS ever loses track of permissions, rerun `./check-permissions.sh` to re-open the dialogs.
+When the CLI detects a `notDetermined` authorization status it calls `requestFullAccessToReminders` / `requestFullAccessToEvents`, which triggers macOS to show the correct prompt. If the OS ever loses track of permissions, rerun `./check-permissions.sh` to re-open the dialogs.
 
 If a Claude tool call still encounters a permission failure, see *Desktop MCP clients* below for the responsible-process attribution problem and the recommended workarounds.
 
@@ -76,7 +91,7 @@ If you see `Failed to read calendar events`, verify Calendar is set to **Full Ca
 - Find the app that launches this MCP server (for example Terminal or Claude Desktop)
 - Change access to **Full Calendar Access**
 
-You can also re-run `./check-permissions.sh` (it now validates both Reminders and Calendars access).
+You can also re-run `./check-permissions.sh` (it validates both Reminders and Calendars access).
 
 ### Desktop MCP clients (Claude Desktop, Codex Desktop, …)
 
@@ -118,7 +133,7 @@ This pins the contract of `scripts/build-event.mjs` — the build compiles `vend
 
 ### Troubleshooting `could not build module 'Foundation'` on macOS 26 (Tahoe)
 
-If `pnpm build` fails with `could not build module 'Foundation'` (or `SDK is not supported by the compiler`), your Swift toolchain is older than the macOS 26 SDK requires. The macOS 26+ SDK ships a `Foundation.swiftinterface` that needs **Swift 6.3 or newer**; the Command Line Tools that shipped with the first macOS 26 point releases include Swift 6.2.x, which cannot parse it. See [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85).
+If `pnpm build` fails with `could not build module 'Foundation'` (or `SDK is not supported by the compiler`), your Swift toolchain is older than the macOS 26 SDK requires. The macOS 26+ SDK ships a `Foundation.swift-interface` that needs **Swift 6.3 or newer**; the Command Line Tools that shipped with the first macOS 26 point releases include Swift 6.2.x, which cannot parse it. See [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85).
 
 `pnpm build:event` now detects this mismatch and prints the same remediation, but if you hit it manually:
 
@@ -142,7 +157,7 @@ xcrun --show-sdk-version        # should match your macOS major version
 
 ## Quick Start
 
-You can run the server directly using `npx`:
+Run the server directly using `npx`:
 
 ```bash
 npx mcp-server-apple-events
@@ -183,7 +198,7 @@ npx mcp-server-apple-events
 
 ### Configure Claude Desktop
 
-You need to configure Claude Desktop to recognize the Apple Events MCP server. There are two ways to access the configuration:
+Configure Claude Desktop to recognize the Apple Events MCP server. There are two ways to access the configuration:
 
 #### Option 1: Through Claude Desktop UI
 
@@ -205,8 +220,6 @@ For Windows:
 ```bash
 code %APPDATA%\Claude\claude_desktop_config.json
 ```
-
-### 2. Add Server Configuration
 
 Add the following configuration to your `claude_desktop_config.json`:
 
@@ -238,16 +251,9 @@ If you have built the project locally, use node with the path to `dist/index.js`
 }
 ```
 
-For more information on connecting local MCP servers, see the
-[official MCP documentation](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+For more information on connecting local MCP servers, see the [official MCP documentation](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
-### 3. Restart Claude Desktop
-
-For the changes to take effect:
-
-1. Completely quit Claude Desktop (not just close the window)
-2. Start Claude Desktop again
-3. Look for the tool icon to verify the Apple Events server is connected
+Restart Claude Desktop completely (quit, not just close the window) for the changes to take effect. Look for the tool icon to verify the Apple Events server is connected.
 
 ## Usage Examples
 
@@ -268,23 +274,6 @@ Create a reminder with URL "Check this website: https://google.com".
 Create a high priority reminder to "Finish quarterly report" due Friday.
 Add an urgent high-priority reminder to "Call client back" for today.
 Create a medium priority reminder to "Review documents".
-```
-
-### Creating Recurring Reminders
-
-```text
-Create a daily reminder to "Take medication" at 9 AM.
-Add a weekly reminder every Monday to "Team standup meeting".
-Create a monthly reminder on the 1st to "Pay rent".
-Set up a yearly reminder on March 15 to "File taxes".
-```
-
-### Creating Location-Based Reminders
-
-```text
-Remind me to "Buy milk" when I arrive at the grocery store.
-Create a reminder to "Check mailbox" when I get home.
-Add a reminder to "Submit timesheet" when I leave the office.
 ```
 
 ### Creating Reminders with Tags
@@ -348,12 +337,9 @@ Show all my reminder lists.
 Show reminders from my "Work" list.
 ```
 
-The server will:
+The server will process your natural language requests, interact with Apple's native Reminders app, return formatted results to Claude, and maintain native integration with macOS.
 
-- Process your natural language requests
-- Interact with Apple's native Reminders app
-- Return formatted results to Claude
-- Maintain native integration with macOS
+> Recurring reminders, alarms, and location-based triggers are read-only via this server. Configure them in Reminders.app — they still appear in read results with visual indicators.
 
 ## Structured Prompt Library
 
@@ -372,22 +358,23 @@ The server ships with a consolidated prompt registry exposed via the MCP `ListPr
 
 ## Available MCP Tools
 
-This server now exposes service-scoped MCP tools that mirror Apple Reminders and Calendar domains. Use the identifier that matches the resource you want to manipulate:
+This server exposes service-scoped MCP tools that mirror Apple Reminders and Calendar domains. Use the identifier that matches the resource you want to manipulate:
+
+- `reminders_tasks` — manage individual reminders
+- `reminders_subtasks` — manage checklist items within a reminder
+- `reminders_lists` — manage reminder lists
+- `calendar_events` — manage calendar events (time blocks)
+- `calendar_calendars` — inspect available calendars
+
+All tools take an `action` field plus action-specific parameters. Date fields accept `YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss` (local time), or ISO 8601 with timezone.
 
 ### Reminder Tasks Tool
 
 **Tool Name**: `reminders_tasks`
 
-Manages individual reminder tasks with full CRUD support, including priority, alarms, recurrence rules, start/due/completion dates, location triggers, tags, and subtasks.
+Manages individual reminder tasks with full CRUD support, including priority, tags, and subtasks. Alarms, recurrence rules, and location-based triggers are read-only via this tool — configure them in Reminders.app.
 
 **Actions**: `read`, `create`, `update`, `delete`
-
-**Main Handler Functions**:
-
-- `handleReadReminders()` - Read reminders with filtering options
-- `handleCreateReminder()` - Create new reminders
-- `handleUpdateReminder()` - Update existing reminders
-- `handleDeleteReminder()` - Delete reminders
 
 #### Parameters by Action
 
@@ -396,50 +383,37 @@ Manages individual reminder tasks with full CRUD support, including priority, al
 - `id` _(optional)_: Unique identifier of a specific reminder to read
 - `filterList` _(optional)_: Name of the reminder list to show
 - `showCompleted` _(optional)_: Include completed reminders (default: false)
-- `search` _(optional)_: Search term to filter reminders by title or content
-- `dueWithin` _(optional)_: Filter by due date range ("today", "tomorrow", "this-week", "overdue", "no-date")
-- `filterPriority` _(optional)_: Filter by priority level ("high", "medium", "low", "none")
-- `filterRecurring` _(optional)_: Filter to only show recurring reminders when true
-- `filterLocationBased` _(optional)_: Filter to only show location-based reminders when true
-- `filterTags` _(optional)_: Filter by tags (reminders must have ALL specified tags)
+- `search` _(optional)_: Search term to filter reminders by title or notes
+- `dueWithin` _(optional)_: Filter by due date range (`today`, `tomorrow`, `this-week`, `overdue`, `no-date`)
+- `filterPriority` _(optional)_: Filter by priority level (`high`, `medium`, `low`, `none`)
+- `filterRecurring` _(optional)_: Only show recurring reminders when true
+- `filterLocationBased` _(optional)_: Only show location-based reminders when true
+- `filterTags` _(optional)_: Filter by tags (reminder must have ALL specified tags)
 
 **Create Action** (`action: "create"`):
 
 - `title` _(required)_: Title of the reminder
-- `startDate` _(optional)_: Start date in format 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
-- `dueDate` _(optional)_: Due date in format 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
+- `dueDate` _(optional)_: Due date
 - `targetList` _(optional)_: Name of the reminders list to add to
 - `note` _(optional)_: Note text to attach to the reminder
-- `url` _(optional)_: URL to associate with the reminder
-- `location` _(optional)_: Location text (`EKCalendarItem.location`) (not a geofence trigger)
+- `url` _(optional)_: URL to associate with the reminder (any valid URI scheme)
 - `priority` _(optional)_: Priority level (0=none, 1=high, 5=medium, 9=low)
-- `alarms` _(optional)_: Array of alarm objects (see Alarm Object below)
-- `recurrenceRules` _(optional)_: Array of recurrence rules (see Recurrence Rules below)
-- `recurrence` _(optional)_: Legacy single recurrence rule object (shorthand for one-item `recurrenceRules`)
-- `locationTrigger` _(optional)_: Location trigger object (see Location Triggers section below)
-- `tags` _(optional)_: Array of tags to add to the reminder
+- `tags` _(optional)_: Array of tags to set on the reminder
 - `subtasks` _(optional)_: Array of subtask titles to create with the reminder
+
+> `startDate` is not available on create — set it via `update` after creation.
 
 **Update Action** (`action: "update"`):
 
 - `id` _(required)_: Unique identifier of the reminder to update
 - `title` _(optional)_: New title for the reminder
 - `startDate` _(optional)_: New start date
-- `dueDate` _(optional)_: New due date in format 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
+- `dueDate` _(optional)_: New due date
 - `note` _(optional)_: New note text
 - `url` _(optional)_: New URL to attach to the reminder
-- `location` _(optional)_: New location text (set to empty string to clear)
-- `completed` _(optional)_: Mark reminder as completed/uncompleted
-- `completionDate` _(optional)_: Set an explicit completion date/time
-- `targetList` _(optional)_: Name of the list containing the reminder
+- `completed` _(optional)_: Mark the reminder completed (`true`) or uncompleted (`false`)
+- `targetList` _(optional)_: Name of the list containing the reminder (cross-list moves are not supported — delete and recreate instead)
 - `priority` _(optional)_: New priority level (0=none, 1=high, 5=medium, 9=low)
-- `alarms` _(optional)_: Replace alarms with this array
-- `clearAlarms` _(optional)_: Set to true to remove all alarms
-- `recurrenceRules` _(optional)_: Replace recurrence rules with this array
-- `recurrence` _(optional)_: Legacy single recurrence rule (shorthand for one-item `recurrenceRules`)
-- `clearRecurrence` _(optional)_: Set to true to remove recurrence
-- `locationTrigger` _(optional)_: New location trigger
-- `clearLocationTrigger` _(optional)_: Set to true to remove location trigger
 - `tags` _(optional)_: Replace all tags with this array
 - `addTags` _(optional)_: Tags to add (merges with existing)
 - `removeTags` _(optional)_: Tags to remove
@@ -447,50 +421,6 @@ Manages individual reminder tasks with full CRUD support, including priority, al
 **Delete Action** (`action: "delete"`):
 
 - `id` _(required)_: Unique identifier of the reminder to delete
-
-#### Alarm Object
-
-```json
-{
-  "relativeOffset": -900,            // Seconds (relative to due/start); negative = before
-  "absoluteDate": "2025-11-04T09:00:00+08:00", // Absolute trigger time (optional)
-  "locationTrigger": {               // Geofence trigger (optional)
-    "title": "Office",
-    "latitude": 37.7749,
-    "longitude": -122.4194,
-    "radius": 100,
-    "proximity": "enter"
-  }
-}
-```
-
-Each alarm must specify exactly **one** of `relativeOffset`, `absoluteDate`, or `locationTrigger`.
-
-#### Recurrence Rule Object (for `recurrenceRules`)
-
-```json
-{
-  "frequency": "daily" | "weekly" | "monthly" | "yearly",
-  "interval": 1,           // Every N periods (default: 1)
-  "endDate": "YYYY-MM-DD", // Optional end date
-  "occurrenceCount": 10,   // Optional max occurrences
-  "daysOfWeek": [1, 3, 5], // 1=Sunday, 7=Saturday (for weekly)
-  "daysOfMonth": [1, 15],  // 1-31 (for monthly)
-  "monthsOfYear": [3, 6]   // 1-12 (for yearly)
-}
-```
-
-#### Location Trigger Object
-
-```json
-{
-  "title": "Home", // Location name
-  "latitude": 37.7749, // Latitude coordinate
-  "longitude": -122.4194, // Longitude coordinate
-  "radius": 100, // Geofence radius in meters (default: 100)
-  "proximity": "enter" // "enter" or "leave"
-}
-```
 
 #### Example Usage
 
@@ -509,39 +439,21 @@ Each alarm must specify exactly **one** of `relativeOffset`, `absoluteDate`, or 
 
 ```json
 {
-  "action": "create",
-  "title": "Team standup",
-  "dueDate": "2024-03-25 09:00:00",
-  "recurrence": {
-    "frequency": "weekly",
-    "interval": 1,
-    "daysOfWeek": [2, 3, 4, 5, 6]
-  }
-}
-```
-
-```json
-{
-  "action": "create",
-  "title": "Buy milk",
-  "locationTrigger": {
-    "title": "Grocery Store",
-    "latitude": 37.7749,
-    "longitude": -122.4194,
-    "radius": 200,
-    "proximity": "enter"
-  }
-}
-```
-
-```json
-{
   "action": "read",
   "filterList": "Work",
   "showCompleted": false,
   "dueWithin": "today",
   "filterPriority": "high",
   "filterTags": ["urgent"]
+}
+```
+
+```json
+{
+  "action": "update",
+  "id": "reminder-123",
+  "completed": false,
+  "addTags": ["followup"]
 }
 ```
 
@@ -559,15 +471,6 @@ Each alarm must specify exactly **one** of `relativeOffset`, `absoluteDate`, or 
 Manages subtasks/checklists within reminders. Subtasks are stored in the notes field using a human-readable format visible in the native Reminders app.
 
 **Actions**: `read`, `create`, `update`, `delete`, `toggle`, `reorder`
-
-**Main Handler Functions**:
-
-- `handleReadSubtasks()` - List all subtasks for a reminder
-- `handleCreateSubtask()` - Add a new subtask
-- `handleUpdateSubtask()` - Modify a subtask
-- `handleDeleteSubtask()` - Remove a subtask
-- `handleToggleSubtask()` - Flip completion status
-- `handleReorderSubtasks()` - Change subtask order
 
 #### Parameters by Action
 
@@ -647,16 +550,9 @@ This format ensures subtasks are visible in the native Reminders app while enabl
 
 **Tool Name**: `reminders_lists`
 
-Manages reminder lists - view existing lists or create new ones for organizing reminders.
+Manages reminder lists — view existing lists or create new ones for organizing reminders.
 
 **Actions**: `read`, `create`, `update`, `delete`
-
-**Main Handler Functions**:
-
-- `handleReadReminderLists()` - Read all reminder lists
-- `handleCreateReminderList()` - Create new reminder lists
-- `handleUpdateReminderList()` - Update existing reminder lists
-- `handleDeleteReminderList()` - Delete reminder lists
 
 #### Parameters by Action
 
@@ -666,7 +562,7 @@ Manages reminder lists - view existing lists or create new ones for organizing r
 
 **Create Action** (`action: "create"`):
 
-- `name` _(required)_: Name for new reminder list
+- `name` _(required)_: Name for the new reminder list
 
 **Update Action** (`action: "update"`):
 
@@ -690,16 +586,9 @@ Manages reminder lists - view existing lists or create new ones for organizing r
 
 **Tool Name**: `calendar_events`
 
-Handles EventKit calendar events (time blocks) with CRUD capabilities.
+Handles EventKit calendar events (time blocks) with CRUD capabilities. URL, structured location, all-day toggle, availability, alarms, and recurrence rules are read-only via this tool — configure them in Calendar.app. All-day events are inferred from the date format (`YYYY-MM-DD` without a time component).
 
 **Actions**: `read`, `create`, `update`, `delete`
-
-**Main Handler Functions**:
-
-- `handleReadCalendarEvents()` - Read events with optional filters
-- `handleCreateCalendarEvent()` - Create calendar events
-- `handleUpdateCalendarEvent()` - Update existing events
-- `handleDeleteCalendarEvent()` - Delete calendar events
 
 #### Parameters by Action
 
@@ -708,9 +597,9 @@ Handles EventKit calendar events (time blocks) with CRUD capabilities.
 - `id` _(optional)_: Unique identifier of an event to read
 - `filterCalendar` _(optional)_: Calendar name filter
 - `search` _(optional)_: Keyword match against title, notes, or location
-- `availability` _(optional)_: Filter by availability ("busy", "free", "tentative", "unavailable", "not-supported")
-- `startDate` _(optional)_: Filter events starting on/after this date
-- `endDate` _(optional)_: Filter events ending on/before this date
+- `availability` _(optional)_: Filter by availability (`busy`, `free`, `tentative`, `unavailable`, `not-supported`)
+- `startDate` _(optional)_: Filter events starting on/after this date (defaults to today if both dates omitted)
+- `endDate` _(optional)_: Filter events ending on/before this date (defaults to today + 14 days if both dates omitted)
 
 **Create Action** (`action: "create"`):
 
@@ -718,23 +607,24 @@ Handles EventKit calendar events (time blocks) with CRUD capabilities.
 - `startDate` _(required)_: Start date/time
 - `endDate` _(required)_: End date/time
 - `targetCalendar` _(optional)_: Calendar name to create in
-- `note`, `location`, `structuredLocation`, `url`, `isAllDay` _(optional)_: Additional metadata
-- `availability` _(optional)_: Availability ("busy", "free", "tentative", "unavailable")
-- `alarms` _(optional)_: Array of alarm objects (see Alarm Object above)
-- `recurrenceRules` _(optional)_: Array of recurrence rules (see Recurrence Rule Object above)
+- `note` _(optional)_: Additional notes
+- `location` _(optional)_: Location text
 
 **Update Action** (`action: "update"`):
 
 - `id` _(required)_: Event identifier
-- Other fields align with create parameters and are optional updates
-- `clearAlarms` _(optional)_: Set to true to remove all alarms
-- `clearRecurrence` _(optional)_: Set to true to remove all recurrence rules
-- `span` _(optional)_: Scope for recurring event changes: `"this-event"` or `"future-events"`
+- `title` _(optional)_: New title
+- `startDate` _(optional)_: New start date/time
+- `endDate` _(optional)_: New end date/time
+- `note` _(optional)_: New notes
+- `location` _(optional)_: New location text
+
+> Events cannot be moved across calendars via update — delete and recreate in the target calendar.
 
 **Delete Action** (`action: "delete"`):
 
 - `id` _(required)_: Event identifier to remove
-- `span` _(optional)_: Scope for recurring event deletes: `"this-event"` or `"future-events"`
+- `span` _(optional)_: Scope for recurring event deletes (`this-event` or `future-events`)
 
 ### Calendar Collections Tool
 
@@ -749,11 +639,7 @@ Returns the available calendars, derived from the calendars that hold at least o
 - `startDate`: Range start for scoped calendar discovery
 - `endDate`: Range end for scoped calendar discovery
 
-**Main Handler Function**:
-
-- `handleReadCalendars()` - List all calendars with IDs and titles, or scoped active calendars (with event counts) when a date range is supplied
-
-**Example Usage**
+#### Example Usage
 
 ```json
 {
@@ -769,7 +655,7 @@ Returns the available calendars, derived from the calendars that hold at least o
 }
 ```
 
-**Example Response**
+#### Example Response
 
 ```json
 {
@@ -783,11 +669,43 @@ Returns the available calendars, derived from the calendars that hold at least o
 }
 ```
 
-Note: the vendored `event` CLI has no EventKit calendar identifiers, so the
-synthesized `id` mirrors the calendar `title` and is omitted from the
-markdown output when they're identical.
+Note: the vendored `event` CLI has no EventKit calendar identifiers, so the synthesized `id` mirrors the calendar `title` and is omitted from the markdown output when they're identical.
 
-#### Response Formats
+### Read-Only Field Shapes
+
+Reminders and events returned by read actions carry alarms, recurrence rules, and location triggers that this server does not write. They round-trip from values configured in Reminders.app / Calendar.app.
+
+Alarm object (read response):
+
+```json
+{
+  "relativeOffset": -900,
+  "absoluteDate": "2025-11-04T09:00:00+08:00",
+  "locationTrigger": {
+    "title": "Office",
+    "latitude": 37.7749,
+    "longitude": -122.4194,
+    "radius": 100,
+    "proximity": "enter"
+  }
+}
+```
+
+Recurrence rule object (read response):
+
+```json
+{
+  "frequency": "daily" | "weekly" | "monthly" | "yearly",
+  "interval": 1,
+  "endDate": "YYYY-MM-DD",
+  "occurrenceCount": 10,
+  "daysOfWeek": [1, 3, 5],
+  "daysOfMonth": [1, 15],
+  "monthsOfYear": [3, 6]
+}
+```
+
+### Response Formats
 
 **Success Response**:
 
@@ -803,9 +721,7 @@ markdown output when they're identical.
 }
 ```
 
-**Reminder with Enhanced Features**:
-
-When reading reminders, the output includes visual indicators for enhanced features:
+**Reminder with Enhanced Features**: When reading reminders, the output includes visual indicators:
 
 - 🔄 - Recurring reminder
 - 📍 - Location-based reminder
@@ -827,15 +743,7 @@ Example output:
   - Due: 2024-03-25 18:00:00
 ```
 
-**Note about URL fields**: The `url` field is fully supported by EventKit API. When you create or update a reminder with a URL parameter, the URL is stored in two places for maximum compatibility:
-
-1. **EventKit URL field**: The URL is stored in the native `url` property (visible in Reminders app detail view via the "i" icon)
-2. **Notes field**: The URL is also appended to the notes using a structured format for parsing
-
-**Dual Storage Approach**:
-
-- **URL field**: Stores a single URL for native Reminders app display
-- **Notes field**: Stores URLs in a structured format for parsing and multiple URL support
+**Note about URL fields**: The `url` field is fully supported by the EventKit API. When you create or update a reminder with a URL parameter, the URL is stored in the native `url` property (visible in Reminders app detail view via the "i" icon) and also appended to the notes in a structured format for parsing and multi-URL support:
 
 ```text
 Reminder note content here...
@@ -845,21 +753,7 @@ URLs:
 - https://another-url.com
 ```
 
-This ensures URLs are accessible both in the Reminders app UI and through the API/notes for parsing.
-
-**URL Extraction**: You can extract URLs from reminder notes using regex:
-
-```typescript
-// Extract URLs from notes using regex
-const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
-```
-
-**Benefits of Structured Format**:
-
-- **Consistent parsing**: URLs are always in a predictable location
-- **Multiple URL support**: Handle multiple URLs per reminder reliably
-- **Clean separation**: Note content and URLs are clearly separated
-- **Backward compatible**: Unstructured URLs still detected as fallback
+URLs accept any valid URI scheme (`http`, `https`, `mailto`, `tel`, `obsidian`, `shortcuts`, etc.). File, javascript, data, and similar dangerous schemes are rejected, and http(s) hostnames are checked against an SSRF blocklist.
 
 **List Response**:
 
@@ -956,7 +850,7 @@ Organize overdue reminders by due date
 
 ## Tags System
 
-Tags provide cross-list categorization for reminders. They are stored in the notes field using the `[#tag]` format, which keeps them human-readable in the native Reminders app.
+Tags provide cross-list categorization for reminders. They are stored in the notes field using the `[#tag]` format, which keeps them human-readable in the native Reminders app. Both `[#tag]` and bare `#tag` formats are supported on read.
 
 ### Tag Format
 
@@ -1009,25 +903,25 @@ Update tags (add/remove):
 
 ## Development
 
-1. Install dependencies with pnpm (keeps the Swift bridge and TypeScript graph in sync):
+1. Install dependencies with pnpm (the postinstall hook builds `bin/event` from the `vendor/event` submodule on macOS):
 
 ```bash
 pnpm install
 ```
 
-1. Build the project (TypeScript + the vendored `event` Swift CLI) before invoking the server:
+2. Build the project (TypeScript + the vendored `event` Swift CLI) before invoking the server:
 
 ```bash
 pnpm build
 ```
 
-1. Run the full test suite to validate TypeScript repositories, schemas, build script, and prompt templates:
+3. Run the full test suite to validate TypeScript repositories, schemas, build script, and prompt templates:
 
 ```bash
 pnpm test
 ```
 
-1. Lint and format with Biome prior to committing:
+4. Lint and format with Biome prior to committing:
 
 ```bash
 pnpm exec biome check
@@ -1039,12 +933,14 @@ The CLI entry point includes a project-root fallback, so you can start the serve
 
 ### Available Scripts
 
-- `pnpm build` - Build TypeScript and the vendored `event` CLI (required before starting the server)
+- `pnpm build` - Build TypeScript and the vendored `event` CLI (required before starting the server from source)
+- `pnpm build:ts` - Build TypeScript only
 - `pnpm build:event` - Build the vendored `event` CLI only (compiles `vendor/event` via `swift build -c release` and emits `bin/event`)
-- `pnpm dev` - TypeScript development mode with file watching via tsx (runtime TS execution)
-- `pnpm start` - Start the MCP server over stdio (auto-fallback to runtime TS if no build)
+- `pnpm build:release` - Build plus notarization (for release packaging)
 - `pnpm test` - Run the comprehensive Jest test suite
-- `pnpm check` - Run Biome formatting and TypeScript type checking
+- `pnpm test:ci` - Run the Jest test suite with coverage
+- `pnpm lint` - Biome format/fix plus TypeScript type check
+- `pnpm check` - Lint plus test with coverage
 
 ### Dependencies
 
@@ -1063,11 +959,6 @@ The CLI entry point includes a project-root fallback, so you can start the serve
 - `@swc/core ^1.15.33` - SWC compiler
 - `@swc/jest ^0.2.39` - SWC Jest transformer
 - `@biomejs/biome 2.4.15` - Code formatting and linting
-
-**Build Tools:**
-
-- Swift binaries for native macOS integration
-- TypeScript compilation for cross-platform compatibility
 
 ## License
 

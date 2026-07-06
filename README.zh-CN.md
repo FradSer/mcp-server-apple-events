@@ -4,54 +4,73 @@
 
 [English](README.md) | **简体中文**
 
-一个为 macOS 提供原生 Apple Reminders 和 Calendar 集成的 Model Context Protocol (MCP) 服务器。该服务器允许你通过标准化接口与 Apple Reminders 和 Calendar Events 进行交互，具有全面的管理功能。
+一个为 macOS 提供原生 Apple Reminders 和 Calendar 集成的 Model Context Protocol (MCP) 服务器。它通过标准化接口暴露 Apple Reminders 与 Calendar Events，支持完整的 CRUD 操作。
 
 > [!NOTE]
 > **本服务器的实现基础：[event](https://github.com/FradSer/event) —— 纯 Swift 实现的 macOS Apple Reminders 与 Calendar 命令行工具。**
 >
-> 从 v1.5.0 起，本服务器的 EventKit 后端切换为独立的 [`event`](https://github.com/FradSer/event) CLI。`event` 以 git submodule 的形式 vendor 在 `vendor/event` 下，在 `pnpm install` 时自动构建为 `bin/event`，无需另行 `brew install`。两个项目从此共享同一份 Swift 代码。少量 MCP 工具字段（写入式 alarms / recurrence / locationTrigger、reminder 的 `location`、calendar 的 `url` / `structuredLocation` / `availability` / `isAllDay` 写入、update 时的跨日历搬移、list 的 `color`、以及 `filterAccount`）在此次切换中被移除，原因是 `event` 目前尚未暴露相应的 CLI 标志；读取路径保持不变。完整移除字段表与对应替代方案见 [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md)。对于本 MCP 服务器以外的脚本与自动化场景，建议直接使用 [`event`](https://github.com/FradSer/event) CLI。
+> 从 v1.5.0 起，本服务器的 EventKit 后端切换为独立的 [`event`](https://github.com/FradSer/event) CLI。`event` 以 git submodule 的形式 vendor 在 `vendor/event` 下，在 `pnpm install` 时自动构建为 `bin/event`，无需另行 `brew install`。两个项目共享同一份 Swift 代码。由于 `event` 目前尚未暴露对应的 CLI 标志，部分 MCP 工具写入字段在此次切换中被移除——alarms、重复规则、位置触发器、reminder 的 `location`、calendar 的 `url` / `structuredLocation` / `availability` / `isAllDay` 写入以及跨日历搬移。读取路径保持不变，因此在 Reminders.app / Calendar.app 中配置的值仍会原样往返于本服务器。完整移除字段表与替代方案见 [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md)。对于本 MCP 服务器以外的脚本与自动化场景，建议直接使用 [`event`](https://github.com/FradSer/event) CLI。
+
+## 目录
+
+- [功能特性](#功能特性)
+- [系统要求](#系统要求)
+- [macOS 权限要求](#macos-权限要求sonoma-14--sequoia-15)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [使用示例](#使用示例)
+- [结构化提示库](#结构化提示库)
+- [可用的 MCP 工具](#可用的-mcp-工具)
+- [组织策略](#组织策略)
+- [标签系统](#标签系统)
+- [开发](#开发)
+- [License](#license)
+- [Contributing](#contributing)
 
 ## 功能特性
 
 ### 核心功能
-- **列表管理**：查看所有提醒事项和提醒事项列表的高级过滤选项
-- **提醒事项操作**：完整的CRUD操作（创建、读取、更新、删除）提醒事项
-- **丰富内容支持**：完全支持标题、备注、截止日期、URL和完成状态
-- **原生macOS集成**：使用EventKit框架直接与Apple Reminders集成
 
-### 增强提醒功能 (v1.3.0)
+- **列表管理**：查看所有提醒事项和提醒事项列表，支持高级过滤
+- **提醒事项操作**：跨列表的完整 CRUD 操作（创建、读取、更新、删除）
+- **丰富内容支持**：标题、备注、开始/截止日期、URL、优先级、标签和完成状态
+- **原生 macOS 集成**：基于 EventKit 框架直接与 Apple Reminders 集成
+
+### 增强提醒功能
+
 - **优先级支持**：设置提醒优先级（高/中/低/无），并带有视觉指示器
-- **重复提醒**：创建具有灵活重复规则（每日、每周、每月、每年）的重复提醒
-- **基于位置的触发器**：设置地理围栏提醒，在到达或离开某个位置时触发
-- **标签/标签**：使用自定义标签组织提醒事项，以便进行跨列表分类和过滤
-- **子任务/清单**：向提醒事项添加带有进度跟踪的清单项目
+- **标签/标签**：使用自定义标签组织提醒事项，支持跨列表分类与过滤
+- **子任务/清单**：向提醒事项添加带进度跟踪的清单项目
+- **重复提醒、alarms 与位置触发器**：本服务器只读——请在 Reminders.app 中配置。读取响应会原样返回这些字段并显示视觉指示器。
 
 ### 高级功能
-- **智能组织**：按优先级、截止日期、类别或完成状态的自动分类 and 智能过滤
-- **强大搜索**：包括完成状态、截止日期范围、标签和全文搜索的多条件过滤
-- **批量操作**：使用优化的数据访问模式高效处理多个提醒事项
-- **权限管理**：自动验证和请求所需的macOS系统权限
-- **灵活日期处理**：支持多种日期格式（YYYY-MM-DD、ISO 8601）并具有时区感知能力
-- **Unicode支持**：完整的国际字符支持和全面的输入验证
+
+- **智能组织**：按优先级、截止日期、类别或完成状态自动分类与智能过滤
+- **多条件搜索**：按完成状态、截止日期范围、标签和全文进行过滤
+- **权限管理**：自动验证并请求所需的 macOS 系统权限
+- **灵活日期处理**：支持多种日期格式（`YYYY-MM-DD`、`YYYY-MM-DD HH:mm:ss`、ISO 8601），具备时区感知
+- **Unicode 支持**：完整的国际字符支持与全面的输入校验
 
 ### 技术优势
-- **Clean Architecture**：遵循Clean Architecture原则的4层架构，包含依赖注入
-- **类型安全**：使用Zod模式验证进行运行时类型检查的完整TypeScript覆盖
-- **高性能**：用于Apple Reminders性能关键操作的Swift编译二进制文件
+
+- **Clean Architecture**：遵循 Clean Architecture 原则的 4 层架构，包含依赖注入
+- **类型安全**：使用 Zod 进行运行时类型校验的完整 TypeScript 覆盖
+- **高性能**：用于 EventKit 关键操作的 Swift 编译二进制
 - **健壮的错误处理**：具有详细诊断信息的一致错误响应
-- **Repository Pattern**：标准化的CRUD操作的数据访问抽象
-- **函数式编程**：在适当情况下使用纯函数和不可变数据结构
+- **Repository Pattern**：标准化的数据访问抽象
 
 ## 系统要求
 
 - **Node.js 20 或更高版本**
 - **macOS**（Apple Reminders 集成所需）
-- **Xcode Command Line Tools**（编译 Swift 代码所需）
+- **Xcode Command Line Tools**（从源码构建时编译 Swift 代码所需）
 - **pnpm**（推荐用于包管理）
+
+npm 发布包自带预构建的通用签名 `bin/event` 二进制，使用 `npx` 的用户无需安装 Xcode 或 Swift 工具链。从 git 克隆构建时则需要上述依赖。
 
 ## macOS 权限要求（Sonoma 14+ / Sequoia 15）
 
-Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访问」范围。Swift 桥接层声明了以下隐私键，确保在你授权后 Claude 可以安全读取并写入所选数据：
+Apple 将提醒事项和日历权限拆分为「仅写入」与「完全访问」范围。vendor 的 `event` CLI 没有内嵌 Info.plist——权限提示归属于启动它的宿主进程（Claude Desktop、Cursor、Terminal 等），因此需要由宿主应用的 bundle 声明这些隐私键：
 
 - `NSRemindersUsageDescription`
 - `NSRemindersFullAccessUsageDescription`
@@ -60,7 +79,7 @@ Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访�
 - `NSCalendarsFullAccessUsageDescription`
 - `NSCalendarsWriteOnlyAccessUsageDescription`
 
-当授权状态为 `notDetermined` 时，CLI 会调用 `requestFullAccessToReminders` / `requestFullAccessToEvents`，macOS 会弹出对应的授权对话框。如果系统遗失权限记录，可运行 `./check-permissions.sh` 重新触发请求。
+当 CLI 检测到 `notDetermined` 授权状态时，会调用 `requestFullAccessToReminders` / `requestFullAccessToEvents`，macOS 会弹出对应的授权对话框。如果系统遗失权限记录，可运行 `./check-permissions.sh` 重新触发请求。
 
 若 Claude 的工具调用依旧遇到权限错误，请参阅下方的 *桌面端 MCP 客户端* 一节——那里描述了 responsible 进程归属问题以及推荐的解决方案。
 
@@ -72,7 +91,7 @@ Apple 已将提醒事项和日历权限拆分为「仅写入」与「完全访�
 - 找到启动 MCP 服务的应用（例如 Terminal 或 Claude Desktop）
 - 将权限切换为 **Full Calendar Access**
 
-你也可以重新运行 `./check-permissions.sh`（脚本现在会同时检查 Reminders 与 Calendars 权限）。
+你也可以重新运行 `./check-permissions.sh`（脚本会同时检查 Reminders 与 Calendars 权限）。
 
 ### 桌面端 MCP 客户端（Claude Desktop、Codex Desktop 等）
 
@@ -114,7 +133,7 @@ pnpm test -- src/__tests__/build-event.test.ts
 
 ### macOS 26 (Tahoe) 上 `could not build module 'Foundation'` 错误排查
 
-如果 `pnpm build` 失败并提示 `could not build module 'Foundation'`（或 `SDK is not supported by the compiler`），说明你的 Swift 工具链版本低于 macOS 26 SDK 的要求。macOS 26+ SDK 包含的 `Foundation.swiftinterface` 需要 **Swift 6.3 或更高版本**；而 macOS 26 早期版本附带的 Command Line Tools 包含的是 Swift 6.2.x，无法解析该文件。详见 [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85)。
+如果 `pnpm build` 失败并提示 `could not build module 'Foundation'`（或 `SDK is not supported by the compiler`），说明你的 Swift 工具链版本低于 macOS 26 SDK 的要求。macOS 26+ SDK 包含的 `Foundation.swift-interface` 需要 **Swift 6.3 或更高版本**；而 macOS 26 早期版本附带的 Command Line Tools 包含的是 Swift 6.2.x，无法解析该文件。详见 [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85)。
 
 `pnpm build:event` 现在会检测此不匹配并打印相同的解决方案，但如果手动遇到此问题：
 
@@ -138,7 +157,7 @@ xcrun --show-sdk-version        # 应与你的 macOS 主版本匹配
 
 ## 快速开始
 
-你可以直接使用 `npx` 运行服务器：
+直接使用 `npx` 运行服务器：
 
 ```bash
 npx mcp-server-apple-events
@@ -153,16 +172,17 @@ npx mcp-server-apple-events
 3. 点击侧边栏中的 "MCP"
 4. 点击 "Add new global MCP server"
 5. 使用以下设置配置服务器：
-    ```json
-    {
-      "mcpServers": {
-        "apple-reminders": {
-          "command": "npx",
-          "args": ["-y", "mcp-server-apple-events"]
-        }
-      }
-    }
-    ```
+
+   ```json
+   {
+     "mcpServers": {
+       "apple-reminders": {
+         "command": "npx",
+         "args": ["-y", "mcp-server-apple-events"]
+       }
+     }
+   }
+   ```
 
 ### 配置 ChatWise
 
@@ -190,16 +210,16 @@ npx mcp-server-apple-events
 #### 方式 2：直接访问文件
 
 macOS：
+
 ```bash
 code ~/Library/Application\ Support/Claude/claude_desktop_config.json
 ```
 
 Windows：
+
 ```bash
 code %APPDATA%\Claude\claude_desktop_config.json
 ```
-
-### 2. 添加服务器配置
 
 将以下配置添加到你的 `claude_desktop_config.json`：
 
@@ -231,23 +251,17 @@ code %APPDATA%\Claude\claude_desktop_config.json
 }
 ```
 
-有关连接本地 MCP 服务器的更多信息，请参阅
-[官方 MCP 文档](https://modelcontextprotocol.io/docs/develop/connect-local-servers)。
+有关连接本地 MCP 服务器的更多信息，请参阅 [官方 MCP 文档](https://modelcontextprotocol.io/docs/develop/connect-local-servers)。
 
-### 3. 重启 Claude Desktop
-
-要使更改生效：
-
-1. 完全退出 Claude Desktop（不仅仅是关闭窗口）
-2. 重新启动 Claude Desktop
-3. 查看工具图标以验证 Apple Events 服务器是否已连接
+完全退出 Claude Desktop（不仅仅是关闭窗口）后重启，使更改生效。查看工具图标以验证 Apple Events 服务器是否已连接。
 
 ## 使用示例
 
 配置完成后，你可以让 Claude 与你的 Apple Reminders 进行交互。以下是一些示例提示：
 
 ### 创建提醒事项
-```
+
+```text
 创建一个明天下午 5 点的"买杂货"提醒。
 添加一个"打电话给妈妈"的提醒，备注"询问周末计划"。
 在"工作"列表中创建一个下周五到期的"提交报告"提醒。
@@ -255,43 +269,32 @@ code %APPDATA%\Claude\claude_desktop_config.json
 ```
 
 ### 创建带有优先级的提醒
-```
+
+```text
 创建一个周五到期的"完成季度报告"高优先级提醒。
 添加一个今天到期的"给客户回电话"紧急高优先级提醒。
 创建一个"审阅文档"中等优先级提醒。
 ```
 
-### 创建重复提醒
-```
-创建一个每天上午 9 点"服药"的提醒。
-每周一添加一个"团队站会"提醒。
-在每月 1 号创建一个"交房租"提醒。
-在 3 月 15 日设置一个"报税"年度提醒。
-```
-
-### 创建基于位置的提醒
-```
-提醒我在到达杂货店时"买牛奶"。
-创建一个在我回家时"检查信箱"的提醒。
-添加一个在我离开办公室时"提交工时表"的提醒。
-```
-
 ### 创建带有标签的提醒
-```
+
+```text
 创建一个带有 work 和 urgent 标签的提醒 "Review PR"。
 添加一个带有 personal 和 shopping 标签的提醒 "Buy birthday gift"。
 创建一个带有 project-alpha, backend, review 标签的提醒。
 ```
 
 ### 创建带有子任务的提醒
-```
+
+```text
 创建一个提醒 "Grocery shopping"，包含子任务：milk, eggs, bread, butter。
 添加一个提醒 "Pack for trip"，包含清单项目：passport, charger, clothes, toiletries。
 创建 "Sprint planning"，包含子任务：review backlog, estimate stories, assign tasks。
 ```
 
 ### 管理子任务
-```
+
+```text
 显示我的 "Grocery shopping" 提醒的子任务。
 将 "milk" 子任务标记为已完成。
 向我的购物列表提醒添加一个新的子任务 "cheese"。
@@ -299,7 +302,8 @@ code %APPDATA%\Claude\claude_desktop_config.json
 ```
 
 ### 过滤提醒
-```
+
+```text
 显示所有高优先级提醒。
 显示带有 "work" 标签的提醒。
 仅显示重复提醒。
@@ -308,7 +312,8 @@ code %APPDATA%\Claude\claude_desktop_config.json
 ```
 
 ### 更新提醒事项
-```
+
+```text
 将"买杂货"提醒的标题更新为"买有机杂货"。
 将"打电话给妈妈"提醒更新为今天下午 6 点到期。
 更新"提交报告"提醒并将其标记为已完成。
@@ -318,32 +323,32 @@ code %APPDATA%\Claude\claude_desktop_config.json
 ```
 
 ### 管理提醒事项
-```
+
+```text
 显示我的所有提醒事项。
 列出"购物"列表中的所有提醒事项。
 显示我已完成的提醒事项。
 ```
 
 ### 处理列表
-```
+
+```text
 显示所有提醒事项列表。
 显示"工作"列表中的提醒事项。
 ```
 
-服务器将：
-- 处理你的自然语言请求
-- 与 Apple 原生提醒事项应用交互
-- 向 Claude 返回格式化结果
-- 维护与 macOS 的原生集成
+服务器会处理你的自然语言请求，与 Apple 原生提醒事项应用交互，向 Claude 返回格式化结果，并维护与 macOS 的原生集成。
+
+> 重复提醒、alarms 与位置触发器在本服务器中是只读的。请在 Reminders.app 中配置——它们仍会出现在读取结果中并带有视觉指示器。
 
 ## 结构化提示库
 
 该服务器提供统一的提示注册表，可通过 MCP 的 `ListPrompts` 和 `GetPrompt` 端点访问。每个模板都共享使命、上下文输入、编号流程、约束、输出格式和质量标准，让下游助手获得可预测的框架，而无需解析松散的自由格式示例。
 
-- **daily-task-organizer** —— 可选 `today_focus`（你今天最想完成的重点）生成当日执行蓝图，在优先级工作与恢复时间之间保持平衡。支持智能任务聚类、专注时间段安排、自动提醒列表组织，并会在大量今日到期的提醒需要固定时段时，按照到期时间自动创建日历时间块。快速完成类任务簇会转换为以提醒到期时间结束的 15 分钟「Focus Sprint — [Outcome]」日历占位，而标准任务则对应 30 、45 或 60 分钟的事件，并以同一到期时间窗口为锚点。
+- **daily-task-organizer** —— 可选 `today_focus`（你今天最想完成的重点）生成当日执行蓝图，在优先级工作与恢复时间之间保持平衡。支持智能任务聚类、专注时间段安排、自动提醒列表组织，并会在大量今日到期的提醒需要固定时段时，按照到期时间自动创建日历时间块。Quick Win 任务簇会转换为以提醒到期时间结束的 15 分钟「Focus Sprint — [Outcome]」日历占位，而 Standard 任务则对应 30、45 或 60 分钟的事件，并以同一到期时间窗口为锚点。
 - **smart-reminder-creator** —— 可选 `task_idea`（你想做的一句话描述），生成优化调度的提醒结构。
-- **reminder-review-assistant** —— 可选 `review_focus`（如“逾期”或某个清单名）用于审计与优化现有提醒。
-- **weekly-planning-workflow** —— 可选 `user_ideas`（您本周想要完成的想法和目标）指导周一至周日的重置，时间区块与现有列表相关联。
+- **reminder-review-assistant** —— 可选 `review_focus`（如「逾期」或某个清单名）用于审计与优化现有提醒。
+- **weekly-planning-workflow** —— 可选 `user_ideas`（你本周想要完成的想法和目标）指导周一至周日的重置，时间区块与现有列表相关联。
 
 ### 设计约束与验证
 
@@ -353,120 +358,69 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 ## 可用的 MCP 工具
 
-服务器现在按照服务域暴露 MCP 工具，对应提醒事项与日历的不同资源：
+该服务器按照服务域暴露 MCP 工具，对应提醒事项与日历的不同资源。请使用与你要操作的资源匹配的标识符：
+
+- `reminders_tasks` —— 管理单个提醒事项
+- `reminders_subtasks` —— 管理提醒事项内的清单项目
+- `reminders_lists` —— 管理提醒事项列表
+- `calendar_events` —— 管理日历事件（时间块）
+- `calendar_calendars` —— 查看可用日历
+
+所有工具都接受一个 `action` 字段以及按操作区分的参数。日期字段接受 `YYYY-MM-DD`、`YYYY-MM-DD HH:mm:ss`（本地时间）或带时区的 ISO 8601。
 
 ### 提醒事项任务工具
 
 **工具名称**：`reminders_tasks`
 
-用于管理单个提醒事项任务，支持完整的 CRUD 操作，包括优先级、提醒（alarms）、重复规则（recurrence rules）、开始/到期/完成时间、位置触发器、标签和子任务。
+管理单个提醒事项任务，支持完整 CRUD，包括优先级、标签和子任务。alarms、重复规则与位置触发器在本工具中是只读的——请在 Reminders.app 中配置。
 
 **操作**：`read`、`create`、`update`、`delete`
-
-**主要处理函数**：
-- `handleReadReminders()` - 带筛选选项读取提醒事项
-- `handleCreateReminder()` - 创建新的提醒事项
-- `handleUpdateReminder()` - 更新现有提醒事项
-- `handleDeleteReminder()` - 删除提醒事项
 
 #### 按操作的参数
 
 **读取操作**（`action: "read"`）：
+
 - `id` *(可选)*：要读取的特定提醒事项的唯一标识符
 - `filterList` *(可选)*：要展示的提醒事项列表名称
 - `showCompleted` *(可选)*：是否包含已完成的提醒事项（默认：false）
-- `search` *(可选)*：根据标题或内容筛选提醒事项的搜索词
-- `dueWithin` *(可选)*：按到期范围筛选（"today"、"tomorrow"、"this-week"、"overdue"、"no-date"）
-- `filterPriority` *(可选)*：按优先级级别筛选 ("high", "medium", "low", "none")
-- `filterRecurring` *(可选)*：仅显示重复提醒
-- `filterLocationBased` *(可选)*：仅显示基于位置的提醒
-- `filterTags` *(可选)*：按标签筛选（必须具有所有指定标签）
+- `search` *(可选)*：根据标题或备注筛选提醒事项的搜索词
+- `dueWithin` *(可选)*：按到期范围筛选（`today`、`tomorrow`、`this-week`、`overdue`、`no-date`）
+- `filterPriority` *(可选)*：按优先级筛选（`high`、`medium`、`low`、`none`）
+- `filterRecurring` *(可选)*：为 true 时仅显示重复提醒
+- `filterLocationBased` *(可选)*：为 true 时仅显示基于位置的提醒
+- `filterTags` *(可选)*：按标签筛选（提醒必须具有所有指定标签）
 
 **创建操作**（`action: "create"`）：
+
 - `title` *(必填)*：提醒事项标题
-- `startDate` *(可选)*：开始时间，格式为 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:mm:ss`
-- `dueDate` *(可选)*：到期时间，格式为 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:mm:ss`
+- `dueDate` *(可选)*：到期时间
 - `targetList` *(可选)*：要添加到的提醒事项列表名称
 - `note` *(可选)*：提醒事项备注内容
-- `url` *(可选)*：与提醒事项关联的 URL
-- `location` *(可选)*：位置文本（`EKCalendarItem.location`，不是地理围栏触发器）
-- `priority` *(可选)*：优先级级别 (0=无, 1=高, 5=中, 9=低)
-- `alarms` *(可选)*：提醒数组（见下方「提醒对象」）
-- `recurrenceRules` *(可选)*：重复规则数组（见下方「重复规则对象」）
-- `recurrence` *(可选)*：兼容旧写法的单个重复规则（等价于单元素 `recurrenceRules`）
-- `locationTrigger` *(可选)*：位置触发器对象
-- `tags` *(可选)*：要添加到提醒的标签数组
-- `subtasks` *(可选)*：要随提醒创建的子任务标题数组
+- `url` *(可选)*：与提醒事项关联的 URL（接受任意合法 URI scheme）
+- `priority` *(可选)*：优先级（0=无, 1=高, 5=中, 9=低）
+- `tags` *(可选)*：要设置到提醒上的标签数组
+- `subtasks` *(可选)*：随提醒创建的子任务标题数组
+
+> 创建时不支持 `startDate`——请在创建后通过 `update` 设置。
 
 **更新操作**（`action: "update"`）：
+
 - `id` *(必填)*：要更新的提醒事项唯一标识符
-- `title` *(可选)*：提醒事项新标题
+- `title` *(可选)*：新标题
 - `startDate` *(可选)*：新的开始时间
-- `dueDate` *(可选)*：新的到期时间，格式为 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:mm:ss`
+- `dueDate` *(可选)*：新的到期时间
 - `note` *(可选)*：新的备注内容
 - `url` *(可选)*：新的 URL
-- `location` *(可选)*：新的位置文本（传空字符串可清空）
-- `completed` *(可选)*：设置提醒事项完成状态
-- `completionDate` *(可选)*：设置显式完成时间
-- `targetList` *(可选)*：提醒事项所在列表
-- `priority` *(可选)*：新优先级级别 (0=无, 1=高, 5=中, 9=低)
-- `alarms` *(可选)*：用此数组替换所有提醒
-- `clearAlarms` *(可选)*：设置为 true 以移除所有提醒
-- `recurrenceRules` *(可选)*：用此数组替换所有重复规则
-- `recurrence` *(可选)*：兼容旧写法的单个重复规则
-- `clearRecurrence` *(可选)*：设置为 true 以移除重复规则
-- `locationTrigger` *(可选)*：新位置触发器
-- `clearLocationTrigger` *(可选)*：设置为 true 以移除位置触发器
+- `completed` *(可选)*：标记提醒为已完成（`true`）或未完成（`false`）
+- `targetList` *(可选)*：提醒所在列表（不支持跨列表搬移——请删除后在目标列表重建）
+- `priority` *(可选)*：新优先级（0=无, 1=高, 5=中, 9=低）
 - `tags` *(可选)*：用此数组替换所有标签
-- `addTags` *(可选)*：要添加的标签
+- `addTags` *(可选)*：要添加的标签（与现有标签合并）
 - `removeTags` *(可选)*：要移除的标签
 
 **删除操作**（`action: "delete"`）：
+
 - `id` *(必填)*：要删除的提醒事项唯一标识符
-
-#### 提醒对象（Alarm Object）
-
-```json
-{
-  "relativeOffset": -900,            // 秒（相对到期/开始时间），负数表示提前
-  "absoluteDate": "2025-11-04T09:00:00+08:00", // 绝对触发时间（可选）
-  "locationTrigger": {               // 地理围栏触发（可选）
-    "title": "办公室",
-    "latitude": 37.7749,
-    "longitude": -122.4194,
-    "radius": 100,
-    "proximity": "enter"
-  }
-}
-```
-
-每个提醒对象必须且只能指定 `relativeOffset`、`absoluteDate`、`locationTrigger` 之一。
-
-#### 重复规则对象（用于 `recurrenceRules`）
-
-```json
-{
-  "frequency": "daily" | "weekly" | "monthly" | "yearly",
-  "interval": 1,           // 每 N 个周期 (默认: 1)
-  "endDate": "YYYY-MM-DD", // 可选结束日期
-  "occurrenceCount": 10,   // 可选最大发生次数
-  "daysOfWeek": [1, 3, 5], // 1=周日, 7=周六 (用于每周)
-  "daysOfMonth": [1, 15],  // 1-31 (用于每月)
-  "monthsOfYear": [3, 6]   // 1-12 (用于每年)
-}
-```
-
-#### 位置触发器对象
-
-```json
-{
-  "title": "家", // 地点名称
-  "latitude": 37.7749, // 纬度
-  "longitude": -122.4194, // 经度
-  "radius": 100, // 地理围栏半径（米，默认: 100）
-  "proximity": "enter" // "enter" (到达) 或 "leave" (离开)
-}
-```
 
 #### 使用示例
 
@@ -485,39 +439,21 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 ```json
 {
-  "action": "create",
-  "title": "团队站会",
-  "dueDate": "2024-03-25 09:00:00",
-  "recurrence": {
-    "frequency": "weekly",
-    "interval": 1,
-    "daysOfWeek": [2, 3, 4, 5, 6]
-  }
-}
-```
-
-```json
-{
-  "action": "create",
-  "title": "买牛奶",
-  "locationTrigger": {
-    "title": "杂货店",
-    "latitude": 37.7749,
-    "longitude": -122.4194,
-    "radius": 200,
-    "proximity": "enter"
-  }
-}
-```
-
-```json
-{
   "action": "read",
   "filterList": "工作",
   "showCompleted": false,
   "dueWithin": "today",
   "filterPriority": "high",
   "filterTags": ["urgent"]
+}
+```
+
+```json
+{
+  "action": "update",
+  "id": "reminder-123",
+  "completed": false,
+  "addTags": ["followup"]
 }
 ```
 
@@ -534,15 +470,7 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 管理提醒事项中的子任务/清单。子任务使用人类可读的格式存储在备注字段中，在原生提醒事项应用中可见。
 
-**操作**：`read`, `create`, `update`, `delete`, `toggle`, `reorder`
-
-**主要处理函数**：
-- `handleReadSubtasks()` - 列出提醒的所有子任务
-- `handleCreateSubtask()` - 添加新子任务
-- `handleUpdateSubtask()` - 修改子任务
-- `handleDeleteSubtask()` - 移除子任务
-- `handleToggleSubtask()` - 切换完成状态
-- `handleReorderSubtasks()` - 更改子任务顺序
+**操作**：`read`、`create`、`update`、`delete`、`toggle`、`reorder`
 
 #### 按操作的参数
 
@@ -622,15 +550,9 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 **工具名称**：`reminders_lists`
 
-用于管理提醒事项列表 —— 查看现有列表或创建新的列表来组织提醒事项。
+管理提醒事项列表——查看现有列表或创建新的列表来组织提醒事项。
 
 **操作**：`read`、`create`、`update`、`delete`
-
-**主要处理函数**：
-- `handleReadReminderLists()` - 读取所有提醒事项列表
-- `handleCreateReminderList()` - 创建新的提醒事项列表
-- `handleUpdateReminderList()` - 更新现有提醒事项列表
-- `handleDeleteReminderList()` - 删除提醒事项列表
 
 #### 按操作的参数
 
@@ -664,45 +586,45 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 **工具名称**：`calendar_events`
 
-用于处理 EventKit 日历事件（时间块），提供 CRUD 能力。
+处理 EventKit 日历事件（时间块），提供 CRUD 能力。URL、structured location、all-day 切换、availability、alarms 与重复规则在本工具中是只读的——请在 Calendar.app 中配置。All-day 事件由日期格式推断（不带时间分量的 `YYYY-MM-DD`）。
 
 **操作**：`read`、`create`、`update`、`delete`
-
-**主要处理函数**：
-- `handleReadCalendarEvents()` - 带可选筛选读取事件
-- `handleCreateCalendarEvent()` - 创建日历事件
-- `handleUpdateCalendarEvent()` - 更新现有事件
-- `handleDeleteCalendarEvent()` - 删除日历事件
 
 #### 按操作的参数
 
 **读取操作**（`action: "read"`）：
+
 - `id` *(可选)*：读取单个事件的唯一标识符
 - `filterCalendar` *(可选)*：按日历名称筛选
 - `search` *(可选)*：按标题/备注/地点搜索
-- `availability` *(可选)*：按可用性筛选（"busy"、"free"、"tentative"、"unavailable"、"not-supported"）
-- `startDate`、`endDate` *(可选)*：按时间范围筛选
+- `availability` *(可选)*：按可用性筛选（`busy`、`free`、`tentative`、`unavailable`、`not-supported`）
+- `startDate` *(可选)*：筛选开始时间在此之后的事件（两个日期都省略时默认为今天）
+- `endDate` *(可选)*：筛选结束时间在此之前的事件（两个日期都省略时默认为今天 + 14 天）
 
 **创建操作**（`action: "create"`）：
+
 - `title` *(必填)*：事件标题
 - `startDate` *(必填)*：开始时间
 - `endDate` *(必填)*：结束时间
 - `targetCalendar` *(可选)*：目标日历名称
-- `note`、`location`、`structuredLocation`、`url`、`isAllDay` *(可选)*：基础字段
-- `availability` *(可选)*：可用性（"busy"、"free"、"tentative"、"unavailable"）
-- `alarms` *(可选)*：提醒数组（见上方「提醒对象」）
-- `recurrenceRules` *(可选)*：重复规则数组（见上方「重复规则对象」）
+- `note` *(可选)*：附加备注
+- `location` *(可选)*：地点文本
 
 **更新操作**（`action: "update"`）：
+
 - `id` *(必填)*：事件唯一标识符
-- 其余字段同创建操作，均为可选更新
-- `clearAlarms` *(可选)*：设置为 true 以移除所有提醒
-- `clearRecurrence` *(可选)*：设置为 true 以移除所有重复规则
-- `span` *(可选)*：循环事件变更范围：`"this-event"` 或 `"future-events"`
+- `title` *(可选)*：新标题
+- `startDate` *(可选)*：新的开始时间
+- `endDate` *(可选)*：新的结束时间
+- `note` *(可选)*：新的备注
+- `location` *(可选)*：新的地点文本
+
+> 事件无法通过 update 跨日历搬移——请在目标日历中删除并重建。
 
 **删除操作**（`action: "delete"`）：
+
 - `id` *(必填)*：事件唯一标识符
-- `span` *(可选)*：循环事件删除范围：`"this-event"` 或 `"future-events"`
+- `span` *(可选)*：循环事件删除范围（`this-event` 或 `future-events`）
 
 ### 日历集合工具
 
@@ -716,9 +638,6 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 - `startDate`：限定日历发现范围的起始日期
 - `endDate`：限定日历发现范围的结束日期
-
-**主要处理函数**：
-- `handleReadCalendars()` - 列出所有日历的 ID 与名称；提供日期范围时返回带事件计数的限定日历列表
 
 #### 使用示例
 
@@ -752,7 +671,41 @@ code %APPDATA%\Claude\claude_desktop_config.json
 
 注意：vendor 的 `event` CLI 没有 EventKit 日历标识符，因此合成的 `id` 与日历 `title` 相同；当两者一致时，Markdown 输出会省略该 ID。
 
-#### 响应格式
+### 只读字段结构
+
+读取操作返回的提醒事项和事件会携带本服务器不写入的 alarms、重复规则和位置触发器。它们原样来自 Reminders.app / Calendar.app 中配置的值。
+
+Alarm 对象（读取响应）：
+
+```json
+{
+  "relativeOffset": -900,
+  "absoluteDate": "2025-11-04T09:00:00+08:00",
+  "locationTrigger": {
+    "title": "Office",
+    "latitude": 37.7749,
+    "longitude": -122.4194,
+    "radius": 100,
+    "proximity": "enter"
+  }
+}
+```
+
+重复规则对象（读取响应）：
+
+```json
+{
+  "frequency": "daily" | "weekly" | "monthly" | "yearly",
+  "interval": 1,
+  "endDate": "YYYY-MM-DD",
+  "occurrenceCount": 10,
+  "daysOfWeek": [1, 3, 5],
+  "daysOfMonth": [1, 15],
+  "monthsOfYear": [3, 6]
+}
+```
+
+### 响应格式
 
 **成功响应**：
 
@@ -768,15 +721,15 @@ code %APPDATA%\Claude\claude_desktop_config.json
 }
 ```
 
-**带有增强功能的提醒事项**：
+**带有增强功能的提醒事项**：读取提醒事项时，输出包含增强功能的视觉指示器：
 
-读取提醒事项时，输出包含增强功能的视觉指示器：
 - 🔄 - 重复提醒
 - 📍 - 基于位置的提醒
 - 🏷️ - 带有标签
 - 📋 - 带有子任务
 
 示例输出：
+
 ```text
 - [ ] 购买杂货 🏷️📋
   - 列表: 购物
@@ -790,15 +743,7 @@ code %APPDATA%\Claude\claude_desktop_config.json
   - 到期: 2024-03-25 18:00:00
 ```
 
-**关于 URL 字段的说明**：`url` 字段完全受 EventKit API 支持。创建或更新带有 URL 参数的提醒事项时，URL 会存储在两个位置以确保最大兼容性：
-
-1. **EventKit URL 字段**：URL 存储在原生的 `url` 属性中（可通过提醒事项应用详情视图的 "i" 图标查看）
-2. **备注字段**：URL 也会以结构化格式追加到备注中，以便解析
-
-**双重存储方式**：
-
-- **URL 字段**：存储单个 URL，用于原生提醒事项应用显示
-- **备注字段**：以结构化格式存储 URL，支持解析和多个 URL
+**关于 URL 字段的说明**：`url` 字段完全受 EventKit API 支持。创建或更新带有 URL 参数的提醒事项时，URL 会存储在原生的 `url` 属性中（可通过提醒事项应用详情视图的 "i" 图标查看），同时以结构化格式追加到备注中，便于解析和多个 URL 支持：
 
 ```text
 提醒事项备注内容...
@@ -808,21 +753,7 @@ URLs:
 - https://another-url.com
 ```
 
-这确保了 URL 既可通过提醒事项应用 UI 访问，也可通过 API/备注进行解析。
-
-**URL 提取**：可以使用正则表达式从提醒事项备注中提取 URL：
-
-```typescript
-// 使用正则表达式从备注中提取 URL
-const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
-```
-
-**结构化格式的优势**：
-
-- **一致的解析**：URL 始终在可预测的位置
-- **支持多个 URL**：可靠地处理每个提醒事项的多个 URL
-- **清晰的分离**：备注内容和 URL 清晰分离
-- **向后兼容**：非结构化 URL 仍可作为回退方案检测
+URL 接受任意合法 URI scheme（`http`、`https`、`mailto`、`tel`、`obsidian`、`shortcuts` 等）。`file`、`javascript`、`data` 等危险 scheme 会被拒绝，http(s) 主机名会经过 SSRF 黑名单校验。
 
 **列表响应**：
 
@@ -858,23 +789,29 @@ const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
 服务器通过四个内置策略提供智能提醒事项组织功能：
 
 ### 优先级策略
+
 基于优先级关键词自动分类提醒事项：
-- **高优先级**：包含"紧急"、"重要"、"关键"、"紧急"等词
+
+- **高优先级**：包含「urgent」「important」「critical」「asap」等词
 - **中优先级**：标准提醒事项的默认类别
-- **低优先级**：包含"稍后"、"某天"、"最终"、"也许"等词
+- **低优先级**：包含「later」「someday」「eventually」「maybe」等词
 
 ### 截止日期策略
+
 基于提醒事项的截止日期进行组织：
+
 - **已过期**：过去的截止日期
-- **今天**：今天到期的提醒事项
-- **明天**：明天到期的提醒事项
-- **本周**：本周内到期的提醒事项
-- **下周**：下周到期的提醒事项
-- **未来**：下周之后到期的提醒事项
+- **今天**：今天到期
+- **明天**：明天到期
+- **本周**：本周内到期
+- **下周**：下周内到期
+- **未来**：下周之后到期
 - **无日期**：没有截止日期的提醒事项
 
 ### 类别策略
+
 通过内容分析智能分类提醒事项：
+
 - **工作**：商务、会议、项目、办公室、客户相关
 - **个人**：家庭、朋友、自我护理相关
 - **购物**：购买、商店、采购、杂货相关
@@ -885,7 +822,9 @@ const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
 - **未分类**：不匹配任何特定类别的提醒事项
 
 ### 完成状态策略
+
 简单的二元组织：
+
 - **活跃**：未完成的提醒事项
 - **已完成**：已完成的提醒事项
 
@@ -911,10 +850,12 @@ const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
 
 ## 标签系统
 
-标签为提醒事项提供跨列表分类。它们使用 `[#tag]` 格式存储在备注字段中，这使得它们在原生提醒事项应用中保持人类可读。
+标签为提醒事项提供跨列表分类。它们使用 `[#tag]` 格式存储在备注字段中，在原生提醒事项应用中保持人类可读。读取时同时支持 `[#tag]` 和裸 `#tag` 两种格式。
 
 ### 标签格式
+
 标签存储在备注末尾：
+
 ```text
 用户备注...
 
@@ -922,6 +863,7 @@ const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
 ```
 
 ### 标签规则
+
 - 标签可以包含字母、数字、下划线和连字符
 - 每个标签最多 50 个字符
 - 区分大小写
@@ -961,22 +903,26 @@ const urlsRegex = reminder.notes?.match(/https?:\/\/[^\s]+/g) || [];
 
 ## 开发
 
-1. 使用 pnpm 安装依赖（同时通过 postinstall 自动从 `vendor/event` 子模块构建 `bin/event`）：
+1. 使用 pnpm 安装依赖（在 macOS 上 postinstall 钩子会从 `vendor/event` 子模块构建 `bin/event`）：
+
 ```bash
 pnpm install
 ```
 
 2. 在启动前构建 TypeScript 与 vendored `event` CLI：
+
 ```bash
 pnpm build
 ```
 
 3. 运行全量测试，验证 TypeScript 仓库层、Zod 校验、构建脚本与提示模板：
+
 ```bash
 pnpm test
 ```
 
 4. 在提交前执行 Biome 检查：
+
 ```bash
 pnpm exec biome check
 ```
@@ -987,12 +933,14 @@ CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或�
 
 ### 可用脚本
 
-- `pnpm build` - 构建 TypeScript 与 vendored `event` CLI（启动服务器前必需）
+- `pnpm build` - 构建 TypeScript 与 vendored `event` CLI（从源码启动服务器前必需）
+- `pnpm build:ts` - 仅构建 TypeScript
 - `pnpm build:event` - 仅构建 vendored `event` CLI（运行 `swift build -c release` 编译 `vendor/event` 并生成 `bin/event`）
-- `pnpm dev` - 通过 tsx 以文件监视模式运行 TypeScript 开发服务器（运行时 TS 执行）
-- `pnpm start` - 通过 stdio 启动 MCP 服务器（如果没有构建则自动回退到运行时 TS）
+- `pnpm build:release` - 构建并进行 notarize（用于发布打包）
 - `pnpm test` - 运行完整的 Jest 测试套件
-- `pnpm check` - 运行 Biome 格式化和 TypeScript 类型检查
+- `pnpm test:ci` - 运行带覆盖率的 Jest 测试套件
+- `pnpm lint` - Biome 格式化/修复加 TypeScript 类型检查
+- `pnpm check` - Lint 加带覆盖率的测试
 
 ### 依赖
 
@@ -1000,7 +948,7 @@ CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或�
 
 - `@modelcontextprotocol/sdk ^1.29.0` - MCP 协议实现
 - `exit-on-epipe ^1.0.1` - 优雅的进程终止处理
-- `zod ^4.4.3` - 运行时类型验证
+- `zod ^4.4.3` - 运行时类型校验
 
 **开发依赖：**
 
@@ -1011,11 +959,6 @@ CLI 入口内建项目根目录回退逻辑。即使从 `dist/` 等子目录或�
 - `@swc/core ^1.15.33` - SWC 编译器
 - `@swc/jest ^0.2.39` - SWC Jest 转换器
 - `@biomejs/biome 2.4.15` - 代码格式化和静态检查
-
-**构建工具：**
-- vendored `event` Swift CLI（`vendor/event` 子模块）用于原生 macOS EventKit 集成
-- TypeScript 编译用于跨平台兼容性
-
 
 ## License
 
