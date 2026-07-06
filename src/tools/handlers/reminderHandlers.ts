@@ -203,16 +203,10 @@ export const handleUpdateReminder = async (
   return handleAsyncOperation(async () => {
     const validatedArgs = extractAndValidateArgs(args, UpdateReminderSchema);
 
-    // `event reminders update` cannot un-complete or move between lists.
-    // Reject both up front so the user sees a clear error instead of a
-    // silently-dropped change. The cross-list-move check needs the current
-    // reminder, so coalesce it with the notes-rebuild fetch below.
-    if (validatedArgs.completed === false) {
-      throw new CliUserError(
-        'Marking a reminder uncompleted is not supported by the underlying `event` CLI. Toggle completion from Reminders.app.',
-      );
-    }
-
+    // `event reminders update` cannot move a reminder between lists. Reject
+    // that up front so the user sees a clear error instead of a silently-
+    // dropped change. The cross-list-move check needs the current reminder,
+    // so coalesce it with the notes-rebuild fetch below.
     // Empty `addTags`/`removeTags` arrays are no-ops; only fetch the current
     // reminder when there's a real change to apply.
     const shouldRebuildNotes =
