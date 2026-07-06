@@ -15,8 +15,8 @@ This project is a Model Context Protocol (MCP) server that provides native integ
 The project follows a 4-layer Clean Architecture:
 1.  **Server Layer** (`src/server/`): Handles MCP protocol communication and request routing.
 2.  **Handlers Layer** (`src/tools/handlers/`): Business logic for specific tools (reminders, calendars).
-3.  **Utils/Repository Layer** (`src/utils/`): Helper functions, validation, and data access patterns.
-4.  **Native Bridge** (`src/swift/`): A Swift binary (`EventKitCLI`) that directly interacts with the macOS EventKit API. This is crucial for handling permissions and accessing system data reliably.
+3.  **Utils/Repository Layer** (`src/utils/`): Helper functions, validation, data access patterns, and `eventCli.ts` — the wrapper around the vendored `event` CLI.
+4.  **Native Bridge**: The vendored [`event`](https://github.com/FradSer/event) Swift CLI (built from `vendor/event` submodule into `bin/event`) directly interacts with the macOS EventKit API and handles permissions.
 
 ## Building and Running
 
@@ -27,9 +27,9 @@ The project follows a 4-layer Clean Architecture:
 *   pnpm
 
 ### Commands
-*   **Install Dependencies:** `pnpm install`
-*   **Build (TS & Swift):** `pnpm build` (Required before starting)
-*   **Build Swift Only:** `pnpm build:swift`
+*   **Install Dependencies:** `pnpm install` (also builds `bin/event` via postinstall on macOS)
+*   **Build (TS & event CLI):** `pnpm build` (Required before starting)
+*   **Build event CLI Only:** `pnpm build:event`
 *   **Start Server:** `pnpm start` (Runs via stdio)
 *   **Development Mode:** `pnpm dev`
 *   **Run Tests:** `pnpm test`
@@ -45,14 +45,11 @@ The server exposes 5 main tools:
 5.  **`reminders_subtasks`**: Manages subtasks/checklists within reminders (create, read, update, delete, toggle, reorder).
 
 ## Permission Handling
-The server implements a two-layer permission prompt strategy to ensure reliability in non-interactive environments:
-1.  **Proactive AppleScript Prompt**: On first access, an AppleScript command is triggered to force the permission dialog to appear.
-2.  **Swift Binary Check**: The binary checks authorization status via EventKit.
-3.  **Retry Strategy**: If a permission error occurs, the system attempts to recover using the AppleScript fallback.
+The vendored `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied / restricted / write-only it emits `Error: Permission denied: …` on stderr; `src/utils/eventCli.ts` maps that into a domain-typed `CliPermissionError` (`reminders` or `calendars`). Permission prompts are attributed to whichever host process spawns `bin/event` (Claude Desktop, Cursor, etc.) — the binary itself carries no embedded Info.plist.
 
 ## Critical Constraints
 *   **macOS Only**: Strictly requires macOS with the EventKit framework.
-*   **Binary Security**: The Swift binary location is validated to prevent execution from unauthorized paths.
+*   **Binary Security**: `binaryValidator.ts` restricts the executable path to `bin/event` under the resolved project root.
 *   **Date Formats**: Favors `YYYY-MM-DD HH:mm:ss` for local time and ISO 8601 for UTC.
 
 ## Development Guidelines
@@ -74,7 +71,10 @@ The server implements a two-layer permission prompt strategy to ensure reliabili
 ## Key Files
 *   `src/index.ts`: Entry point.
 *   `src/server/server.ts`: Server configuration.
-*   `src/swift/EventKitCLI.swift`: Native Swift bridge implementation.
+*   `vendor/event/`: git submodule pointing at the vendored Swift CLI (FradSer/event).
+*   `src/utils/eventCli.ts`: Wrapper around `bin/event` — argv composition, raw JSON parsing, stderr → error mapping.
+*   `scripts/build-event.mjs`: Builds `vendor/event` and produces `bin/event`.
 *   `src/tools/definitions.ts`: MCP tool schema definitions.
 *   `src/tools/handlers/subtaskHandlers.ts`: Subtask business logic.
+*   `docs/migration-to-event-cli.md`: Dropped-field table & migration notes.
 *   `package.json`: Project configuration and scripts.

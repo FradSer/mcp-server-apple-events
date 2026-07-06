@@ -10,15 +10,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const binDir = path.join(projectRoot, 'bin');
-const outputFile = path.join(binDir, 'EventKitCLI');
-const zipFile = path.join(binDir, 'EventKitCLI.zip');
+const outputFile = path.join(binDir, 'event');
+const zipFile = path.join(binDir, 'event.zip');
 
 async function main() {
   try {
     await fs.access(outputFile, fs.constants.F_OK);
   } catch {
     console.error(`Error: Binary not found at ${outputFile}`);
-    console.error('Run `pnpm run build:swift` first.');
+    console.error('Run `pnpm run build:event` first.');
     process.exit(1);
   }
 

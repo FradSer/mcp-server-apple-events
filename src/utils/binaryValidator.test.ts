@@ -282,7 +282,7 @@ describe('binaryValidator', () => {
   });
 
   describe('validateBinarySecurity', () => {
-    it('should return valid result with hash for valid binary', () => {
+    it('returns valid result for a well-formed binary path (no hash computed when no expectedHash configured)', () => {
       const binaryPath = '/project/dist/swift/bin/EventKitCLI';
 
       mockFs.existsSync.mockReturnValue(true);
@@ -294,6 +294,29 @@ describe('binaryValidator', () => {
       mockFs.readFileSync.mockReturnValue(Buffer.from('binary content'));
 
       const result = validateBinarySecurity(binaryPath);
+
+      expect(result.isValid).toBe(true);
+      // Hash is only computed when expectedHash is configured (saves ~10–30 ms
+      // per cache miss on the binary-resolution hot path).
+      expect(result.hash).toBeUndefined();
+      expect(mockFs.readFileSync).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('computes hash when expectedHash is configured', () => {
+      const binaryPath = '/project/dist/swift/bin/EventKitCLI';
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.statSync.mockReturnValue({
+        isFile: () => true,
+        size: 1024,
+      } as fs.Stats);
+      mockFs.accessSync.mockImplementation(() => undefined);
+      mockFs.readFileSync.mockReturnValue(Buffer.from('binary content'));
+
+      const result = validateBinarySecurity(binaryPath, {
+        expectedHash: 'mocked-hash-value',
+      });
 
       expect(result.isValid).toBe(true);
       expect(result.hash).toBe('mocked-hash-value');

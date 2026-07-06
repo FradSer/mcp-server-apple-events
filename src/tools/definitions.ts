@@ -1,6 +1,9 @@
 /**
  * tools/definitions.ts
- * MCP tool definitions for Apple Reminders server, adhering to standard JSON Schema.
+ * MCP tool definitions for the Apple Reminders / Calendar server.
+ *
+ * The schema is the cross-action property union for each tool; the per-action
+ * validator (src/validation/schemas.ts) narrows the accepted fields.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -15,7 +18,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'reminders_tasks',
     description:
-      'Manages reminder tasks. Supports reading, creating, updating, and deleting reminders.',
+      'Manages reminder tasks. Supports reading, creating, updating, and deleting reminders. Alarms, recurrence rules, and location-based triggers are read-only via this tool; configure them in Reminders.app.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -39,26 +42,16 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Start date. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone). Also supports 'YYYY-MM-DD' and ISO 8601 with timezone.",
+            "Start date. UPDATE-ONLY: the underlying CLI cannot set a start date at create time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone). Also supports 'YYYY-MM-DD' and ISO 8601 with timezone.",
         },
         dueDate: {
           type: 'string',
           description:
             "Due date. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone, e.g., '2025-11-04 18:00:00'). Also supports: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:mm:ss', or ISO 8601 with timezone (e.g., '2025-10-30T04:00:00Z'). When no timezone is specified, the time is interpreted as local time.",
         },
-        completionDate: {
-          type: 'string',
-          description:
-            'Completion date/time (for update). When provided, sets the completion date of the reminder.',
-        },
         note: {
           type: 'string',
           description: 'Additional notes for the reminder.',
-        },
-        location: {
-          type: 'string',
-          description:
-            'Location text for the reminder (EKCalendarItem.location). Not the same as a location-based trigger.',
         },
         url: {
           type: 'string',
@@ -67,75 +60,14 @@ export const TOOLS: Tool[] = [
         },
         completed: {
           type: 'boolean',
-          description: 'The completion status of the reminder (for update).',
+          description:
+            'Mark the reminder as completed/uncompleted (update only).',
         },
         priority: {
           type: 'integer',
           enum: [0, 1, 5, 9],
           description:
             'Priority level: 0=none, 1=high, 5=medium, 9=low (for create/update).',
-        },
-        alarms: {
-          type: 'array',
-          description:
-            'Alarms for the reminder (EKCalendarItem.alarms). Each alarm must specify exactly one of relativeOffset (seconds), absoluteDate, or locationTrigger.',
-          items: {
-            type: 'object',
-            properties: {
-              relativeOffset: {
-                type: 'number',
-                description:
-                  'Seconds offset for a relative alarm (negative = before due/start). Example: -900 for 15 minutes before.',
-              },
-              absoluteDate: {
-                type: 'string',
-                description:
-                  'Absolute trigger date/time for the alarm. Supports the same formats as dueDate.',
-              },
-              locationTrigger: {
-                type: 'object',
-                description:
-                  'Location-based (geofence) alarm. Equivalent to setting EKAlarm.structuredLocation + proximity.',
-                properties: {
-                  title: {
-                    type: 'string',
-                    description:
-                      'Location name/title (e.g., "Home", "Office").',
-                  },
-                  latitude: {
-                    type: 'number',
-                    description: 'Latitude coordinate of the location.',
-                  },
-                  longitude: {
-                    type: 'number',
-                    description: 'Longitude coordinate of the location.',
-                  },
-                  radius: {
-                    type: 'number',
-                    description: 'Geofence radius in meters (default 100).',
-                    default: 100,
-                  },
-                  proximity: {
-                    type: 'string',
-                    enum: ['enter', 'leave'],
-                    description:
-                      'When to trigger: "enter" fires when arriving, "leave" fires when departing.',
-                  },
-                },
-                required: ['title', 'latitude', 'longitude', 'proximity'],
-              },
-              alarmType: {
-                type: 'string',
-                enum: ['display', 'audio', 'procedure', 'email'],
-                description:
-                  'READ-ONLY: Alarm presentation type (EKAlarm.type). Determined automatically by EventKit: "display" shows notification, "audio" plays sound, "procedure" opens URL, "email" sends email. Cannot be set manually.',
-              },
-            },
-          },
-        },
-        clearAlarms: {
-          type: 'boolean',
-          description: 'Set to true to remove all alarms from the reminder.',
         },
         targetList: {
           type: 'string',
@@ -153,12 +85,14 @@ export const TOOLS: Tool[] = [
         },
         search: {
           type: 'string',
-          description: 'A search term to filter reminders by title or notes.',
+          description:
+            'A search term to filter reminders by title or notes (applied in TS after fetch).',
         },
         dueWithin: {
           type: 'string',
           enum: DUE_WITHIN_OPTIONS,
-          description: 'Filter reminders by a due date range.',
+          description:
+            'Filter reminders by a due date range (applied in TS after fetch).',
         },
         filterPriority: {
           type: 'string',
@@ -169,164 +103,10 @@ export const TOOLS: Tool[] = [
           type: 'boolean',
           description: 'Filter to only show recurring reminders when true.',
         },
-        // Recurrence properties for create/update
-        recurrence: {
-          type: 'object',
-          description:
-            'Recurrence rule for repeating reminders. Set to create/update recurring reminders.',
-          properties: {
-            frequency: {
-              type: 'string',
-              enum: [
-                'minutely',
-                'hourly',
-                'daily',
-                'weekly',
-                'monthly',
-                'yearly',
-              ],
-              description: 'How often the reminder repeats.',
-            },
-            interval: {
-              type: 'integer',
-              description:
-                'Interval between occurrences (e.g., 2 for every 2 weeks). Defaults to 1.',
-              default: 1,
-            },
-            endDate: {
-              type: 'string',
-              description:
-                'When the recurrence ends (YYYY-MM-DD format). Optional.',
-            },
-            occurrenceCount: {
-              type: 'integer',
-              description:
-                'Number of times to repeat (e.g., 10 for repeat 10 times). Optional.',
-            },
-            daysOfWeek: {
-              type: 'array',
-              items: { type: 'integer' },
-              description:
-                'Days of week for weekly recurrence (1=Sunday, 7=Saturday). Optional.',
-            },
-            daysOfMonth: {
-              type: 'array',
-              items: { type: 'integer' },
-              description:
-                'Days of month for monthly recurrence (1-31). Optional.',
-            },
-            monthsOfYear: {
-              type: 'array',
-              items: { type: 'integer' },
-              description: 'Months for yearly recurrence (1-12). Optional.',
-            },
-          },
-          required: ['frequency'],
-        },
-        recurrenceRules: {
-          type: 'array',
-          description:
-            'Recurrence rules for repeating reminders (EKCalendarItem.recurrenceRules).',
-          items: {
-            type: 'object',
-            properties: {
-              frequency: {
-                type: 'string',
-                enum: [
-                  'minutely',
-                  'hourly',
-                  'daily',
-                  'weekly',
-                  'monthly',
-                  'yearly',
-                ],
-                description: 'How often the reminder repeats.',
-              },
-              interval: {
-                type: 'integer',
-                description:
-                  'Interval between occurrences (e.g., 2 for every 2 weeks). Defaults to 1.',
-                default: 1,
-              },
-              endDate: {
-                type: 'string',
-                description:
-                  'When the recurrence ends (YYYY-MM-DD format). Optional.',
-              },
-              occurrenceCount: {
-                type: 'integer',
-                description:
-                  'Number of times to repeat (e.g., 10 for repeat 10 times). Optional.',
-              },
-              daysOfWeek: {
-                type: 'array',
-                items: { type: 'integer' },
-                description:
-                  'Days of week for weekly recurrence (1=Sunday, 7=Saturday). Optional.',
-              },
-              daysOfMonth: {
-                type: 'array',
-                items: { type: 'integer' },
-                description:
-                  'Days of month for monthly recurrence (1-31). Optional.',
-              },
-              monthsOfYear: {
-                type: 'array',
-                items: { type: 'integer' },
-                description: 'Months for yearly recurrence (1-12). Optional.',
-              },
-            },
-            required: ['frequency'],
-          },
-        },
-        clearRecurrence: {
-          type: 'boolean',
-          description:
-            'Set to true to remove recurrence from an existing reminder (for update).',
-        },
         filterLocationBased: {
           type: 'boolean',
           description:
             'Filter to only show location-based reminders when true.',
-        },
-        // Location trigger properties for create/update
-        locationTrigger: {
-          type: 'object',
-          description:
-            'Location trigger for geofence-based reminders. Reminder will fire when entering or leaving the specified location.',
-          properties: {
-            title: {
-              type: 'string',
-              description:
-                'Location name/title (e.g., "Home", "Office", "Grocery Store").',
-            },
-            latitude: {
-              type: 'number',
-              description: 'Latitude coordinate of the location.',
-            },
-            longitude: {
-              type: 'number',
-              description: 'Longitude coordinate of the location.',
-            },
-            radius: {
-              type: 'number',
-              description:
-                'Geofence radius in meters (default 100). Determines how close you need to be to trigger.',
-              default: 100,
-            },
-            proximity: {
-              type: 'string',
-              enum: ['enter', 'leave'],
-              description:
-                'When to trigger: "enter" fires when arriving, "leave" fires when departing.',
-            },
-          },
-          required: ['title', 'latitude', 'longitude', 'proximity'],
-        },
-        clearLocationTrigger: {
-          type: 'boolean',
-          description:
-            'Set to true to remove location trigger from an existing reminder (for update).',
         },
         // Tag filtering
         filterTags: {
@@ -386,11 +166,6 @@ export const TOOLS: Tool[] = [
           type: 'string',
           description: 'The new name for the list (for update).',
         },
-        color: {
-          type: 'string',
-          description:
-            'The hex color code for the list (for create/update). Example: "#FF5733".',
-        },
       },
       required: ['action'],
     },
@@ -398,7 +173,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'calendar_events',
     description:
-      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting calendar events.',
+      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. URL, structured-location, all-day toggle, availability, alarms, and recurrence rules are read-only via this tool; configure them in Calendar.app. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -422,12 +197,12 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Start date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone, e.g., '2025-11-04 09:00:00'). Also supports: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:mm:ss', or ISO 8601 with timezone. When no timezone is specified, the time is interpreted as local time. For action='read': if omitted and endDate is omitted, defaults to today; if only endDate is provided, startDate defaults to endDate - 14 days.",
+            "Start date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time, e.g., '2025-11-04 09:00:00'). Use 'YYYY-MM-DD' (no time) for all-day events. Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone. For action='read': if omitted and endDate is omitted, defaults to today; if only endDate is provided, startDate defaults to endDate - 14 days.",
         },
         endDate: {
           type: 'string',
           description:
-            "End date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone, e.g., '2025-11-04 10:00:00'). Also supports: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:mm:ss', or ISO 8601 with timezone. When no timezone is specified, the time is interpreted as local time. For action='read': if omitted and startDate is omitted, defaults to today + 14 days; if only startDate is provided, endDate defaults to startDate + 14 days.",
+            "End date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time). Use 'YYYY-MM-DD' (no time) for all-day events. Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone. For action='read': if omitted and startDate is omitted, defaults to today + 14 days; if only startDate is provided, endDate defaults to startDate + 14 days.",
         },
         note: {
           type: 'string',
@@ -435,167 +210,13 @@ export const TOOLS: Tool[] = [
         },
         location: {
           type: 'string',
-          description: 'Location for the event.',
-        },
-        structuredLocation: {
-          type: 'object',
-          description:
-            'Structured location for the event (EKEvent.structuredLocation). If provided, title is required.',
-          properties: {
-            title: {
-              type: 'string',
-              description: 'Location name/title.',
-            },
-            latitude: {
-              type: 'number',
-              description: 'Latitude coordinate of the location.',
-            },
-            longitude: {
-              type: 'number',
-              description: 'Longitude coordinate of the location.',
-            },
-            radius: {
-              type: 'number',
-              description: 'Optional radius in meters.',
-            },
-          },
-          required: ['title'],
-        },
-        url: {
-          type: 'string',
-          description: 'A URL to associate with the event.',
-          format: 'uri',
+          description: 'Location text for the event.',
         },
         availability: {
           type: 'string',
           enum: ['not-supported', 'busy', 'free', 'tentative', 'unavailable'],
-          description: 'Event availability (EKEvent.availability).',
-        },
-        isAllDay: {
-          type: 'boolean',
-          description: 'Whether the event is an all-day event.',
-        },
-        alarms: {
-          type: 'array',
           description:
-            'Alarms for the event (EKCalendarItem.alarms). Each alarm must specify exactly one of relativeOffset (seconds), absoluteDate, or locationTrigger.',
-          items: {
-            type: 'object',
-            properties: {
-              relativeOffset: {
-                type: 'number',
-                description:
-                  'Seconds offset for a relative alarm (negative = before start). Example: -1800 for 30 minutes before.',
-              },
-              absoluteDate: {
-                type: 'string',
-                description:
-                  'Absolute trigger date/time for the alarm. Supports the same formats as startDate.',
-              },
-              locationTrigger: {
-                type: 'object',
-                description:
-                  'Location-based (geofence) alarm. Equivalent to setting EKAlarm.structuredLocation + proximity.',
-                properties: {
-                  title: {
-                    type: 'string',
-                    description:
-                      'Location name/title (e.g., "Home", "Office").',
-                  },
-                  latitude: {
-                    type: 'number',
-                    description: 'Latitude coordinate of the location.',
-                  },
-                  longitude: {
-                    type: 'number',
-                    description: 'Longitude coordinate of the location.',
-                  },
-                  radius: {
-                    type: 'number',
-                    description: 'Geofence radius in meters (default 100).',
-                    default: 100,
-                  },
-                  proximity: {
-                    type: 'string',
-                    enum: ['enter', 'leave'],
-                    description:
-                      'When to trigger: "enter" fires when arriving, "leave" fires when departing.',
-                  },
-                },
-                required: ['title', 'latitude', 'longitude', 'proximity'],
-              },
-              alarmType: {
-                type: 'string',
-                enum: ['display', 'audio', 'procedure', 'email'],
-                description:
-                  'READ-ONLY: Alarm presentation type (EKAlarm.type). Determined automatically by EventKit: "display" shows notification, "audio" plays sound, "procedure" opens URL, "email" sends email. Cannot be set manually.',
-              },
-            },
-          },
-        },
-        clearAlarms: {
-          type: 'boolean',
-          description: 'Set to true to remove all alarms from the event.',
-        },
-        recurrenceRules: {
-          type: 'array',
-          description:
-            'Recurrence rules for repeating events (EKCalendarItem.recurrenceRules).',
-          items: {
-            type: 'object',
-            properties: {
-              frequency: {
-                type: 'string',
-                enum: [
-                  'minutely',
-                  'hourly',
-                  'daily',
-                  'weekly',
-                  'monthly',
-                  'yearly',
-                ],
-                description: 'How often the event repeats.',
-              },
-              interval: {
-                type: 'integer',
-                description:
-                  'Interval between occurrences (e.g., 2 for every 2 weeks). Defaults to 1.',
-                default: 1,
-              },
-              endDate: {
-                type: 'string',
-                description:
-                  'When the recurrence ends (YYYY-MM-DD format). Optional.',
-              },
-              occurrenceCount: {
-                type: 'integer',
-                description:
-                  'Number of times to repeat (e.g., 10 for repeat 10 times). Optional.',
-              },
-              daysOfWeek: {
-                type: 'array',
-                items: { type: 'integer' },
-                description:
-                  'Days of week for weekly recurrence (1=Sunday, 7=Saturday). Optional.',
-              },
-              daysOfMonth: {
-                type: 'array',
-                items: { type: 'integer' },
-                description:
-                  'Days of month for monthly recurrence (1-31). Optional.',
-              },
-              monthsOfYear: {
-                type: 'array',
-                items: { type: 'integer' },
-                description: 'Months for yearly recurrence (1-12). Optional.',
-              },
-            },
-            required: ['frequency'],
-          },
-        },
-        clearRecurrence: {
-          type: 'boolean',
-          description: 'Set to true to remove recurrence rules from the event.',
+            'READ-ONLY filter: narrow read results by event availability. Cannot be set via create/update; configure in Calendar.app.',
         },
         span: {
           type: 'string',
@@ -606,22 +227,17 @@ export const TOOLS: Tool[] = [
         targetCalendar: {
           type: 'string',
           description:
-            'The name of the calendar for create or update operations.',
+            'The name of the calendar for the create action. Events cannot be moved across calendars via update — delete and recreate instead.',
         },
         // Read filters
         filterCalendar: {
           type: 'string',
           description: 'Filter events by a specific calendar name.',
         },
-        filterAccount: {
-          type: 'string',
-          description:
-            'Filter events by account name (e.g., "Google", "Exchange"). Use calendar_calendars to see available accounts.',
-        },
         search: {
           type: 'string',
           description:
-            'A search term to filter events by title, notes, or location.',
+            'A search term to filter events by title, notes, or location (applied in TS after fetch).',
         },
       },
       required: ['action'],
@@ -648,11 +264,6 @@ export const TOOLS: Tool[] = [
           type: 'string',
           description:
             'Optional range end for scoped calendar discovery. When used with startDate, only calendars with at least one event in the range are returned, each annotated with the in-range event count (recurring events count as one per instance). endDate must be on or after startDate.',
-        },
-        filterAccount: {
-          type: 'string',
-          description:
-            'Filter calendars by account name (e.g., "Google", "Exchange").',
         },
       },
       required: ['action'],

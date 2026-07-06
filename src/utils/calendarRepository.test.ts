@@ -1,730 +1,339 @@
 /**
  * calendarRepository.test.ts
- * Tests for calendar repository
+ * Tests for the calendar repository against the vendored `event` CLI.
+ *
+ * Scenarios are organized by the shapes the repository exposes:
+ *   - read by id   → list a wide ±4-year window, then array `.find`
+ *   - list events  → `event calendar list --start --end [--calendar] --json`
+ *                    with TS-side search/availability filtering
+ *   - calendars    → derive distinct calendar names from a wide read window
+ *   - create       → `event calendar create` with the trimmed flag set
+ *                    (no url / structuredLocation / isAllDay / availability /
+ *                    alarms / recurrenceRules)
+ *   - update       → `event calendar update` (no cross-calendar move, no span)
+ *   - delete       → `event calendar delete --id [--span this|all]`
  */
 
-import type { Calendar, CalendarEvent } from '../types/index.js';
+import type { EventJSON } from '../types/repository.js';
 import { calendarRepository } from './calendarRepository.js';
-import { executeCli } from './cliExecutor.js';
+import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 
-// Mock dependencies
-jest.mock('./cliExecutor.js');
+jest.mock('./eventCli.js');
 
-const mockExecuteCli = executeCli as jest.MockedFunction<typeof executeCli>;
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const mockJson = executeEventCliJson as jest.MockedFunction<
+  typeof executeEventCliJson
+>;
+const mockPlain = executeEventCliPlain as jest.MockedFunction<
+  typeof executeEventCliPlain
+>;
 
-describe('CalendarRepository', () => {
-  const repository = calendarRepository;
+const eventFixture = (overrides: Partial<EventJSON> = {}): EventJSON =>
+  ({
+    id: 'evt-1',
+    title: 'Meeting',
+    calendar: 'Work',
+    startDate: '2025-11-04T09:00:00+08:00',
+    endDate: '2025-11-04T10:00:00+08:00',
+    notes: null,
+    location: null,
+    url: null,
+    isAllDay: false,
+    ...overrides,
+  }) as EventJSON;
 
+describe('CalendarRepository (event CLI backend)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe('findEventById', () => {
-    it('should return event when found', async () => {
-      const mockEvents: Partial<CalendarEvent>[] = [
-        {
-          id: '1',
-          title: 'Meeting',
-          startDate: '2025-11-04T09:00:00+08:00',
-          endDate: '2025-11-04T10:00:00+08:00',
-          calendar: 'Work',
-          isAllDay: false,
-        },
-        {
-          id: '2',
+    it('lists the wide read window then finds by id', async () => {
+      mockJson.mockResolvedValueOnce([
+        eventFixture(),
+        eventFixture({
+          id: 'evt-2',
           title: 'Lunch',
           startDate: '2025-11-04T12:00:00+08:00',
           endDate: '2025-11-04T13:00:00+08:00',
-          calendar: 'Personal',
-          isAllDay: false,
-        },
-      ];
+        }),
+      ]);
 
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: mockEvents,
-      });
+      const result = await calendarRepository.findEventById('evt-2');
 
-      const result = await repository.findEventById('2');
-
-      // findEventById widens the read window to ~4 years either side of
-      // today so events far outside the default 14-day range can still be
-      // located by id. We only assert the shape of the args; the actual
-      // start/end dates are derived from `new Date()` and would be brittle
-      // to pin down.
-      expect(mockExecuteCli).toHaveBeenCalledTimes(1);
-      const args = mockExecuteCli.mock.calls[0]![0];
-      expect(args.slice(0, 2)).toEqual(['--action', 'read-events']);
-      expect(args).toContain('--startDate');
-      expect(args).toContain('--endDate');
-
-      expect(result).toEqual({
-        id: '2',
-        title: 'Lunch',
-        startDate: '2025-11-04T12:00:00+08:00',
-        endDate: '2025-11-04T13:00:00+08:00',
-        calendar: 'Personal',
-        isAllDay: false,
-        notes: undefined,
-        location: undefined,
-        url: undefined,
-      });
+      const args = mockJson.mock.calls[0][0];
+      expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
+      expect(args).toContain('--start');
+      expect(args).toContain('--end');
+      expect(args).toContain('--json');
+      expect(result.id).toBe('evt-2');
+      expect(result.title).toBe('Lunch');
     });
 
-    it('supports availability values returned by Swift', async () => {
-      const availability: CalendarEvent['availability'] = 'unknown';
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [
-          {
-            id: '1',
-            title: 'Event',
-            startDate: '2025-11-04T09:00:00+08:00',
-            endDate: '2025-11-04T10:00:00+08:00',
-            calendar: 'Work',
-            isAllDay: false,
-            availability,
-          },
-        ],
-      });
+    it('throws CliUserError when the id is not present in the listing', async () => {
+      mockJson.mockResolvedValueOnce([eventFixture()]);
 
-      const result = await repository.findEventById('1');
-      expect(result.availability).toBe('unknown');
-    });
-
-    it('should throw error when event not found', async () => {
-      const mockEvents: Partial<CalendarEvent>[] = [
-        {
-          id: '1',
-          title: 'Meeting',
-          startDate: '2025-11-04T09:00:00+08:00',
-          endDate: '2025-11-04T10:00:00+08:00',
-          calendar: 'Work',
-          isAllDay: false,
-        },
-      ];
-
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: mockEvents,
-      });
-
-      await expect(repository.findEventById('999')).rejects.toThrow(
-        "Event with ID '999' not found.",
+      await expect(calendarRepository.findEventById('missing')).rejects.toThrow(
+        "Event with ID 'missing' not found.",
       );
     });
   });
 
   describe('findEvents', () => {
-    afterEach(() => {
-      jest.useRealTimers();
+    it('issues `calendar list --start <today> --end <+14d> --json` when no filters provided', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents();
+
+      const args = mockJson.mock.calls[0][0];
+      expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
+      expect(args[2]).toBe('--start');
+      expect(args[4]).toBe('--end');
+      expect(args[args.length - 1]).toBe('--json');
     });
 
-    it('should return all events when no filters provided', async () => {
-      const mockEvents: Partial<CalendarEvent>[] = [
-        {
-          id: '1',
-          title: 'Event 1',
-          startDate: '2025-11-04T09:00:00+08:00',
-          endDate: '2025-11-04T10:00:00+08:00',
-          calendar: 'Work',
-          isAllDay: false,
-        },
-      ];
+    it('passes --calendar when filtered by name', async () => {
+      mockJson.mockResolvedValueOnce([]);
 
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: mockEvents,
-      });
+      await calendarRepository.findEvents({ calendarName: 'Work' });
 
-      const result = await repository.findEvents();
-
-      expect(result).toHaveLength(1);
+      const args = mockJson.mock.calls[0][0];
+      expect(args).toContain('--calendar');
+      expect(args[args.indexOf('--calendar') + 1]).toBe('Work');
     });
 
-    it('should default date range to today through 14 days ahead when no dates are provided', async () => {
-      jest.useFakeTimers().setSystemTime(new Date('2026-02-19T12:00:00Z'));
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [],
+    it('strips the time component from caller-supplied dates so `event` accepts them', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-05T12:34:56Z',
       });
 
-      await repository.findEvents();
+      const args = mockJson.mock.calls[0][0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
+      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
+    });
 
-      const expectedStart = formatLocalDate(new Date('2026-02-19T12:00:00Z'));
-      const expectedEndDate = new Date('2026-02-19T12:00:00Z');
-      expectedEndDate.setDate(expectedEndDate.getDate() + 14);
-      const expectedEnd = formatLocalDate(expectedEndDate);
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-events',
-        '--startDate',
-        expectedStart,
-        '--endDate',
-        expectedEnd,
+    it('applies TS-side search filter against title, notes, and location', async () => {
+      mockJson.mockResolvedValueOnce([
+        eventFixture({ id: 'a', title: 'Sprint review meeting' }),
+        eventFixture({
+          id: 'b',
+          title: 'Lunch',
+          notes: 'sprint planning notes',
+        }),
+        eventFixture({ id: 'c', title: 'Yoga', location: 'Sprint room A' }),
+        eventFixture({ id: 'd', title: 'Unrelated' }),
       ]);
+
+      const results = await calendarRepository.findEvents({ search: 'sprint' });
+
+      expect(results.map((e) => e.id).sort()).toEqual(['a', 'b', 'c']);
     });
 
-    it('should derive endDate as 14 days after startDate when only startDate is provided', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [],
-      });
-
-      await repository.findEvents({ startDate: '2026-02-11' });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-events',
-        '--startDate',
-        '2026-02-11',
-        '--endDate',
-        '2026-02-25',
+    it('applies TS-side availability filter', async () => {
+      mockJson.mockResolvedValueOnce([
+        eventFixture({ id: 'a', availability: 'busy' }),
+        eventFixture({ id: 'b', availability: 'free' }),
       ]);
-    });
 
-    it('should derive startDate as 14 days before endDate when only endDate is provided', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [],
+      const results = await calendarRepository.findEvents({
+        availability: 'busy',
       });
 
-      await repository.findEvents({ endDate: '2026-02-25' });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-events',
-        '--startDate',
-        '2026-02-11',
-        '--endDate',
-        '2026-02-25',
-      ]);
-    });
-
-    it('rejects invalid date bounds instead of issuing an unbounded CLI read', async () => {
-      await expect(
-        repository.findEvents({ startDate: 'not-a-date' }),
-      ).rejects.toThrow('startDate must be a valid date');
-      expect(mockExecuteCli).not.toHaveBeenCalled();
-    });
-
-    it('should filter events by calendar name', async () => {
-      const mockEvents: Partial<CalendarEvent>[] = [
-        {
-          id: '1',
-          title: 'Work Event',
-          startDate: '2025-11-04T09:00:00+08:00',
-          endDate: '2025-11-04T10:00:00+08:00',
-          calendar: 'Work',
-          isAllDay: false,
-        },
-      ];
-
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: mockEvents,
-      });
-
-      jest.useFakeTimers().setSystemTime(new Date('2026-02-19T12:00:00Z'));
-      await repository.findEvents({ calendarName: 'Work' });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining(['--filterCalendar', 'Work']),
-      );
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          '--startDate',
-          formatLocalDate(new Date('2026-02-19T12:00:00Z')),
-          '--endDate',
-          '2026-03-05',
-        ]),
-      );
-    });
-
-    it('should filter events by date range', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [],
-      });
-
-      await repository.findEvents({
-        startDate: '2025-11-04 00:00:00',
-        endDate: '2025-11-05 23:59:59',
-      });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-events',
-        '--startDate',
-        '2025-11-04 00:00:00',
-        '--endDate',
-        '2025-11-05 23:59:59',
-      ]);
-    });
-
-    it('should filter events by search term', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [],
-      });
-
-      jest.useFakeTimers().setSystemTime(new Date('2026-02-19T12:00:00Z'));
-      await repository.findEvents({ search: 'meeting' });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining(['--search', 'meeting']),
-      );
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          '--startDate',
-          formatLocalDate(new Date('2026-02-19T12:00:00Z')),
-          '--endDate',
-          '2026-03-05',
-        ]),
-      );
-    });
-  });
-
-  describe('findEvents with availability filter', () => {
-    it('filters events client-side by availability when the filter is provided', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [
-          {
-            id: '1',
-            title: 'Busy meeting',
-            startDate: '2026-02-20T09:00:00Z',
-            endDate: '2026-02-20T10:00:00Z',
-            calendar: 'Work',
-            isAllDay: false,
-            availability: 'busy',
-          },
-          {
-            id: '2',
-            title: 'Free block',
-            startDate: '2026-02-20T11:00:00Z',
-            endDate: '2026-02-20T12:00:00Z',
-            calendar: 'Work',
-            isAllDay: false,
-            availability: 'free',
-          },
-        ],
-      });
-
-      const result = await repository.findEvents({ availability: 'busy' });
-
-      expect(result).toHaveLength(1);
-      expect(result[0]!.id).toBe('1');
+      expect(results.map((e) => e.id)).toEqual(['a']);
     });
   });
 
   describe('findAllCalendars', () => {
-    it('should return all calendars', async () => {
-      const mockCalendars: Calendar[] = [
-        { id: '1', title: 'Work', account: 'Google', accountType: 'caldav' },
-        {
-          id: '2',
-          title: 'Personal',
-          account: 'iCloud',
-          accountType: 'caldav',
-        },
-      ];
-
-      mockExecuteCli.mockResolvedValue(mockCalendars);
-
-      const result = await repository.findAllCalendars();
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-calendars',
+    it('derives a distinct calendar listing from the wide read window', async () => {
+      mockJson.mockResolvedValueOnce([
+        eventFixture({ id: 'a', calendar: 'Work' }),
+        eventFixture({ id: 'b', calendar: 'Personal' }),
+        eventFixture({ id: 'c', calendar: 'Work' }),
+        eventFixture({ id: 'd', calendar: 'Family' }),
       ]);
-      expect(result).toEqual(mockCalendars);
+
+      const result = await calendarRepository.findAllCalendars();
+
+      expect(result.map((c) => c.title).sort()).toEqual([
+        'Family',
+        'Personal',
+        'Work',
+      ]);
+      // Sorted alphabetically; id mirrors the calendar name.
+      expect(result.map((c) => c.id)).toEqual(['Family', 'Personal', 'Work']);
+    });
+
+    it('returns an empty array when no events exist in the window', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      const result = await calendarRepository.findAllCalendars();
+      expect(result).toEqual([]);
     });
   });
 
   describe('findCalendars', () => {
-    it('should return all calendars when no filters are provided', async () => {
-      const mockCalendars: Calendar[] = [
-        { id: '1', title: 'Work', account: 'Google', accountType: 'caldav' },
-      ];
-      mockExecuteCli.mockResolvedValue(mockCalendars);
-
-      const result = await repository.findCalendars({});
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-calendars',
+    it('delegates to findAllCalendars when no date range is given', async () => {
+      mockJson.mockResolvedValueOnce([
+        eventFixture({ id: 'a', calendar: 'Work' }),
       ]);
-      expect(result).toEqual(mockCalendars);
+
+      const result = await calendarRepository.findCalendars({});
+
+      expect(result).toEqual([{ id: 'Work', title: 'Work' }]);
     });
 
-    it('should return calendars with events in a date range', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [
-          { id: '1', title: 'Work', account: 'Google', accountType: 'caldav' },
-          {
-            id: '2',
-            title: 'Personal',
-            account: 'iCloud',
-            accountType: 'caldav',
-          },
-        ],
-        events: [
-          {
-            id: 'event-1',
-            title: 'Meeting',
-            calendar: 'Work',
-            calendarId: '1',
-            startDate: '2026-05-04T09:00:00-05:00',
-            endDate: '2026-05-04T10:00:00-05:00',
-            isAllDay: false,
-          },
-          {
-            id: 'event-2',
-            title: 'Review',
-            calendar: 'Work',
-            calendarId: '1',
-            startDate: '2026-05-05T09:00:00-05:00',
-            endDate: '2026-05-05T10:00:00-05:00',
-            isAllDay: false,
-          },
-        ],
-      });
-
-      const result = await repository.findCalendars({
-        startDate: '2026-05-04',
-        endDate: '2026-05-11',
-        accountName: 'Google',
-      });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'read-events',
-        '--startDate',
-        '2026-05-04',
-        '--endDate',
-        '2026-05-11',
-        '--filterAccount',
-        'Google',
+    it('scopes the listing to the given date range and counts events per calendar title', async () => {
+      // `event` has no EventKit calendar identifiers or account info, so
+      // counts are grouped by the `calendar` title field on each event.
+      mockJson.mockResolvedValueOnce([
+        eventFixture({ id: 'event-1', calendar: 'Work' }),
+        eventFixture({ id: 'event-2', calendar: 'Work' }),
+        eventFixture({ id: 'event-3', calendar: 'Personal' }),
       ]);
-      expect(result).toEqual([
-        {
-          id: '1',
-          title: 'Work',
-          account: 'Google',
-          accountType: 'caldav',
-          eventCount: 2,
-        },
-      ]);
-    });
 
-    it('attributes event counts correctly when two calendars share a title across different accounts', async () => {
-      // Regression: an earlier implementation keyed event counts by
-      // `event.calendar` (the title), so two same-titled calendars across
-      // accounts would both receive the aggregated count. Each calendar must
-      // get only the events that came from its own calendarId.
-      mockExecuteCli.mockResolvedValue({
-        calendars: [
-          {
-            id: 'cal-icloud',
-            title: 'Home',
-            account: 'iCloud',
-            accountType: 'caldav',
-          },
-          {
-            id: 'cal-google',
-            title: 'Home',
-            account: 'Google',
-            accountType: 'caldav',
-          },
-        ],
-        events: [
-          {
-            id: 'event-a',
-            title: 'Family dinner',
-            calendar: 'Home',
-            calendarId: 'cal-icloud',
-            startDate: '2026-05-04T18:00:00-05:00',
-            endDate: '2026-05-04T19:00:00-05:00',
-            isAllDay: false,
-          },
-          {
-            id: 'event-b',
-            title: 'School pickup',
-            calendar: 'Home',
-            calendarId: 'cal-icloud',
-            startDate: '2026-05-05T15:00:00-05:00',
-            endDate: '2026-05-05T15:30:00-05:00',
-            isAllDay: false,
-          },
-          {
-            id: 'event-c',
-            title: 'Standup',
-            calendar: 'Home',
-            calendarId: 'cal-google',
-            startDate: '2026-05-06T09:00:00-05:00',
-            endDate: '2026-05-06T09:15:00-05:00',
-            isAllDay: false,
-          },
-        ],
-      });
-
-      const result = await repository.findCalendars({
+      const result = await calendarRepository.findCalendars({
         startDate: '2026-05-04',
         endDate: '2026-05-11',
       });
 
+      const args = mockJson.mock.calls[0][0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2026-05-04');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-05-11');
       expect(result).toEqual([
-        {
-          id: 'cal-icloud',
-          title: 'Home',
-          account: 'iCloud',
-          accountType: 'caldav',
-          eventCount: 2,
-        },
-        {
-          id: 'cal-google',
-          title: 'Home',
-          account: 'Google',
-          accountType: 'caldav',
-          eventCount: 1,
-        },
+        { id: 'Personal', title: 'Personal', eventCount: 1 },
+        { id: 'Work', title: 'Work', eventCount: 2 },
       ]);
     });
-  });
 
-  describe('findEvents with filterAccount', () => {
-    afterEach(() => {
-      jest.useRealTimers();
-    });
+    it('omits calendars with zero events in the scoped window', async () => {
+      mockJson.mockResolvedValueOnce([]);
 
-    it('should pass filterAccount to CLI', async () => {
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: [],
+      const result = await calendarRepository.findCalendars({
+        startDate: '2026-05-04',
+        endDate: '2026-05-11',
       });
 
-      jest.useFakeTimers().setSystemTime(new Date('2026-02-19T12:00:00Z'));
-      await repository.findEvents({ accountName: 'Google' });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining(['--filterAccount', 'Google']),
-      );
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          '--startDate',
-          formatLocalDate(new Date('2026-02-19T12:00:00Z')),
-          '--endDate',
-          '2026-03-05',
-        ]),
-      );
+      expect(result).toEqual([]);
     });
   });
 
   describe('createEvent', () => {
-    it('should create event with all fields', async () => {
-      const mockEvent: CalendarEvent = {
-        id: 'new-1',
-        title: 'New Event',
-        startDate: '2025-11-04T14:00:00+08:00',
-        endDate: '2025-11-04T16:00:00+08:00',
-        calendar: 'Work',
-        calendarId: 'cal-work',
-        notes: 'Some notes',
-        location: 'Office',
-        url: 'https://example.com',
-        isAllDay: false,
-      };
+    it('passes only the event-supported flag subset', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
 
-      mockExecuteCli.mockResolvedValue(mockEvent);
-
-      const result = await repository.createEvent({
-        title: 'New Event',
-        startDate: '2025-11-04 14:00:00',
-        endDate: '2025-11-04 16:00:00',
+      await calendarRepository.createEvent({
+        title: 'New event',
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-04 10:00:00',
         calendar: 'Work',
-        notes: 'Some notes',
-        location: 'Office',
-        url: 'https://example.com',
-        isAllDay: false,
+        notes: 'agenda',
+        location: 'HQ',
       });
 
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'create-event',
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'create',
         '--title',
-        'New Event',
-        '--startDate',
-        '2025-11-04 14:00:00',
-        '--endDate',
-        '2025-11-04 16:00:00',
-        '--targetCalendar',
-        'Work',
-        '--note',
-        'Some notes',
-        '--location',
-        'Office',
-        '--url',
-        'https://example.com',
-        '--isAllDay',
-        'false',
-      ]);
-      expect(result).toEqual(mockEvent);
-    });
-
-    it('should create event with minimal fields', async () => {
-      const mockEvent: CalendarEvent = {
-        id: 'new-2',
-        title: 'Simple Event',
-        startDate: '2025-11-04T10:00:00+08:00',
-        endDate: '2025-11-04T11:00:00+08:00',
-        calendar: 'Personal',
-        calendarId: 'cal-personal',
-        isAllDay: false,
-      };
-
-      mockExecuteCli.mockResolvedValue(mockEvent);
-
-      const result = await repository.createEvent({
-        title: 'Simple Event',
-        startDate: '2025-11-04 10:00:00',
-        endDate: '2025-11-04 11:00:00',
-      });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'create-event',
-        '--title',
-        'Simple Event',
-        '--startDate',
+        'New event',
+        '--start',
+        '2025-11-04 09:00:00',
+        '--end',
         '2025-11-04 10:00:00',
-        '--endDate',
-        '2025-11-04 11:00:00',
+        '--calendar',
+        'Work',
+        '--notes',
+        'agenda',
+        '--location',
+        'HQ',
+        '--json',
       ]);
-      expect(result).toEqual(mockEvent);
     });
 
-    it('should create all-day event', async () => {
-      const mockEvent: CalendarEvent = {
-        id: 'new-3',
-        title: 'All Day Event',
-        startDate: '2025-11-04T00:00:00+08:00',
-        endDate: '2025-11-04T23:59:59+08:00',
-        calendar: 'Personal',
-        calendarId: 'cal-personal',
-        isAllDay: true,
-      };
+    it('preserves all-day formatting when callers pass bare YYYY-MM-DD', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
 
-      mockExecuteCli.mockResolvedValue(mockEvent);
-
-      await repository.createEvent({
-        title: 'All Day Event',
-        startDate: '2025-11-04 00:00:00',
-        endDate: '2025-11-04 23:59:59',
-        isAllDay: true,
+      await calendarRepository.createEvent({
+        title: 'All-day',
+        startDate: '2025-11-04',
+        endDate: '2025-11-05',
       });
 
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining(['--isAllDay', 'true']),
-      );
+      const args = mockJson.mock.calls[0][0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
+      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
     });
   });
 
   describe('updateEvent', () => {
-    it('should update event with provided fields', async () => {
-      const mockEvent: CalendarEvent = {
-        id: '1',
-        title: 'Updated Event',
-        startDate: '2025-11-04T15:00:00+08:00',
-        endDate: '2025-11-04T17:00:00+08:00',
-        calendar: 'Work',
-        calendarId: 'cal-work',
-        isAllDay: false,
-      };
+    it('passes only the event-supported flag subset', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
 
-      mockExecuteCli.mockResolvedValue(mockEvent);
-
-      const result = await repository.updateEvent({
-        id: '1',
-        title: 'Updated Event',
-        startDate: '2025-11-04 15:00:00',
-        endDate: '2025-11-04 17:00:00',
+      await calendarRepository.updateEvent({
+        id: 'evt-1',
+        title: 'Renamed',
+        startDate: '2025-11-04 10:00:00',
+        endDate: '2025-11-04 11:00:00',
+        location: 'Conference room B',
+        notes: 'rescheduled',
       });
 
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'update-event',
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'update',
         '--id',
-        '1',
+        'evt-1',
         '--title',
-        'Updated Event',
-        '--startDate',
-        '2025-11-04 15:00:00',
-        '--endDate',
-        '2025-11-04 17:00:00',
+        'Renamed',
+        '--start',
+        '2025-11-04 10:00:00',
+        '--end',
+        '2025-11-04 11:00:00',
+        '--location',
+        'Conference room B',
+        '--notes',
+        'rescheduled',
+        '--json',
       ]);
-      expect(result).toEqual(mockEvent);
-    });
-
-    it('sends empty structuredLocation to clear it', async () => {
-      mockExecuteCli.mockResolvedValue({
-        id: '1',
-        title: 'Event',
-        startDate: '2025-11-04T09:00:00+08:00',
-        endDate: '2025-11-04T10:00:00+08:00',
-        calendar: 'Personal',
-        isAllDay: false,
-      });
-
-      await repository.updateEvent({
-        id: '1',
-        structuredLocation: null,
-      });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining(['--structuredLocation', '']),
-      );
-    });
-
-    it('should update event calendar', async () => {
-      mockExecuteCli.mockResolvedValue({
-        id: '1',
-        title: 'Event',
-        startDate: '2025-11-04T09:00:00+08:00',
-        endDate: '2025-11-04T10:00:00+08:00',
-        calendar: 'Personal',
-        isAllDay: false,
-      });
-
-      await repository.updateEvent({
-        id: '1',
-        calendar: 'Personal',
-      });
-
-      expect(mockExecuteCli).toHaveBeenCalledWith(
-        expect.arrayContaining(['--targetCalendar', 'Personal']),
-      );
     });
   });
 
   describe('deleteEvent', () => {
-    it('should delete event by id', async () => {
-      mockExecuteCli.mockResolvedValue({});
+    it('maps schema span values onto event-CLI spans', async () => {
+      mockPlain.mockResolvedValue('Event deleted successfully');
 
-      await repository.deleteEvent('1');
-
-      expect(mockExecuteCli).toHaveBeenCalledWith([
-        '--action',
-        'delete-event',
+      await calendarRepository.deleteEvent('evt-1', 'this-event');
+      expect(mockPlain).toHaveBeenLastCalledWith([
+        'calendar',
+        'delete',
         '--id',
-        '1',
+        'evt-1',
+        '--span',
+        'this',
+      ]);
+
+      await calendarRepository.deleteEvent('evt-2', 'future-events');
+      expect(mockPlain).toHaveBeenLastCalledWith([
+        'calendar',
+        'delete',
+        '--id',
+        'evt-2',
+        '--span',
+        'all',
+      ]);
+    });
+
+    it('omits --span when none is provided', async () => {
+      mockPlain.mockResolvedValueOnce('Event deleted successfully');
+
+      await calendarRepository.deleteEvent('evt-3');
+
+      expect(mockPlain).toHaveBeenCalledWith([
+        'calendar',
+        'delete',
+        '--id',
+        'evt-3',
       ]);
     });
   });

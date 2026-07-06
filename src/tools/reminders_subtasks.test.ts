@@ -15,7 +15,7 @@ import { handleToolCall } from './index.js';
 
 // `projectUtils.ts` reaches for `import.meta.url`, which Jest's CommonJS
 // transformer cannot represent. Stub it out so the import chain that pulls
-// `tools/index.ts → handlers → cliExecutor → projectUtils` stays parseable.
+// `tools/index.ts → handlers → eventCli → projectUtils` stays parseable.
 jest.mock('../utils/projectUtils.js', () => ({
   findProjectRoot: jest.fn(() => '/test/project'),
 }));

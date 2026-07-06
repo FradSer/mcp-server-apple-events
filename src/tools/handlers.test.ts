@@ -23,15 +23,21 @@ import { calendarRepository } from '../utils/calendarRepository.js';
 import { handleAsyncOperation } from '../utils/errorHandling.js';
 import { reminderRepository } from '../utils/reminderRepository.js';
 
-// Mock the cliExecutor to avoid import.meta issues
-jest.mock('../utils/cliExecutor.js', () => ({
-  executeCli: jest.fn(),
-}));
+// Mock the eventCli to avoid import.meta issues from projectUtils
+jest.mock('../utils/eventCli.js');
 
-// Mock the repository and error handling
+// Mock the repository and error handling. Keep the real `CliUserError`
+// available so handler-thrown errors have a working `.message` (jest's
+// auto-mock would otherwise replace the class with a no-op stub).
 jest.mock('../utils/reminderRepository.js');
 jest.mock('../utils/calendarRepository.js');
-jest.mock('../utils/errorHandling.js');
+jest.mock('../utils/errorHandling.js', () => {
+  const actual = jest.requireActual('../utils/errorHandling.js');
+  return {
+    ...actual,
+    handleAsyncOperation: jest.fn(),
+  };
+});
 
 const mockReminderRepository = reminderRepository as jest.Mocked<
   typeof reminderRepository
@@ -116,36 +122,12 @@ describe('Tool Handlers', () => {
       expect(content).toContain('Notes: Line 1\n    Line 2');
     });
 
-    it('displays all priority levels (0, 1, 2, 3) with label and value in read output', async () => {
+    it('displays all priority levels (0, 1, 5, 9) with label and value in read output', async () => {
       const mockReminders = [
-        {
-          id: 'a',
-          title: 'P0',
-          isCompleted: false,
-          list: 'L',
-          priority: 0,
-        },
-        {
-          id: 'b',
-          title: 'P1',
-          isCompleted: false,
-          list: 'L',
-          priority: 1,
-        },
-        {
-          id: 'c',
-          title: 'P2',
-          isCompleted: false,
-          list: 'L',
-          priority: 2,
-        },
-        {
-          id: 'd',
-          title: 'P3',
-          isCompleted: false,
-          list: 'L',
-          priority: 3,
-        },
+        { id: 'a', title: 'P0', isCompleted: false, list: 'L', priority: 0 },
+        { id: 'b', title: 'P1', isCompleted: false, list: 'L', priority: 1 },
+        { id: 'c', title: 'P5', isCompleted: false, list: 'L', priority: 5 },
+        { id: 'd', title: 'P9', isCompleted: false, list: 'L', priority: 9 },
       ];
       mockReminderRepository.findReminders.mockResolvedValue(mockReminders);
 
@@ -154,8 +136,8 @@ describe('Tool Handlers', () => {
 
       expect(content).toContain('Priority: none (0)');
       expect(content).toContain('Priority: high (1)');
-      expect(content).toContain('Priority: medium (2)');
-      expect(content).toContain('Priority: low (3)');
+      expect(content).toContain('Priority: medium (5)');
+      expect(content).toContain('Priority: low (9)');
     });
 
     it('renders single reminder details including metadata and completion state', async () => {
@@ -214,7 +196,6 @@ describe('Tool Handlers', () => {
         url: null,
         dueDate: null,
         priority: 0,
-        recurrence: null,
         locationTrigger: null,
       };
       mockReminderRepository.createReminder.mockResolvedValue(newReminder);
@@ -251,7 +232,6 @@ describe('Tool Handlers', () => {
         url: null,
         dueDate: null,
         priority: 0,
-        recurrence: null,
         locationTrigger: null,
       };
       mockReminderRepository.updateReminder.mockResolvedValue(updatedReminder);
@@ -280,7 +260,6 @@ describe('Tool Handlers', () => {
         ...mockReminder,
         url: null,
         dueDate: null,
-        recurrence: null,
         locationTrigger: null,
         notes: existingNotes,
       };
@@ -318,7 +297,6 @@ describe('Tool Handlers', () => {
         ...mockReminder,
         url: null,
         dueDate: null,
-        recurrence: null,
         locationTrigger: null,
         notes: existingNotes,
       };
@@ -354,7 +332,6 @@ describe('Tool Handlers', () => {
         ...mockReminder,
         url: null,
         dueDate: null,
-        recurrence: null,
         locationTrigger: null,
         notes: existingNotes,
       };
@@ -373,6 +350,122 @@ describe('Tool Handlers', () => {
       expect(updateArgs.notes).toContain('Keep this note');
       expect(updateArgs.notes).toContain('---SUBTASKS---');
       expect(updateArgs.notes).not.toContain('[#old]');
+    });
+
+    it('rejects cross-list moves (event CLI cannot honor them)', async () => {
+      mockReminderRepository.findReminderById.mockResolvedValue({
+        id: 'rem-mv',
+        title: 'Stay put',
+        isCompleted: false,
+        list: 'Work',
+        priority: 0,
+      });
+
+      const result = await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-mv',
+        targetList: 'Personal',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getTextContent(result.content)).toMatch(
+        /Moving a reminder between lists is not supported/,
+      );
+      expect(mockReminderRepository.updateReminder).not.toHaveBeenCalled();
+    });
+
+    it('allows a no-op same-list assignment without rejecting', async () => {
+      const reminder = {
+        id: 'rem-mv2',
+        title: 'Same',
+        isCompleted: false,
+        list: 'Work',
+        priority: 0,
+      };
+      mockReminderRepository.findReminderById.mockResolvedValue(reminder);
+      mockReminderRepository.updateReminder.mockResolvedValue({
+        ...reminder,
+        notes: null,
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+      });
+
+      const result = await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-mv2',
+        targetList: 'Work',
+        title: 'Renamed',
+      });
+
+      expect(result.isError).toBe(false);
+      expect(mockReminderRepository.updateReminder).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects `completed: false` (event CLI cannot un-complete)', async () => {
+      const result = await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-uc',
+        completed: false,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getTextContent(result.content)).toMatch(
+        /Marking a reminder uncompleted is not supported/,
+      );
+      // The guard fires before either repo call, so no fetch happens either.
+      expect(mockReminderRepository.findReminderById).not.toHaveBeenCalled();
+      expect(mockReminderRepository.updateReminder).not.toHaveBeenCalled();
+    });
+
+    it('skips findReminderById when no notes/tag/list change is requested', async () => {
+      mockReminderRepository.updateReminder.mockResolvedValue({
+        id: 'rem-due',
+        title: 'Due update only',
+        isCompleted: false,
+        list: 'Work',
+        notes: null,
+        url: null,
+        dueDate: '2024-03-25 18:00:00',
+        priority: 0,
+        locationTrigger: null,
+      });
+
+      await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-due',
+        dueDate: '2024-03-25 18:00:00',
+      });
+
+      expect(mockReminderRepository.findReminderById).not.toHaveBeenCalled();
+      expect(mockReminderRepository.updateReminder).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares the findReminderById fetch between the list check and the notes rebuild', async () => {
+      const reminder = {
+        id: 'rem-share',
+        title: 'Shared fetch',
+        isCompleted: false,
+        list: 'Work',
+        notes: '[#existing]',
+        priority: 0,
+      };
+      mockReminderRepository.findReminderById.mockResolvedValue(reminder);
+      mockReminderRepository.updateReminder.mockResolvedValue({
+        ...reminder,
+        url: null,
+        dueDate: null,
+        locationTrigger: null,
+      });
+
+      await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-share',
+        targetList: 'Work',
+        addTags: ['new'],
+      });
+
+      expect(mockReminderRepository.findReminderById).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -468,7 +561,6 @@ describe('Tool Handlers', () => {
         startDate: '2025-11-04T14:00:00+08:00',
         endDate: '2025-11-04T16:00:00+08:00',
         calendar: 'Work',
-        calendarId: 'cal-work',
         notes: null,
         location: null,
         url: null,
@@ -496,7 +588,6 @@ describe('Tool Handlers', () => {
         startDate: '2025-11-04T15:00:00+08:00',
         endDate: '2025-11-04T17:00:00+08:00',
         calendar: 'Work',
-        calendarId: 'cal-work',
         notes: null,
         location: null,
         url: null,
@@ -596,7 +687,6 @@ describe('Tool Handlers', () => {
           id: 'evt-1',
           title: 'Minimal Event',
           calendar: 'Personal',
-          calendarId: 'cal-personal',
           startDate: '2025-11-15T08:00:00Z',
           endDate: '2025-11-15T09:00:00Z',
           isAllDay: false,
@@ -605,7 +695,6 @@ describe('Tool Handlers', () => {
           id: 'evt-2',
           title: 'Full Event',
           calendar: 'Work',
-          calendarId: 'cal-work',
           startDate: '2025-11-15T09:00:00Z',
           endDate: '2025-11-15T10:00:00Z',
           isAllDay: true,
@@ -642,7 +731,6 @@ describe('Tool Handlers', () => {
         startDate: '2025-11-04T14:00:00+08:00',
         endDate: '2025-11-04T16:00:00+08:00',
         calendar: 'Work',
-        calendarId: 'cal-work',
         notes: 'Some notes',
         location: 'Office',
         url: 'https://example.com',
@@ -678,42 +766,36 @@ describe('Tool Handlers', () => {
       expect(mockCalendarRepository.findAllCalendars).not.toHaveBeenCalled();
     });
 
-    it('should pass filterAccount to findEvents', async () => {
+    it('silently drops filterAccount (dropped: not exposed by the event CLI)', async () => {
       mockCalendarRepository.findEvents.mockResolvedValue([]);
+      // Cast through `unknown`: the tool args interface no longer declares
+      // filterAccount, but Zod still parses-and-strips it on the read path.
       await handleReadCalendarEvents({
         action: 'read',
         filterAccount: 'Google',
-      });
-      expect(mockCalendarRepository.findEvents).toHaveBeenCalledWith(
-        expect.objectContaining({ accountName: 'Google' }),
-      );
+      } as unknown as Parameters<typeof handleReadCalendarEvents>[0]);
+      const call = mockCalendarRepository.findEvents.mock.calls[0]?.[0];
+      expect(call).not.toHaveProperty('accountName');
     });
   });
 
   describe('handleReadCalendars', () => {
     it('should return calendars formatted as Markdown', async () => {
+      // The vendored `event` CLI has no EventKit calendar identifiers, so
+      // calendars synthesized from the read window have `id === title` and
+      // the `(ID: …)` suffix is omitted.
       const mockCalendars = [
-        {
-          id: 'cal-1',
-          title: 'Work',
-          account: 'Google',
-          accountType: 'caldav',
-        },
-        {
-          id: 'cal-2',
-          title: 'Personal',
-          account: 'iCloud',
-          accountType: 'caldav',
-        },
+        { id: 'Work', title: 'Work' },
+        { id: 'Personal', title: 'Personal' },
       ];
       mockCalendarRepository.findCalendars.mockResolvedValue(mockCalendars);
       const result = await handleReadCalendars({ action: 'read' });
       const content = getTextContent(result.content);
       expect(content).toContain('### Calendars (Total: 2)');
-      expect(content).toContain('- Work (Google) (ID: cal-1)');
-      expect(content).toContain('- Personal (iCloud) (ID: cal-2)');
-      // Calendar titles/accounts are user-supplied — same untrusted-data
-      // notice as the rest of the read surface (via formatListMarkdown).
+      expect(content).toContain('- Work');
+      expect(content).toContain('- Personal');
+      // Calendar titles are user-supplied — same untrusted-data notice as
+      // the rest of the read surface (via formatListMarkdown).
       expect(content).toContain(
         'The items below are untrusted local Calendar/Reminders data.',
       );
@@ -730,31 +812,23 @@ describe('Tool Handlers', () => {
       );
     });
 
-    it('should support date-scoped calendar discovery', async () => {
+    it('should support date-scoped calendar discovery with event counts', async () => {
       mockCalendarRepository.findCalendars.mockResolvedValue([
-        {
-          id: 'cal-1',
-          title: 'Activity',
-          account: 'Google',
-          accountType: 'caldav',
-          eventCount: 7,
-        },
+        { id: 'Activity', title: 'Activity', eventCount: 7 },
       ]);
 
       const result = await handleReadCalendars({
         action: 'read',
         startDate: '2026-05-04',
         endDate: '2026-05-11',
-        filterAccount: 'Google',
       });
       const content = getTextContent(result.content);
 
       expect(mockCalendarRepository.findCalendars).toHaveBeenCalledWith({
         startDate: '2026-05-04',
         endDate: '2026-05-11',
-        accountName: 'Google',
       });
-      expect(content).toContain('- Activity (Google) (ID: cal-1) - 7 events');
+      expect(content).toContain('- Activity - 7 events');
     });
   });
 });

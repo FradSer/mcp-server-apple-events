@@ -8,6 +8,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FILE_SYSTEM } from './constants.js';
 
+// Project root is immutable for the lifetime of the process. Cache the first
+// resolved path so subsequent MCP tool calls skip the up-to-10-level walk +
+// package.json reads. Cleared by tests via `__clearProjectRootCache`.
+let cachedProjectRoot: string | null = null;
+
 /**
  * Finds the project root directory by looking for package.json
  * @param maxDepth - Maximum directory levels to traverse upward
@@ -17,15 +22,23 @@ import { FILE_SYSTEM } from './constants.js';
 export function findProjectRoot(
   maxDepth = FILE_SYSTEM.MAX_DIRECTORY_SEARCH_DEPTH,
 ): string {
-  // Derive the starting directory from the current module's location for robustness.
+  if (cachedProjectRoot) {
+    return cachedProjectRoot;
+  }
   const currentDir = getCurrentModuleDir();
   const root = locateProjectRoot(currentDir, maxDepth);
 
   if (root) {
+    cachedProjectRoot = root;
     return root;
   }
 
   throw new Error(`Project root not found within ${maxDepth} directory levels`);
+}
+
+/** Test helper — drops the cached project root so a fresh resolve happens. */
+export function __clearProjectRootCache(): void {
+  cachedProjectRoot = null;
 }
 
 /**

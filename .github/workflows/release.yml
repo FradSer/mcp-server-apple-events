@@ -12,9 +12,10 @@ concurrency:
 
 jobs:
   release:
-    # Pin to macos-14 (Sonoma) instead of macos-latest so deployment targets
-    # (-target arm64-apple-macos11.0, -target x86_64-apple-macos10.15) stay
-    # buildable as GitHub rotates runner images. Bumping is intentional.
+    # Pin to macos-14 (Sonoma) instead of macos-latest so the deployment
+    # target (arm64-apple-macosx14.0 / x86_64-apple-macosx14.0, matching
+    # vendor/event's `platforms: [.macOS(.v14)]`) stays buildable as GitHub
+    # rotates runner images. Bumping is intentional.
     runs-on: macos-14
 
     # id-token: write is required for `npm publish --provenance`, which binds
@@ -26,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -69,10 +72,10 @@ jobs:
       - name: Build TypeScript
         run: pnpm run build:ts
 
-      - name: Build universal Swift binary and sign
-        # resolveSigningIdentity() in build-swift.mjs auto-detects the
+      - name: Build universal event binary and sign
+        # resolveSigningIdentity() in build-event.mjs auto-detects the
         # Developer ID Application certificate imported in the previous step.
-        run: pnpm run build:swift
+        run: pnpm run build:event
 
       - name: Notarize binary
         env:
@@ -88,13 +91,13 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Architecture ==="
-          lipo -info bin/EventKitCLI | tee /tmp/lipo.out
+          lipo -info bin/event | tee /tmp/lipo.out
           grep -q "are: x86_64 arm64\|are: arm64 x86_64" /tmp/lipo.out
           echo "=== Code signature ==="
-          codesign -dv --verbose=2 bin/EventKitCLI 2>&1 | tee /tmp/codesign.out
+          codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
           grep -q "Authority=Developer ID Application:" /tmp/codesign.out
           grep -q "flags=0x10000(runtime)" /tmp/codesign.out
-          codesign --verify --strict --verbose=2 bin/EventKitCLI
+          codesign --verify --strict --verbose=2 bin/event
 
       - name: Verify npm package contents
         # Fail the build if the pre-built binary is not included in the
@@ -106,13 +109,10 @@ jobs:
             const [pack] = JSON.parse(process.env.PACK_JSON);
             const files = new Set(pack.files.map((file) => file.path));
             const requiredFiles = [
-              "bin/EventKitCLI",
+              "bin/event",
               "dist/index.js",
               "scripts/postinstall.mjs",
-              "scripts/build-swift.mjs",
-              "src/swift/EventKitCLI.swift",
-              "src/swift/Info.plist",
-              "src/swift/EventKitCLI.entitlements",
+              "scripts/build-event.mjs",
             ];
             const missing = requiredFiles.filter((file) => !files.has(file));
             if (missing.length > 0) {

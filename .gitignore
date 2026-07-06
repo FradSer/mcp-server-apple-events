@@ -161,8 +161,11 @@ dist
 .vscode-test
 
 # Compiled Swift binaries
-/bin/RemindersCLI
-/bin/EventKitCLI
+/bin/event
+
+# vendored event package build output
+/vendor/event/.build/
+/vendor/event/.swiftpm/
 
 # yarn v2
 
