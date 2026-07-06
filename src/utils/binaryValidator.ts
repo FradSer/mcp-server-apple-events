@@ -251,7 +251,10 @@ export function getEnvironmentBinaryConfig(): Partial<BinarySecurityConfig> {
   // Production mode - strict validation
   return {
     expectedHash: process.env.SWIFT_BINARY_HASH,
-    maxFileSize: 50 * 1024 * 1024, // 50MB
+    // The universal bin/event sits at ~51.7MB today; 80MB matches the
+    // published-tarball size-sanity bound and leaves room for vendor bumps
+    // without surfacing as a misleading "binary not found" error.
+    maxFileSize: 80 * 1024 * 1024, // 80MB
     requireAbsolutePath: true,
   };
 }

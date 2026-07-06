@@ -373,7 +373,8 @@ describe('ReminderRepository (event CLI backend)', () => {
         newTitle: 'No completion change',
       });
 
-      const callArgs = mockJson.mock.calls[0][0];
+      expect(mockJson).toHaveBeenCalled();
+      const callArgs = mockJson.mock.calls[0]?.[0] ?? [];
       expect(callArgs).not.toContain('--completed');
     });
 

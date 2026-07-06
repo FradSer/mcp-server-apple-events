@@ -98,7 +98,11 @@ describe('published npm tarball', () => {
     const required = [
       'scripts/postinstall.mjs',
       'scripts/build-event.mjs',
+      'scripts/event-Info.plist',
+      'scripts/event.entitlements',
+      'scripts/disclaim.c',
       'bin/event',
+      'bin/event-disclaim',
     ];
 
     it.each(required)('ships %s', (file) => {

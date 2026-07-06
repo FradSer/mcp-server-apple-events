@@ -28,9 +28,13 @@
   },
   "files": [
     "bin/event",
+    "bin/event-disclaim",
     "dist/",
     "scripts/postinstall.mjs",
     "scripts/build-event.mjs",
+    "scripts/event-Info.plist",
+    "scripts/event.entitlements",
+    "scripts/disclaim.c",
     "CHANGELOG.md"
   ],
   "engines": {

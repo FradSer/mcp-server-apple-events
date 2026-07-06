@@ -70,7 +70,7 @@ The published npm package ships a pre-built, universal, code-signed `bin/event` 
 
 ## macOS Permission Requirements (Sonoma 14+ / Sequoia 15)
 
-Apple separates Reminders and Calendar permissions into _write-only_ and _full-access_ scopes. The vendored `event` CLI does not embed its own Info.plist — permission prompts are attributed to whichever host process spawns it (Claude Desktop, Cursor, Terminal, etc.), so the host application's bundle is what needs to declare the privacy strings:
+Apple separates Reminders and Calendar permissions into _write-only_ and _full-access_ scopes. The vendored `event` CLI embeds its own Info.plist (bundle id `me.frad.event`) declaring all the privacy strings:
 
 - `NSRemindersUsageDescription`
 - `NSRemindersFullAccessUsageDescription`
@@ -79,9 +79,11 @@ Apple separates Reminders and Calendar permissions into _write-only_ and _full-a
 - `NSCalendarsFullAccessUsageDescription`
 - `NSCalendarsWriteOnlyAccessUsageDescription`
 
+The MCP server spawns `event` through the bundled `bin/event-disclaim` shim, which disclaims TCC responsibility at spawn time — so macOS attributes the permission request to `event` itself, not to whichever app launched the MCP server. The first EventKit call therefore shows a prompt for **"event"**, and the grant appears under `System Settings > Privacy & Security > Reminders / Calendars` as `event`. One grant covers every MCP client on the machine (Claude Desktop, Codex Desktop, Cursor, terminal clients, …).
+
 When the CLI detects a `notDetermined` authorization status it calls `requestFullAccessToReminders` / `requestFullAccessToEvents`, which triggers macOS to show the correct prompt. If the OS ever loses track of permissions, rerun `./check-permissions.sh` to re-open the dialogs.
 
-If a Claude tool call still encounters a permission failure, see *Desktop MCP clients* below for the responsible-process attribution problem and the recommended workarounds.
+If a Claude tool call still encounters a permission failure, see *Desktop MCP clients* below.
 
 ### Troubleshooting Calendar Read Errors
 
@@ -95,33 +97,19 @@ You can also re-run `./check-permissions.sh` (it validates both Reminders and Ca
 
 ### Desktop MCP clients (Claude Desktop, Codex Desktop, …)
 
-macOS attributes Reminders and Calendar access to the **responsible** process — the desktop app that launched the MCP server, not the `event` subprocess. For the EventKit prompt to appear, the responsible app's bundle must ship the `NSRemindersUsageDescription` / `NSCalendarsUsageDescription` keys (and on Sonoma+ the matching write-only or full-access variants). If those keys are missing, TCC refuses the request before EventKit is even reached, and the CLI returns:
+macOS attributes Reminders and Calendar access to the **responsible** process. By default that is the desktop app that launched the MCP server, not the `event` subprocess — and if that app's bundle is missing the `NSRemindersUsageDescription` / `NSCalendarsUsageDescription` keys (Codex Desktop ships only `NSAppleEventsUsageDescription`), TCC refuses the request before EventKit is even reached:
 
 ```text
 Reminder permission denied. Unknown error
 ```
 
-— even though running the same binary from Terminal works. See [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93) for the full TCC log; Codex Desktop today ships only `NSAppleEventsUsageDescription`, which is why it hits this wall.
+Since the fix for [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93), this server breaks that attribution chain itself: `bin/event` is always spawned through the `bin/event-disclaim` shim, which uses the same responsibility-disclaim spawn attribute as Chromium and LLDB, so `event` becomes its own TCC-responsible process. `event` embeds the required usage strings and is signed with the `com.apple.security.personal-information.{reminders,calendars}` hardened-runtime entitlements, so the EventKit prompt appears no matter which desktop client launched the server.
 
-This is a macOS-level constraint that an MCP server alone cannot resolve — the desktop client itself needs to declare those usage strings in its `Info.plist`. The workarounds below are about making the server *usable* while you wait for the upstream fix:
+Notes after upgrading:
 
-**Reliable workaround — run the server from a terminal-based MCP client.** Codex CLI, Claude Code, and similar terminal-launched clients inherit Terminal's (or iTerm2's) own `kTCCServiceReminders` / `kTCCServiceCalendar` grant, so EventKit calls succeed without changes to this server:
-
-```bash
-# from inside Terminal / iTerm2, where the responsible app holds the EventKit grants
-codex
-# or
-claude
-```
-
-**Partial workaround — AppleScript routing (only if the desktop app already declares `NSAppleEventsUsageDescription`).** Running:
-
-```bash
-osascript -e 'tell application "Reminders" to get name of lists'
-osascript -e 'tell application "Calendar" to get name of calendars'
-```
-
-triggers an **Automation** prompt (`kTCCServiceAppleEvents`) so the responsible app can control `com.apple.reminders` and `com.apple.iCal`. This does *not* create a `kTCCServiceReminders` / `kTCCServiceCalendar` grant on its own, so a Swift CLI that calls EventKit directly will still be refused if the host bundle is missing the usage strings. It only helps if your client can fall back to AppleScript end-to-end (this server does not today).
+- The permission prompt (and the entry in `System Settings > Privacy & Security`) is now for **`event`**, not for Terminal / Claude Desktop / Codex Desktop. Existing grants made to those host apps no longer apply to the MCP server; approve the new `event` prompt once.
+- With an ad-hoc (local) build, macOS keys the grant to the exact binary hash — rebuilding `bin/event` re-prompts. Prebuilt npm releases are Developer ID-signed, so the grant is stable across updates. Local builds can set `APPLE_SIGNING_IDENTITY` for the same stability.
+- Running `./bin/event` directly (without the shim) still uses host attribution, so direct Terminal use keeps working exactly as before via Terminal's own grant.
 
 **Verification command**
 
@@ -129,7 +117,7 @@ triggers an **Automation** prompt (`kTCCServiceAppleEvents`) so the responsible 
 pnpm test -- src/__tests__/build-event.test.ts
 ```
 
-This pins the contract of `scripts/build-event.mjs` — the build compiles `vendor/event` once per architecture (arm64 + x86_64) via `swift build -c release`, merges the two with `lipo` into a universal `bin/event`, and code-signs it (Developer ID Application certificate when available, ad-hoc fallback otherwise) with hardened runtime.
+This pins the contract of `scripts/build-event.mjs` — the build compiles `vendor/event` once per architecture (arm64 + x86_64) via `swift build -c release` with the Info.plist linked into the `__TEXT,__info_plist` section, merges the two with `lipo` into a universal `bin/event`, compiles the `bin/event-disclaim` shim from `scripts/disclaim.c`, and code-signs both (Developer ID Application certificate when available, ad-hoc fallback otherwise) with hardened runtime — `event` additionally with the personal-information entitlements.
 
 ### Troubleshooting `could not build module 'Foundation'` on macOS 26 (Tahoe)
 

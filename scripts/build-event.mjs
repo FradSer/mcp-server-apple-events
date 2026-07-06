@@ -204,6 +204,11 @@ async function main() {
   const eventPackageManifest = path.join(eventPackagePath, 'Package.swift');
   const binDir = path.join(projectRoot, 'bin');
   const outputFile = path.join(binDir, 'event');
+  const scriptsDir = path.join(projectRoot, 'scripts');
+  const infoPlistFile = path.join(scriptsDir, 'event-Info.plist');
+  const entitlementsFile = path.join(scriptsDir, 'event.entitlements');
+  const disclaimSourceFile = path.join(scriptsDir, 'disclaim.c');
+  const disclaimOutputFile = path.join(binDir, 'event-disclaim');
 
   // Run the independent pre-flight checks (toolchain probe, manifest access,
   // bin dir creation) concurrently so `pnpm install`'s postinstall hook
@@ -284,6 +289,20 @@ async function main() {
             s.scratchPath,
             '--triple',
             s.triple,
+            // Embed the Info.plist (bundle id + EventKit usage strings) into
+            // the executable so TCC can prompt for `event` itself when the
+            // binary is spawned disclaimed (see scripts/disclaim.c). A bare
+            // Mach-O has no bundle, so the plist rides in the __info_plist
+            // section of __TEXT — the documented location TCC reads for
+            // command-line tools.
+            '-Xlinker',
+            '-sectcreate',
+            '-Xlinker',
+            '__TEXT',
+            '-Xlinker',
+            '__info_plist',
+            '-Xlinker',
+            infoPlistFile,
           ],
           { env: gitEnv },
         ),
@@ -343,6 +362,35 @@ async function main() {
   await fs.chmod(outputFile, '755');
   console.log('Binary is now executable.');
 
+  // Compile the disclaim shim (scripts/disclaim.c). It posix_spawns `event`
+  // with TCC responsibility disclaimed, so the Reminders/Calendar permission
+  // prompt is attributed to `event` itself (which ships the usage strings
+  // above) instead of the desktop MCP client that launched the server —
+  // clients like Codex Desktop declare no EventKit usage strings, and TCC
+  // refuses the request outright when they are the responsible process
+  // (issue #93). clang emits a universal Mach-O directly from repeated
+  // -arch flags; the deployment target matches `event`'s macosx14.0 triples.
+  try {
+    await run('xcrun', [
+      'clang',
+      '-O2',
+      '-mmacosx-version-min=14.0',
+      '-arch',
+      'arm64',
+      '-arch',
+      'x86_64',
+      '-o',
+      disclaimOutputFile,
+      disclaimSourceFile,
+    ]);
+    await fs.chmod(disclaimOutputFile, '755');
+    console.log(`Disclaim shim saved to ${disclaimOutputFile}`);
+  } catch (error) {
+    console.error('Disclaim shim compilation failed!');
+    console.error(error);
+    process.exit(1);
+  }
+
   const signingIdentity = await resolveSigningIdentity();
   const isAdHoc = signingIdentity === '-';
 
@@ -352,14 +400,18 @@ async function main() {
       : `Signing with Developer ID: ${signingIdentity}`,
   );
 
-  // --options runtime: Hardened Runtime, required on macOS 26+ for the TCC
-  //   system to attribute Reminders/Calendar permission dialogs to the host
-  //   GUI app (e.g. Claude Desktop) that spawned the binary as a subprocess.
+  // --options runtime: Hardened Runtime, required for notarization and for
+  //   macOS 26+ TCC prompting policy.
   // --timestamp: secure timestamp from Apple CA; included for Developer ID
   //   signatures to ensure long-term validity; omitted for ad-hoc (no CA).
-  // No entitlements file is passed: `event` carries no embedded Info.plist
-  //   of its own; the host process supplies the usage-description strings.
-  try {
+  // --entitlements (event only): hardened-runtime binaries must hold the
+  //   com.apple.security.personal-information.{calendars,reminders}
+  //   entitlements to be allowed to request EventKit access when they are
+  //   the TCC-responsible process (which they are when spawned disclaimed).
+  // --identifier (event only): pinned to the CFBundleIdentifier in
+  //   scripts/event-Info.plist so the TCC grant is recorded under a stable,
+  //   deterministic identity across rebuilds.
+  const signBinary = async (file, extraArgs) => {
     const codesignArgs = [
       '--force',
       '--sign',
@@ -367,7 +419,8 @@ async function main() {
       '--options',
       'runtime',
       ...(isAdHoc ? [] : ['--timestamp']),
-      outputFile,
+      ...extraArgs,
+      file,
     ];
     const { stdout: csOut, stderr: csErr } = await run(
       'codesign',
@@ -379,10 +432,20 @@ async function main() {
     if (csOut) {
       console.log(csOut);
     }
+  };
+
+  try {
+    await signBinary(outputFile, [
+      '--identifier',
+      'me.frad.event',
+      '--entitlements',
+      entitlementsFile,
+    ]);
+    await signBinary(disclaimOutputFile, []);
     console.log(
       isAdHoc
-        ? 'Binary signed (ad-hoc) with hardened runtime.'
-        : 'Binary signed with Developer ID and hardened runtime.',
+        ? 'Binaries signed (ad-hoc) with hardened runtime.'
+        : 'Binaries signed with Developer ID and hardened runtime.',
     );
   } catch (error) {
     console.error('codesign failed!');
