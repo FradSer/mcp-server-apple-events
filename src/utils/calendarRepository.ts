@@ -228,10 +228,9 @@ class CalendarRepository implements ICalendarRepository {
    * exposes (it has no EventKit account/identifier info to filter or key
    * on), so counts are grouped by calendar title rather than a stable id.
    */
-  async findCalendars(filters: {
-    startDate?: string;
-    endDate?: string;
-  }): Promise<Calendar[]> {
+  async findCalendars(
+    filters: { startDate?: string; endDate?: string } = {},
+  ): Promise<Calendar[]> {
     if (!filters.startDate && !filters.endDate) {
       return this.findAllCalendars();
     }

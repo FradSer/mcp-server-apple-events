@@ -92,17 +92,20 @@ export type PermissionDomain = 'reminders' | 'calendars';
  * "Permission denied" prefix so we never misclassify the unrelated phrase
  * "permission" used in normal output.
  */
-const PERMISSION_DOMAIN_PATTERNS: Record<PermissionDomain, RegExp> = {
-  reminders: /Permission denied:[\s\S]*?reminders?/i,
-  calendars: /Permission denied:[\s\S]*?calendars?/i,
-};
+// An ordered array (not a `Record`) because iteration order matters: a
+// defensive message that names both domains is attributed to whichever
+// pattern appears first here, and `Record`/`Object.entries` iteration order
+// isn't guaranteed by the type system even though it happens to match
+// insertion order at runtime.
+const PERMISSION_DOMAIN_PATTERNS: [PermissionDomain, RegExp][] = [
+  ['reminders', /Permission denied:[\s\S]*?reminders?/i],
+  ['calendars', /Permission denied:[\s\S]*?calendars?/i],
+];
 
 function detectPermissionDomain(message: string): PermissionDomain | null {
-  // Order matters: "calendars" check runs after "reminders" so a defensive
-  // message that names both domains is attributed to whichever appears first.
-  for (const [domain, pattern] of Object.entries(PERMISSION_DOMAIN_PATTERNS)) {
+  for (const [domain, pattern] of PERMISSION_DOMAIN_PATTERNS) {
     if (pattern.test(message)) {
-      return domain as PermissionDomain;
+      return domain;
     }
   }
   return null;
