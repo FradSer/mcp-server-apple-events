@@ -402,20 +402,29 @@ describe('Tool Handlers', () => {
       expect(mockReminderRepository.updateReminder).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects `completed: false` (event CLI cannot un-complete)', async () => {
+    it('passes `completed: false` through to un-complete (event CLI supports it)', async () => {
+      mockReminderRepository.updateReminder.mockResolvedValue({
+        id: 'rem-uc',
+        title: 'Uncomplete probe',
+        isCompleted: false,
+        list: 'Work',
+        notes: null,
+        url: null,
+        dueDate: null,
+        priority: 0,
+        locationTrigger: null,
+      });
+
       const result = await handleUpdateReminder({
         action: 'update',
         id: 'rem-uc',
         completed: false,
       });
 
-      expect(result.isError).toBe(true);
-      expect(getTextContent(result.content)).toMatch(
-        /Marking a reminder uncompleted is not supported/,
+      expect(result.isError).toBe(false);
+      expect(mockReminderRepository.updateReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'rem-uc', isCompleted: false }),
       );
-      // The guard fires before either repo call, so no fetch happens either.
-      expect(mockReminderRepository.findReminderById).not.toHaveBeenCalled();
-      expect(mockReminderRepository.updateReminder).not.toHaveBeenCalled();
     });
 
     it('skips findReminderById when no notes/tag/list change is requested', async () => {
