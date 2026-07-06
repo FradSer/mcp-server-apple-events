@@ -14,8 +14,10 @@ const USER_ACTIONABLE_PERMISSION_PATTERNS = [
   /System Settings > Privacy & Security/i,
   /full calendar access/i,
   /full reminder access/i,
-  /subprocess/i,
-  /responsible process/i,
+  // The disclaim shim's own spawn failures (`event-disclaim: …`) are
+  // classified upstream in eventCli.ts as CliUserError; no broad
+  // subprocess/responsible-process patterns here — they would leak
+  // unrelated internal errors past production sanitization.
 ] as const;
 
 function isUserActionablePermissionError(message: string): boolean {
