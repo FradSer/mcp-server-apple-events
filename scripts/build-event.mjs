@@ -274,6 +274,40 @@ async function main() {
 
   let builtBinaries;
   try {
+    // Ask SwiftPM for the actual release output directory per slice instead
+    // of assuming a `.build/<triple>/release` layout, since that convention
+    // is not a stable public contract.
+    builtBinaries = await Promise.all(
+      slices.map(async (s) => {
+        const { stdout: binPathOut } = await run(
+          'swift',
+          [
+            'build',
+            '--show-bin-path',
+            '-c',
+            'release',
+            '--package-path',
+            eventPackagePath,
+            '--scratch-path',
+            s.scratchPath,
+            '--triple',
+            s.triple,
+          ],
+          { env: gitEnv },
+        );
+        return path.join(binPathOut.trim(), 'event');
+      }),
+    );
+
+    // SwiftPM's incremental build does not track the -sectcreate Info.plist
+    // as a link input, so editing scripts/event-Info.plist alone would leave
+    // a stale plist embedded in the cached executable. Deleting the slice
+    // outputs forces a relink (object files stay cached — this costs seconds,
+    // not a rebuild).
+    await Promise.all(
+      slices.map((_, i) => fs.rm(builtBinaries[i], { force: true })),
+    );
+
     // Slices are independent — build in parallel to roughly halve build time.
     const results = await Promise.all(
       slices.map((s) =>
@@ -312,31 +346,6 @@ async function main() {
       if (stderr) console.warn(`${slices[i].label} build warnings:\n${stderr}`);
       if (stdout) console.log(stdout);
     });
-
-    // Ask SwiftPM for the actual release output directory per slice instead
-    // of assuming a `.build/<triple>/release` layout, since that convention
-    // is not a stable public contract.
-    builtBinaries = await Promise.all(
-      slices.map(async (s) => {
-        const { stdout: binPathOut } = await run(
-          'swift',
-          [
-            'build',
-            '--show-bin-path',
-            '-c',
-            'release',
-            '--package-path',
-            eventPackagePath,
-            '--scratch-path',
-            s.scratchPath,
-            '--triple',
-            s.triple,
-          ],
-          { env: gitEnv },
-        );
-        return path.join(binPathOut.trim(), 'event');
-      }),
-    );
 
     await run('xcrun', [
       'lipo',
