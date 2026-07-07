@@ -111,6 +111,27 @@ Notes after upgrading:
 - With an ad-hoc (local) build, macOS keys the grant to the exact binary hash — rebuilding `bin/event` re-prompts. Prebuilt npm releases are Developer ID-signed, so the grant is stable across updates. Local builds can set `APPLE_SIGNING_IDENTITY` for the same stability.
 - Running `./bin/event` directly (without the shim) still uses host attribution, so direct Terminal use keeps working exactly as before via Terminal's own grant.
 
+#### Recovering a stuck TCC state (no prompt ever appears)
+
+If the Calendar/Reminders permission dialog never appears at all and `event` is missing from **System Settings → Privacy & Security → Reminders / Calendars**, your machine is likely in a stale/misattributed TCC state. The server-side disclaim fix above prevents this on a clean machine, but it cannot clear entries that are already corrupted. The reliable recovery is:
+
+1. **Reset Calendar and Reminders TCC entries *globally* (not per-app)** in Terminal:
+
+   ```bash
+   tccutil reset Calendar
+   tccutil reset Reminders
+   ```
+
+   Resetting *per-bundle* (e.g. `tccutil reset Calendar com.anthropic.claudefordesktop`) frequently does **not** work — the stale/misattributed entries that block the prompt survive. The bare forms clear *all* entries for that service, which is what actually clears the bad state.
+
+   > Note: this clears Calendar/Reminders access for **every** app. Other apps will re-prompt the next time they need access.
+
+2. **Re-trigger the permission from inside the Claude client.** After the reset, in a Claude conversation (Claude Desktop or Claude Code), ask something like:
+
+   > "Use AppleScript to check my Calendar and Reminders."
+
+   This reliably invokes the system permission flow and macOS surfaces the normal Calendar/Reminders prompt. Grant access and the MCP server should work normally. See [issue #83](https://github.com/FradSer/mcp-server-apple-events/issues/83) for the original report and confirmation.
+
 **Verification command**
 
 ```bash

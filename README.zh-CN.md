@@ -111,6 +111,27 @@ Reminder permission denied. Unknown error
 - 使用 ad-hoc（本地）构建时，macOS 会将授权绑定到二进制的精确哈希——重新构建 `bin/event` 会再次弹窗。npm 预编译发行版使用 Developer ID 签名，授权可跨版本保持稳定。本地构建可通过设置 `APPLE_SIGNING_IDENTITY` 获得同样的稳定性。
 - 直接运行 `./bin/event`（不经过 shim）仍然沿用宿主归属，因此在 Terminal 中直接使用的行为与以前完全一致。
 
+#### 恢复卡死的 TCC 状态（权限弹窗始终不出现）
+
+如果日历/提醒事项的权限对话框始终不弹出，且 `系统设置 → 隐私与安全性 → 提醒事项 / 日历` 里也找不到 `event`，说明你的机器很可能已处于 stale/misattributed 的 TCC 状态。上面的服务端 disclaim 修复只能防止干净机器进入此状态，无法清除已经损坏的条目。可靠的恢复方法是：
+
+1. **全局重置 Calendar 与 Reminders 的 TCC 条目（不要按 app 重置）**，在终端执行：
+
+   ```bash
+   tccutil reset Calendar
+   tccutil reset Reminders
+   ```
+
+   按 bundle 重置（例如 `tccutil reset Calendar com.anthropic.claudefordesktop`）常常**无效**——那些阻塞弹窗的 stale/misattributed 条目会存活下来。裸用形式会清除该服务下的**所有**条目，才能真正清掉坏状态。
+
+   > 注意：这会清除**所有**应用的 Calendar/Reminders 权限。其他应用下次需要访问时会重新弹窗。
+
+2. **在 Claude 客户端里重新触发权限。** 重置后，在 Claude 对话中（Claude Desktop 或 Claude Code）输入类似：
+
+   > 「使用 AppleScript 查看我的 Calendar 和 Reminders」
+
+   这能可靠地触发系统权限流程，macOS 会正常弹出 Calendar/Reminders 授权对话框。授权后 MCP 服务即可正常使用。原始报告与确认见 [issue #83](https://github.com/FradSer/mcp-server-apple-events/issues/83)。
+
 **验证命令**
 
 ```bash
