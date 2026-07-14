@@ -157,6 +157,7 @@ export interface CreateEventData {
   calendar?: string;
   notes?: string;
   location?: string;
+  alarmMinutesBefore?: number;
 }
 
 /** Fields accepted by `event calendar update`. */
@@ -167,6 +168,7 @@ export interface UpdateEventData {
   endDate?: string;
   notes?: string;
   location?: string;
+  alarmMinutesBefore?: number;
 }
 
 /**

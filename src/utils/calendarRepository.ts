@@ -276,6 +276,11 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--calendar', data.calendar);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--location', data.location);
+    addOptionalArg(
+      args,
+      '--alarm-minutes-before',
+      data.alarmMinutesBefore?.toString(),
+    );
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }
@@ -287,6 +292,11 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--end', data.endDate);
     addOptionalArg(args, '--location', data.location);
     addOptionalArg(args, '--notes', data.notes);
+    addOptionalArg(
+      args,
+      '--alarm-minutes-before',
+      data.alarmMinutesBefore?.toString(),
+    );
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }

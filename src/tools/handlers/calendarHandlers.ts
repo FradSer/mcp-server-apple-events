@@ -89,6 +89,7 @@ export const handleCreateCalendarEvent = async (
       calendar: validatedArgs.targetCalendar,
       notes: validatedArgs.note,
       location: validatedArgs.location,
+      alarmMinutesBefore: validatedArgs.alarmMinutesBefore,
     });
     return formatSuccessMessage('created', 'event', event.title, event.id);
   }, 'create calendar event');
@@ -109,6 +110,7 @@ export const handleUpdateCalendarEvent = async (
       endDate: validatedArgs.endDate,
       notes: validatedArgs.note,
       location: validatedArgs.location,
+      alarmMinutesBefore: validatedArgs.alarmMinutesBefore,
     });
     return formatSuccessMessage('updated', 'event', event.title, event.id);
   }, 'update calendar event');

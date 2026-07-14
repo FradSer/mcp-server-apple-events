@@ -212,6 +212,13 @@ export const TOOLS: Tool[] = [
           type: 'string',
           description: 'Location text for the event.',
         },
+        alarmMinutesBefore: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 40320,
+          description:
+            'Optional alert offset in minutes before the event start (e.g. 120 = 2 hours before, 1440 = 1 day before). Applies to create and update; on update it replaces any existing alarms. Omit for no alert.',
+        },
         availability: {
           type: 'string',
           enum: ['not-supported', 'busy', 'free', 'tentative', 'unavailable'],
