@@ -264,6 +264,64 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
       expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
     });
+
+    it('repeats --alarm-minutes-before once per alarm offset', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
+
+      await calendarRepository.createEvent({
+        title: 'Reminders',
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-04 10:00:00',
+        alarmMinutesBefore: [30, 1440],
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args).toEqual([
+        'calendar',
+        'create',
+        '--title',
+        'Reminders',
+        '--start',
+        '2025-11-04 09:00:00',
+        '--end',
+        '2025-11-04 10:00:00',
+        '--alarm-minutes-before',
+        '30',
+        '--alarm-minutes-before',
+        '1440',
+        '--json',
+      ]);
+    });
+
+    it('emits a single --alarm-minutes-before flag for one alarm', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
+
+      await calendarRepository.createEvent({
+        title: 'One alarm',
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-04 10:00:00',
+        alarmMinutesBefore: [120],
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(
+        args.filter((arg) => arg === '--alarm-minutes-before'),
+      ).toHaveLength(1);
+      expect(args[args.indexOf('--alarm-minutes-before') + 1]).toBe('120');
+    });
+
+    it('omits --alarm-minutes-before when the alarm list is empty', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
+
+      await calendarRepository.createEvent({
+        title: 'No alarms',
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-04 10:00:00',
+        alarmMinutesBefore: [],
+      });
+
+      expect(mockJson.mock.calls[0]![0]).not.toContain('--alarm-minutes-before');
+    });
   });
 
   describe('updateEvent', () => {
@@ -296,6 +354,39 @@ describe('CalendarRepository (event CLI backend)', () => {
         'rescheduled',
         '--json',
       ]);
+    });
+
+    it('repeats --alarm-minutes-before once per alarm offset', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
+
+      await calendarRepository.updateEvent({
+        id: 'evt-1',
+        alarmMinutesBefore: [15, 60],
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args).toEqual([
+        'calendar',
+        'update',
+        '--id',
+        'evt-1',
+        '--alarm-minutes-before',
+        '15',
+        '--alarm-minutes-before',
+        '60',
+        '--json',
+      ]);
+    });
+
+    it('omits --alarm-minutes-before when the alarm list is empty', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
+
+      await calendarRepository.updateEvent({
+        id: 'evt-1',
+        alarmMinutesBefore: [],
+      });
+
+      expect(mockJson.mock.calls[0]![0]).not.toContain('--alarm-minutes-before');
     });
   });
 

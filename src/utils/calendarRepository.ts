@@ -276,11 +276,11 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--calendar', data.calendar);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--location', data.location);
-    addOptionalArg(
-      args,
-      '--alarm-minutes-before',
-      data.alarmMinutesBefore?.toString(),
-    );
+    if (data.alarmMinutesBefore && data.alarmMinutesBefore.length > 0) {
+      for (const minutes of data.alarmMinutesBefore) {
+        args.push('--alarm-minutes-before', minutes.toString());
+      }
+    }
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }
@@ -292,11 +292,11 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--end', data.endDate);
     addOptionalArg(args, '--location', data.location);
     addOptionalArg(args, '--notes', data.notes);
-    addOptionalArg(
-      args,
-      '--alarm-minutes-before',
-      data.alarmMinutesBefore?.toString(),
-    );
+    if (data.alarmMinutesBefore && data.alarmMinutesBefore.length > 0) {
+      for (const minutes of data.alarmMinutesBefore) {
+        args.push('--alarm-minutes-before', minutes.toString());
+      }
+    }
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }

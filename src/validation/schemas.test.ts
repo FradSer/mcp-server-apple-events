@@ -990,6 +990,64 @@ describe('ValidationSchemas', () => {
         }
       });
 
+      it('CreateCalendarEventSchema accepts up to two alarm offsets', () => {
+        const parsed = CreateCalendarEventSchema.parse({
+          title: 'Two alarms',
+          startDate: '2025-11-04T09:00:00+08:00',
+          endDate: '2025-11-04T10:00:00+08:00',
+          alarmMinutesBefore: [30, 1440],
+        }) as Record<string, unknown>;
+        expect(parsed.alarmMinutesBefore).toEqual([30, 1440]);
+      });
+
+      it('CreateCalendarEventSchema coerces stringified alarm offsets', () => {
+        const parsed = CreateCalendarEventSchema.parse({
+          title: 'Coerced',
+          startDate: '2025-11-04T09:00:00+08:00',
+          endDate: '2025-11-04T10:00:00+08:00',
+          alarmMinutesBefore: ['30', '1440'],
+        }) as Record<string, unknown>;
+        expect(parsed.alarmMinutesBefore).toEqual([30, 1440]);
+      });
+
+      it('CreateCalendarEventSchema rejects more than two alarm offsets', () => {
+        expect(() =>
+          CreateCalendarEventSchema.parse({
+            title: 'Too many',
+            startDate: '2025-11-04T09:00:00+08:00',
+            endDate: '2025-11-04T10:00:00+08:00',
+            alarmMinutesBefore: [15, 30, 60],
+          }),
+        ).toThrow(/more than 2 alarms/);
+      });
+
+      it('CreateCalendarEventSchema rejects out-of-range alarm offsets', () => {
+        expect(() =>
+          CreateCalendarEventSchema.parse({
+            title: 'Out of range',
+            startDate: '2025-11-04T09:00:00+08:00',
+            endDate: '2025-11-04T10:00:00+08:00',
+            alarmMinutesBefore: [40321],
+          }),
+        ).toThrow(/cannot exceed 40320/);
+        expect(() =>
+          CreateCalendarEventSchema.parse({
+            title: 'Negative',
+            startDate: '2025-11-04T09:00:00+08:00',
+            endDate: '2025-11-04T10:00:00+08:00',
+            alarmMinutesBefore: [-1],
+          }),
+        ).toThrow(/cannot be negative/);
+      });
+
+      it('UpdateCalendarEventSchema accepts an alarm-offset array', () => {
+        const parsed = UpdateCalendarEventSchema.parse({
+          id: 'evt-1',
+          alarmMinutesBefore: [15, 60],
+        }) as Record<string, unknown>;
+        expect(parsed.alarmMinutesBefore).toEqual([15, 60]);
+      });
+
       it('DeleteCalendarEventSchema keeps span for recurring deletes', () => {
         const parsed = DeleteCalendarEventSchema.parse({
           id: 'evt-1',

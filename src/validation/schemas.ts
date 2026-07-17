@@ -515,11 +515,15 @@ export const DeleteReminderSchema = z.object({
 
 // Calendar event schemas. All-day events are inferred from the date format
 // (bare `yyyy-MM-dd` without a time component).
-const AlarmMinutesBeforeSchema = z.coerce
-  .number({ invalid_type_error: 'alarmMinutesBefore must be a number of minutes' })
-  .int('alarmMinutesBefore must be a whole number of minutes')
-  .min(0, 'alarmMinutesBefore cannot be negative')
-  .max(40320, 'alarmMinutesBefore cannot exceed 40320 (4 weeks)')
+const AlarmSingleSchema = z.coerce
+  .number({ invalid_type_error: 'alarmMinutesBefore values must be numbers of minutes' })
+  .int('alarmMinutesBefore values must be whole numbers of minutes')
+  .min(0, 'alarmMinutesBefore values cannot be negative')
+  .max(40320, 'alarmMinutesBefore values cannot exceed 40320 (4 weeks)');
+
+const AlarmMinutesBeforeSchema = z
+  .array(AlarmSingleSchema)
+  .max(2, 'alarmMinutesBefore cannot specify more than 2 alarms')
   .optional();
 
 export const CreateCalendarEventSchema = z.object({
