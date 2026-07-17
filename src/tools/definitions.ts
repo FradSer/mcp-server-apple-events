@@ -120,7 +120,7 @@ export const TOOLS: Tool[] = [
           type: 'array',
           items: { type: 'string' },
           description:
-            'Tags to set on the reminder (for create). Replaces any existing tags. Example: ["work", "urgent"]',
+            'Tags to set on the reminder (create or update). Replaces ALL existing tags. For incremental changes on update, use addTags / removeTags instead. Example: ["work", "urgent"]',
         },
         addTags: {
           type: 'array',
@@ -173,7 +173,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'calendar_events',
     description:
-      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. URL, structured-location, all-day toggle, availability, alarms, and recurrence rules are read-only via this tool; configure them in Calendar.app. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component).',
+      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. URL, structured-location, all-day toggle, availability, and recurrence rules are read-only via this tool; configure them in Calendar.app. Simple minutes-before alerts can be set via alarmMinutesBefore; absolute/location/other alarm types remain read-only. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -233,7 +233,7 @@ export const TOOLS: Tool[] = [
           type: 'string',
           enum: ['this-event', 'future-events'],
           description:
-            'Scope for changes to recurring events: this-event or future-events.',
+            'DELETE-ONLY. For a recurring event, chooses which occurrences to remove: this-event (only the single occurrence) or future-events (that occurrence and all later ones). Ignored by create/update, which always act on the single occurrence. No effect on non-recurring events.',
         },
         targetCalendar: {
           type: 'string',
