@@ -38,12 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each spawn now uses a 30 s timeout with `SIGKILL` (tunable via the
   `EVENTKIT_CLI_TIMEOUT_MS` env var, milliseconds; invalid/zero values fall
   back to the default) and surfaces a readable, actionable error instead.
-  The `event` CLI gains matching behavior — fail fast when no GUI session
-  exists, give up on an unanswerable prompt after 15 s
-  (`EVENT_PERMISSION_TIMEOUT_MS`) with a domain-typed `Permission denied`
-  error — in its next release; until the `vendor/event` submodule is bumped
-  to it, only the server-side timeout is active. A killed write may have
-  completed despite the error; verify before retrying.
+  The vendored `event` CLI (pinned to
+  [FradSer/event#15](https://github.com/FradSer/event/pull/15)) matches —
+  fail fast when no GUI session exists, give up on an unanswerable prompt
+  after 15 s (`EVENT_PERMISSION_TIMEOUT_MS`) with a domain-typed
+  `Permission denied` error — so the host shows a permission-specific
+  message before the server's kill fires. A killed write may have completed
+  despite the error; verify before retrying.
 
 ## [1.5.0] - 2026-05-14
 
