@@ -66,6 +66,7 @@ let warnedShimUnavailable = false;
 export function clearEventBinaryPathCache(): void {
   cachedLaunch = null;
   warnedShimUnavailable = false;
+  warnedInvalidTimeout = false;
 }
 
 const fingerprintFor = (filePath: string): BinaryFingerprint | null => {
@@ -87,9 +88,61 @@ const fingerprintMatches = (
   a.mtimeMs === b.mtimeMs &&
   a.size === b.size;
 
+/**
+ * Maximum wall-clock time the `event` CLI may run before the child is killed
+ * (default 30 s, overridable via `EVENTKIT_CLI_TIMEOUT_MS`). `execFile`'s
+ * default timeout is 0 — "wait forever" — which hangs the MCP request and
+ * leaks a child when `event` blocks on an EventKit permission prompt that can
+ * never be displayed (headless/launchd context, issue #113). Killed with
+ * SIGKILL because the disclaim shim exec-replaces itself into `event`
+ * (same PID), so the kill always reaches the real process.
+ */
+const DEFAULT_CLI_TIMEOUT_MS = 30_000;
+
+// Node's internal timer clamps at 2^31 - 1 ms (emitting a
+// TimeoutOverflowWarning and killing ~immediately); clamp here so absurd
+// values mean "effectively no timeout" instead of an instant SIGKILL.
+const MAX_CLI_TIMEOUT_MS = 2_147_483_647;
+
+// Emitted once per process so a silently-ignored (invalid/zero) timeout
+// config is diagnosable from the host's MCP server logs.
+let warnedInvalidTimeout = false;
+
+function warnInvalidTimeout(raw: string): void {
+  if (!warnedInvalidTimeout && process.env.NODE_ENV !== 'test') {
+    warnedInvalidTimeout = true;
+    console.error(
+      `Invalid EVENTKIT_CLI_TIMEOUT_MS value "${raw}" — expected a positive integer ` +
+        `number of milliseconds (e.g. 30000 or 120_000); falling back to ` +
+        `${DEFAULT_CLI_TIMEOUT_MS}. Zero cannot disable the timeout.`,
+    );
+  }
+}
+
+function resolveCliTimeoutMs(): number {
+  const raw = process.env.EVENTKIT_CLI_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_CLI_TIMEOUT_MS;
+  // Accept numeric-separator syntax ("120_000", matching this file's own
+  // `30_000` literals) but nothing else: exponent/hex forms ("1e3", "0x10")
+  // would silently change meaning, commas are locale-dependent.
+  const digits = raw.trim().replace(/_/g, '');
+  if (!/^\d+$/.test(digits)) {
+    warnInvalidTimeout(raw);
+    return DEFAULT_CLI_TIMEOUT_MS;
+  }
+  const parsed = Number(digits);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    warnInvalidTimeout(raw);
+    return DEFAULT_CLI_TIMEOUT_MS;
+  }
+  return Math.min(parsed, MAX_CLI_TIMEOUT_MS);
+}
+
 interface ExecResult {
   stdout: string | Buffer;
   stderr: string | Buffer;
+  /** The enforced timeout for this spawn (captured once at spawn time). */
+  timeoutMs: number;
 }
 
 const execFilePromise = (
@@ -97,16 +150,24 @@ const execFilePromise = (
   args: string[],
 ): Promise<{ result: ExecResult; error: ExecFileException | null }> =>
   new Promise((resolve) => {
+    const timeoutMs = resolveCliTimeoutMs();
     execFile(
       cliPath,
       args,
-      { maxBuffer: 10 * 1024 * 1024 },
+      {
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+      },
       (error, stdout, stderr) => {
         // Hand both branches to the caller so it can decide based on stderr
         // content rather than the exit code alone — `event` emits structured
         // EventCLIError messages on stderr regardless of which exit code path
         // ArgumentParser chose (1 for app errors, 64 for usage errors).
-        resolve({ result: { stdout, stderr }, error: error ?? null });
+        resolve({
+          result: { stdout, stderr, timeoutMs },
+          error: error ?? null,
+        });
       },
     );
   });
@@ -211,6 +272,23 @@ async function runEventCli(
   const stderr = bufferToString(result.stderr) ?? '';
 
   if (error) {
+    // Check the timeout first: `killed: true` is set only when *we* killed
+    // the child (verified: external signal deaths leave it false), so it is
+    // timeout-specific. stderr flushed before the kill is appended rather
+    // than allowed to mask the timeout diagnosis.
+    if (error.killed) {
+      const stderrDetail = stderr
+        ? ` (stderr before kill: ${stderr.trim()})`
+        : '';
+      throw new CliUserError(
+        `event execution failed: timed out after ${result.timeoutMs} ms (killed)${stderrDetail}. ` +
+          'The CLI was stuck — possible causes: an EventKit permission prompt that cannot ' +
+          'be displayed (headless/launchd context), a slow operation exceeding the timeout, ' +
+          'or a stalled system. Grant access in System Settings > Privacy & Security if a ' +
+          'prompt was expected; otherwise raise EVENTKIT_CLI_TIMEOUT_MS. A write operation ' +
+          'may have completed despite this error — verify before retrying.',
+      );
+    }
     if (stderr) {
       throwForStderr(stderr);
     }
