@@ -88,6 +88,9 @@ describe('eventCli', () => {
     mockFindSecureBinaryPath.mockImplementation((paths: string[]) =>
       paths[0]?.endsWith('/bin/event') ? { path: paths[0] } : { path: null },
     );
+    // Hermetic: a developer's shell-exported EVENTKIT_CLI_TIMEOUT_MS must
+    // not change the expected default in assertions below.
+    delete process.env.EVENTKIT_CLI_TIMEOUT_MS;
   });
 
   describe('executeEventCliJson — success', () => {
@@ -108,7 +111,11 @@ describe('eventCli', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/event',
         ['reminders', 'list', '--json'],
-        { maxBuffer: 10 * 1024 * 1024 },
+        {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 30_000,
+          killSignal: 'SIGKILL',
+        },
         expect.any(Function),
       );
     });
@@ -314,8 +321,184 @@ describe('eventCli', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/custom/project/bin/event',
         ['reminders', 'lists', 'list', '--json'],
-        { maxBuffer: 10 * 1024 * 1024 },
+        {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 30_000,
+          killSignal: 'SIGKILL',
+        },
         expect.any(Function),
+      );
+    });
+  });
+
+  describe('CLI timeout (issue #113)', () => {
+    // Given execFile's default timeout is 0 ("wait forever"), when the
+    // `event` CLI blocks on an EventKit permission prompt that can never be
+    // displayed (headless/launchd context), the MCP request would hang
+    // forever and leak a child per call. A bounded timeout kills the child
+    // and settles with a readable error instead.
+    const withTimeoutEnv = async (
+      value: string | undefined,
+      run: () => Promise<void>,
+    ) => {
+      const previous = process.env.EVENTKIT_CLI_TIMEOUT_MS;
+      if (value === undefined) {
+        delete process.env.EVENTKIT_CLI_TIMEOUT_MS;
+      } else {
+        process.env.EVENTKIT_CLI_TIMEOUT_MS = value;
+      }
+      try {
+        await run();
+      } finally {
+        if (previous === undefined) {
+          delete process.env.EVENTKIT_CLI_TIMEOUT_MS;
+        } else {
+          process.env.EVENTKIT_CLI_TIMEOUT_MS = previous;
+        }
+      }
+    };
+
+    it('spawns with a bounded timeout and SIGKILL by default', async () => {
+      respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+      await executeEventCliJson(['reminders', 'list', '--json']);
+
+      expect(mockExecFile).toHaveBeenCalledWith(
+        '/test/project/bin/event',
+        ['reminders', 'list', '--json'],
+        { maxBuffer: 10 * 1024 * 1024, timeout: 30_000, killSignal: 'SIGKILL' },
+        expect.any(Function),
+      );
+    });
+
+    it('honors EVENTKIT_CLI_TIMEOUT_MS when set', async () => {
+      await withTimeoutEnv('5000', async () => {
+        respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+        await executeEventCliJson(['reminders', 'list', '--json']);
+
+        const options = mockExecFile.mock.calls[0]?.[2] as
+          | { timeout?: number }
+          | undefined;
+        expect(options?.timeout).toBe(5000);
+      });
+    });
+
+    it('falls back to the default when EVENTKIT_CLI_TIMEOUT_MS is invalid', async () => {
+      await withTimeoutEnv('not-a-number', async () => {
+        respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+        await executeEventCliJson(['reminders', 'list', '--json']);
+
+        const options = mockExecFile.mock.calls[0]?.[2] as
+          | { timeout?: number }
+          | undefined;
+        expect(options?.timeout).toBe(30_000);
+      });
+    });
+
+    it('falls back to the default for zero (cannot disable the timeout)', async () => {
+      await withTimeoutEnv('0', async () => {
+        respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+        await executeEventCliJson(['reminders', 'list', '--json']);
+
+        const options = mockExecFile.mock.calls[0]?.[2] as
+          | { timeout?: number }
+          | undefined;
+        expect(options?.timeout).toBe(30_000);
+      });
+    });
+
+    it('accepts numeric-separator syntax like the codebase literals', async () => {
+      await withTimeoutEnv('120_000', async () => {
+        respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+        await executeEventCliJson(['reminders', 'list', '--json']);
+
+        const options = mockExecFile.mock.calls[0]?.[2] as
+          | { timeout?: number }
+          | undefined;
+        expect(options?.timeout).toBe(120_000);
+      });
+    });
+
+    it('rejects exponent and hex syntax instead of silently reinterpreting', async () => {
+      for (const raw of ['1e3', '0x10']) {
+        await withTimeoutEnv(raw, async () => {
+          respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+          await executeEventCliJson(['reminders', 'list', '--json']);
+
+          const options = mockExecFile.mock.calls[0]?.[2] as
+            | { timeout?: number }
+            | undefined;
+          expect(options?.timeout).toBe(30_000);
+        });
+      }
+    });
+
+    it('clamps values above 2^31-1 ms to 2^31-1 ms instead of an instant kill', async () => {
+      // Node's internal timer clamps at 2^31-1 ms (and warns); a safe
+      // integer above that would otherwise SIGKILL ~instantly.
+      await withTimeoutEnv('5000000000', async () => {
+        respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+        await executeEventCliJson(['reminders', 'list', '--json']);
+
+        const options = mockExecFile.mock.calls[0]?.[2] as
+          | { timeout?: number }
+          | undefined;
+        expect(options?.timeout).toBe(2_147_483_647);
+      });
+    });
+
+    it('falls back to the default for values beyond Number.MAX_SAFE_INTEGER', async () => {
+      await withTimeoutEnv('99999999999999999999', async () => {
+        respondWith({ stdout: JSON.stringify({ ok: true }) });
+
+        await executeEventCliJson(['reminders', 'list', '--json']);
+
+        const options = mockExecFile.mock.calls[0]?.[2] as
+          | { timeout?: number }
+          | undefined;
+        expect(options?.timeout).toBe(30_000);
+      });
+    });
+
+    it('settles a hung CLI with an actionable error instead of hanging', async () => {
+      const timeoutError = Object.assign(new Error('Command failed'), {
+        killed: true,
+        signal: 'SIGKILL',
+      }) as ExecFileException;
+      respondWith({ stdout: '', stderr: '', error: timeoutError });
+
+      const promise = executeEventCliJson(['reminders', 'list', '--json']);
+
+      await expect(promise).rejects.toMatchObject({ name: 'CliUserError' });
+      await expect(promise).rejects.toThrow(/timed out after 30000 ms/);
+      await expect(promise).rejects.toThrow(/EVENTKIT_CLI_TIMEOUT_MS/);
+    });
+
+    it('does not let stderr flushed before the kill mask the timeout diagnosis', async () => {
+      // Given the killed child flushed a line to stderr before blocking,
+      // when the timeout fires, then the error still reports the kill (with
+      // the stderr appended) instead of surfacing the stale line as the cause.
+      const timeoutError = Object.assign(new Error('Command failed'), {
+        killed: true,
+        signal: 'SIGKILL',
+      }) as ExecFileException;
+      respondWith({
+        stdout: '',
+        stderr: 'event: some warning before blocking\n',
+        error: timeoutError,
+      });
+
+      const promise = executeEventCliJson(['reminders', 'list', '--json']);
+
+      await expect(promise).rejects.toThrow(/timed out after 30000 ms/);
+      await expect(promise).rejects.toThrow(
+        /stderr before kill: event: some warning/,
       );
     });
   });
@@ -340,7 +523,11 @@ describe('eventCli', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/event-disclaim',
         ['/test/project/bin/event', 'reminders', 'list', '--json'],
-        { maxBuffer: 10 * 1024 * 1024 },
+        {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 30_000,
+          killSignal: 'SIGKILL',
+        },
         expect.any(Function),
       );
     });
@@ -360,7 +547,11 @@ describe('eventCli', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/event-disclaim',
         ['/test/project/bin/event', 'reminders', 'delete', '--id', 'abc'],
-        { maxBuffer: 10 * 1024 * 1024 },
+        {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 30_000,
+          killSignal: 'SIGKILL',
+        },
         expect.any(Function),
       );
     });
@@ -374,7 +565,11 @@ describe('eventCli', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/event',
         ['reminders', 'list', '--json'],
-        { maxBuffer: 10 * 1024 * 1024 },
+        {
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 30_000,
+          killSignal: 'SIGKILL',
+        },
         expect.any(Function),
       );
     });

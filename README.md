@@ -130,6 +130,10 @@ If the permission dialog never appears and `event` is missing from `System Setti
 
 2. Re-trigger the permission from inside a Claude conversation (Claude Desktop or Claude Code) by asking, e.g., *"Use AppleScript to check my Calendar and Reminders."* Grant access and the server should work normally. See [issue #83](https://github.com/FradSer/mcp-server-apple-events/issues/83).
 
+### Headless / launchd runs hang instead of failing
+
+When the server runs from a context with no GUI session (SSH, launchd agent/daemon), the first EventKit call can block forever waiting on a permission prompt that can never be rendered — the MCP request never settles and a child process leaks per call. The server now kills any `event` call that exceeds 30 s (`SIGKILL`) and returns a readable error instead. Tune it with the `EVENTKIT_CLI_TIMEOUT_MS` environment variable (milliseconds; invalid/zero values fall back to the default — the timeout cannot be disabled, though huge values up to `2^31-1` ms are accepted). The `event` CLI is being updated to additionally fail fast when no GUI session exists and give up on an unanswerable prompt after 15 s (`EVENT_PERMISSION_TIMEOUT_MS`), reporting `Permission denied: Timed out waiting for ...` so the host can show a permission-specific message — that part ships with the next vendored `event` release (the pinned `vendor/event` submodule predates it; until it is bumped, only the server-side timeout is active). See [issue #113](https://github.com/FradSer/mcp-server-apple-events/issues/113).
+
 ### macOS 26 (Tahoe) `could not build module 'Foundation'`
 
 If `pnpm build` fails with `could not build module 'Foundation'` (or `SDK is not supported by the compiler`), your Swift toolchain is older than the macOS 26 SDK requires — it needs **Swift 6.3 or newer**, but the Command Line Tools shipped with early macOS 26 point releases include Swift 6.2.x. `pnpm build:event` detects this and prints the same remediation; see [issue #85](https://github.com/FradSer/mcp-server-apple-events/issues/85). Fix by installing Xcode 26.x from the App Store, or updating Command Line Tools to a Swift 6.3+ version:

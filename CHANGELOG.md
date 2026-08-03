@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host app — approve the new prompt once. Grants previously given to
   Terminal / Claude Desktop no longer cover the MCP server.
 
+- **`event` CLI calls are now bounded by a timeout** — fixes
+  [#113](https://github.com/FradSer/mcp-server-apple-events/issues/113).
+  Previously a call that blocked on an EventKit permission prompt which could
+  never be displayed (headless/launchd context) hung the MCP request forever
+  and leaked a child process per call while every health signal stayed green.
+  Each spawn now uses a 30 s timeout with `SIGKILL` (tunable via the
+  `EVENTKIT_CLI_TIMEOUT_MS` env var, milliseconds; invalid/zero values fall
+  back to the default) and surfaces a readable, actionable error instead.
+  The `event` CLI gains matching behavior — fail fast when no GUI session
+  exists, give up on an unanswerable prompt after 15 s
+  (`EVENT_PERMISSION_TIMEOUT_MS`) with a domain-typed `Permission denied`
+  error — in its next release; until the `vendor/event` submodule is bumped
+  to it, only the server-side timeout is active. A killed write may have
+  completed despite the error; verify before retrying.
+
 ## [1.5.0] - 2026-05-14
 
 ### Changed (BREAKING)
