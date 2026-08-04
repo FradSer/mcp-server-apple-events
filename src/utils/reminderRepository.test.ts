@@ -10,8 +10,9 @@
  *               set (no alarms/recurrence/locationTrigger/location/etc.).
  *   - lists    → `event reminders lists list|create|update|delete` with
  *               name→id resolution for update/delete.
- *   - guards   → cross-list moves and uncomplete attempts must surface a
- *               clean `CliUserError` instead of silently dropping the change.
+ *   - guards   → cross-list moves must surface a clean `CliUserError`
+ *               instead of silently dropping the change (un-completing is
+ *               supported by the CLI and passes straight through).
  */
 
 import type { Reminder, ReminderList } from '../types/index.js';
@@ -378,10 +379,12 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(callArgs).not.toContain('--completed');
     });
 
-    // Cross-list move + un-complete guards live in handleUpdateReminder
+    // The cross-list move guard lives in handleUpdateReminder
     // (src/tools/handlers/reminderHandlers.ts) so the handler's existing
     // findReminderById fetch is shared with the notes-rebuild path; see
-    // handlers.test.ts for coverage.
+    // handlers.test.ts for coverage. Un-completing (`--completed false`) is
+    // supported by the `event` CLI since v0.5.0 (commit 564bd4b) — the test
+    // above pins the value-passing contract.
   });
 
   describe('deleteReminder', () => {
