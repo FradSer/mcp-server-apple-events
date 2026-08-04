@@ -72,7 +72,7 @@ so values set inside Reminders.app or Calendar.app remain visible.
 | `completionDate` | update | Use `completed: true` to mark complete (timestamp is set by EventKit automatically). |
 | `startDate` | create | Set it via `update` after creation; `update` still accepts `startDate`. |
 | `completed` | create | Create the reminder first, then call `update` with `completed: true`. |
-| `isCompleted: false` | update | Toggle uncompleted state from Reminders.app — `event` cannot un-complete a reminder. |
+| `isCompleted: false` | update | Supported — `--completed false` un-completes (requires `event` CLI >= 0.5.0, commit 564bd4b). |
 | Moving a reminder between lists | update | `event` cannot move reminders between lists. Delete and recreate in the target list, or move from Reminders.app. |
 
 ### `reminders_lists`
