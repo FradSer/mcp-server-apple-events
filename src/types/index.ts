@@ -153,6 +153,7 @@ export interface CalendarEvent {
   structuredLocation?: StructuredLocation;
   url?: string;
   isAllDay: boolean;
+  timeZone?: string;
   availability?:
     | 'not-supported'
     | 'busy'
@@ -332,6 +333,7 @@ export interface CalendarToolArgs extends BaseToolArgs {
   title?: string;
   note?: string;
   location?: string;
+  timezone?: string;
   span?: 'this-event' | 'future-events'; // delete only
   targetCalendar?: string; // create only
 }

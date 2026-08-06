@@ -515,6 +515,12 @@ export const DeleteReminderSchema = z.object({
 
 // Calendar event schemas. All-day events are inferred from the date format
 // (bare `yyyy-MM-dd` without a time component).
+const TimeZoneSchema = z
+  .string()
+  .min(1, 'Timezone cannot be empty')
+  .max(128, 'Timezone cannot exceed 128 characters')
+  .optional();
+
 export const CreateCalendarEventSchema = z.object({
   title: SafeTextSchema,
   startDate: createRequiredDateSchema('Start date'),
@@ -527,6 +533,7 @@ export const CreateCalendarEventSchema = z.object({
     true,
   ),
   targetCalendar: SafeListNameSchema,
+  timezone: TimeZoneSchema,
 });
 
 export const ReadCalendarEventsSchema = z.object({
@@ -550,6 +557,7 @@ export const UpdateCalendarEventSchema = z.object({
     'Location',
     true,
   ),
+  timezone: TimeZoneSchema,
 });
 
 export const DeleteCalendarEventSchema = z.object({
