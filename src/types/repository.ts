@@ -107,6 +107,8 @@ export interface EventJSON {
   structuredLocation?: StructuredLocationJSON | null;
   url: string | null;
   isAllDay: boolean;
+  timeZone?: string | null;
+  dateFormatVersion?: number | null;
   availability?: string | null;
   alarms?: AlarmJSON[] | null;
   recurrenceRules?: RecurrenceRuleJSON[] | null;
@@ -157,6 +159,7 @@ export interface CreateEventData {
   calendar?: string;
   notes?: string;
   location?: string;
+  timeZone?: string;
 }
 
 /** Fields accepted by `event calendar update`. */
@@ -167,6 +170,7 @@ export interface UpdateEventData {
   endDate?: string;
   notes?: string;
   location?: string;
+  timeZone?: string;
 }
 
 /**

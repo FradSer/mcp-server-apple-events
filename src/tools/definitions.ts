@@ -212,6 +212,11 @@ export const TOOLS: Tool[] = [
           type: 'string',
           description: 'Location text for the event.',
         },
+        timezone: {
+          type: 'string',
+          description:
+            "IANA timezone identifier for a timed event (e.g., 'America/New_York', 'Asia/Shanghai'). Timed events' start and end times are interpreted in this timezone. All-day events ignore this option.",
+        },
         availability: {
           type: 'string',
           enum: ['not-supported', 'busy', 'free', 'tentative', 'unavailable'],

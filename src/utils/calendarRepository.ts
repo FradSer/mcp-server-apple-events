@@ -100,6 +100,7 @@ const EVENT_NULLABLE_FIELDS: (keyof EventJSON)[] = [
   'location',
   'structuredLocation',
   'url',
+  'timeZone',
   'availability',
   'alarms',
   'recurrenceRules',
@@ -276,6 +277,7 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--calendar', data.calendar);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--location', data.location);
+    addOptionalArg(args, '--timezone', data.timeZone);
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }
@@ -287,6 +289,7 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--end', data.endDate);
     addOptionalArg(args, '--location', data.location);
     addOptionalArg(args, '--notes', data.notes);
+    addOptionalArg(args, '--timezone', data.timeZone);
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }

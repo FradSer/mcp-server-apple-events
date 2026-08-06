@@ -43,6 +43,7 @@ const formatEventMarkdown = (event: CalendarEvent): string[] => {
   if (event.endDate) lines.push(`  - End: ${event.endDate}`);
   if (event.isAllDay !== undefined)
     lines.push(`  - All Day: ${event.isAllDay}`);
+  if (event.timeZone) lines.push(`  - Timezone: ${event.timeZone}`);
   if (event.location) lines.push(`  - Location: ${event.location}`);
   if (event.structuredLocation)
     lines.push(`  - Structured Location: ${event.structuredLocation.title}`);
@@ -89,6 +90,7 @@ export const handleCreateCalendarEvent = async (
       calendar: validatedArgs.targetCalendar,
       notes: validatedArgs.note,
       location: validatedArgs.location,
+      timeZone: validatedArgs.timezone,
     });
     return formatSuccessMessage('created', 'event', event.title, event.id);
   }, 'create calendar event');
@@ -109,6 +111,7 @@ export const handleUpdateCalendarEvent = async (
       endDate: validatedArgs.endDate,
       notes: validatedArgs.note,
       location: validatedArgs.location,
+      timeZone: validatedArgs.timezone,
     });
     return formatSuccessMessage('updated', 'event', event.title, event.id);
   }, 'update calendar event');

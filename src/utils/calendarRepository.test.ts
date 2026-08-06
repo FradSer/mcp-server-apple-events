@@ -264,6 +264,21 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
       expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
     });
+
+    it('passes --timezone when provided', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
+
+      await calendarRepository.createEvent({
+        title: 'Timed event',
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-04 10:00:00',
+        timeZone: 'America/New_York',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args).toContain('--timezone');
+      expect(args[args.indexOf('--timezone') + 1]).toBe('America/New_York');
+    });
   });
 
   describe('updateEvent', () => {
@@ -296,6 +311,20 @@ describe('CalendarRepository (event CLI backend)', () => {
         'rescheduled',
         '--json',
       ]);
+    });
+
+    it('passes --timezone when provided', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
+
+      await calendarRepository.updateEvent({
+        id: 'evt-1',
+        title: 'Renamed',
+        timeZone: 'Asia/Shanghai',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args).toContain('--timezone');
+      expect(args[args.indexOf('--timezone') + 1]).toBe('Asia/Shanghai');
     });
   });
 
