@@ -71,11 +71,16 @@ describe('Tools Definitions', () => {
       const remindersProps = remindersTool?.inputSchema.properties ?? {};
 
       // Reminder write fields still wired through `event reminders create|update`
+      // (`startDate` is shared with the read-window filter below).
       expect(remindersProps).toHaveProperty('startDate');
       expect(remindersProps).toHaveProperty('dueDate');
       expect(remindersProps).toHaveProperty('priority');
       expect(remindersProps).toHaveProperty('tags');
       expect(remindersProps).toHaveProperty('subtasks');
+
+      // Reminder read filters: a due-date window is passed to the CLI.
+      expect(remindersProps).toHaveProperty('startDate');
+      expect(remindersProps).toHaveProperty('endDate');
 
       const calendarEventsTool = TOOLS.find(
         (tool) => tool.name === 'calendar_events',
