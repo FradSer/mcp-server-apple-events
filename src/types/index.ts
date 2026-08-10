@@ -272,7 +272,9 @@ export interface RemindersToolArgs extends BaseToolArgs {
   // Write fields
   title?: string;
   newTitle?: string;
-  startDate?: string; // update only
+  // Read-only: start of the due-date window (action='read'); update: set the
+  // start date on an existing reminder (the CLI cannot set it at create time).
+  startDate?: string;
   dueDate?: string;
   note?: string;
   url?: string;
@@ -284,6 +286,7 @@ export interface RemindersToolArgs extends BaseToolArgs {
   removeTags?: string[];
   subtasks?: string[];
   targetList?: string;
+  endDate?: string; // read only: due-date window end
 }
 
 /**
