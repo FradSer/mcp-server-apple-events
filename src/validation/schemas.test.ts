@@ -1053,6 +1053,50 @@ describe('ValidationSchemas', () => {
         expect(() => ReadRemindersSchema.parse(validInput)).not.toThrow();
         expect(() => ReadRemindersSchema.parse({})).not.toThrow();
       });
+
+      it('accepts a due-date window', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10',
+            endDate: '2026-08-24',
+          }),
+        ).not.toThrow();
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10 09:00:00',
+            endDate: '2026-08-24 18:00:00',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects a malformed window bound', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: 'not-a-date',
+            endDate: '2026-08-24',
+          }),
+        ).toThrow(/Date/);
+      });
+
+      it('rejects a reversed window (endDate before startDate)', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-24',
+            endDate: '2026-08-10',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
+
+      it('accepts a single-day window (startDate equal to endDate)', () => {
+        // The end day is exclusive, so this returns zero reminders, but it is
+        // a valid window — no validation error.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10',
+            endDate: '2026-08-10',
+          }),
+        ).not.toThrow();
+      });
     });
 
     // UpdateReminderListSchema is covered by the alignment block above.

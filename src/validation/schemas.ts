@@ -481,17 +481,41 @@ export const SafeIdSchema = z.string().min(1, 'ID cannot be empty');
  */
 export const CreateReminderSchema = z.object(BaseReminderFields);
 
-export const ReadRemindersSchema = z.object({
-  id: SafeIdSchema.optional(),
-  filterList: SafeListNameSchema,
-  showCompleted: z.boolean().optional().default(false),
-  search: SafeSearchSchema,
-  dueWithin: DueWithinEnum,
-  filterPriority: PriorityFilterEnum,
-  filterRecurring: z.boolean().optional(),
-  filterLocationBased: z.boolean().optional(),
-  filterTags: TagArraySchema,
-});
+export const ReadRemindersSchema = z
+  .object({
+    id: SafeIdSchema.optional(),
+    filterList: SafeListNameSchema,
+    showCompleted: z.boolean().optional().default(false),
+    search: SafeSearchSchema,
+    dueWithin: DueWithinEnum,
+    filterPriority: PriorityFilterEnum,
+    filterRecurring: z.boolean().optional(),
+    filterLocationBased: z.boolean().optional(),
+    filterTags: TagArraySchema,
+    startDate: SafeDateSchema,
+    endDate: SafeDateSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.startDate || !value.endDate) return;
+    const start = Date.parse(
+      value.startDate.includes(' ')
+        ? value.startDate.replace(' ', 'T')
+        : value.startDate,
+    );
+    const end = Date.parse(
+      value.endDate.includes(' ')
+        ? value.endDate.replace(' ', 'T')
+        : value.endDate,
+    );
+    if (Number.isNaN(start) || Number.isNaN(end)) return; // shape errors surface elsewhere
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endDate'],
+        message: 'endDate must be on or after startDate',
+      });
+    }
+  });
 
 /** Fields accepted by `event reminders update`. */
 export const UpdateReminderSchema = z.object({
