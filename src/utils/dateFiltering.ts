@@ -124,6 +124,13 @@ export interface ReminderFilters {
   recurring?: boolean;
   locationBased?: boolean;
   tags?: string[];
+  /**
+   * Due-date window bounds passed straight to `event reminders list
+   * --start/--end`. Unlike `dueWithin` (which is applied in TS against a full
+   * fetch), a window is pushed down to the CLI so the fetch itself is scoped.
+   */
+  startDate?: string;
+  endDate?: string;
 }
 
 /**

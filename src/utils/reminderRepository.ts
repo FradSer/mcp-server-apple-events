@@ -22,6 +22,7 @@ import {
   applyReminderFilters,
   prefilterReminderJsons,
 } from './dateFiltering.js';
+import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import {
@@ -29,6 +30,7 @@ import {
   addOptionalNumberArg,
   nullToUndefined,
 } from './helpers.js';
+import { parseReminderDueDate } from './reminderDateParser.js';
 import { getSubtaskProgress, parseSubtasks } from './subtaskUtils.js';
 import { extractTags } from './tagUtils.js';
 
@@ -75,6 +77,55 @@ const mapList = (list: ListJSON): ReminderList => ({
   title: list.title,
   color: list.color ?? undefined,
 });
+
+const DEFAULT_READ_WINDOW_DAYS = 14;
+
+/**
+ * Resolves the optional `--start/--end` window bounds the CLI expects. Both
+ * bounds are required by `event reminders list`, so a caller-supplied window
+ * is normalized to date-only strings and filled from the other side (a 14-day
+ * window) when only one bound is given. When neither is supplied, no window is
+ * applied — the CLI returns the full (incomplete) store, preserving the
+ * current default behavior.
+ */
+const resolveReadDateWindow = (filters: {
+  startDate?: string;
+  endDate?: string;
+}): { startDate?: string; endDate?: string } => {
+  if (!filters.startDate && !filters.endDate) {
+    return {};
+  }
+
+  if (filters.startDate && filters.endDate) {
+    return {
+      startDate: toDateOnly(filters.startDate),
+      endDate: toDateOnly(filters.endDate),
+    };
+  }
+
+  if (filters.startDate && !filters.endDate) {
+    // `parseReminderDueDate` is the strict parser shared with the calendar
+    // pipeline; it rejects auto-corrected dates like `2025-02-30` that the
+    // native `Date` constructor silently coerces to March 2.
+    const start = parseReminderDueDate(filters.startDate);
+    return {
+      startDate: toDateOnly(filters.startDate),
+      endDate: formatDateOnly(
+        shiftDays(start ?? new Date(), DEFAULT_READ_WINDOW_DAYS),
+      ),
+    };
+  }
+
+  // !filters.startDate && filters.endDate
+  const endStr = filters.endDate as string;
+  const end = parseReminderDueDate(endStr);
+  return {
+    startDate: formatDateOnly(
+      shiftDays(end ?? new Date(), -DEFAULT_READ_WINDOW_DAYS),
+    ),
+    endDate: toDateOnly(endStr),
+  };
+};
 
 class ReminderRepository implements IReminderRepository {
   private mapReminder(reminder: ReminderJSON): Reminder {
@@ -191,6 +242,13 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--list', filters.list);
     if (filters.showCompleted) {
       args.push('--completed');
+    }
+    const window = resolveReadDateWindow(filters);
+    if (window.startDate) {
+      args.push('--start', window.startDate);
+    }
+    if (window.endDate) {
+      args.push('--end', window.endDate);
     }
     args.push('--json');
 

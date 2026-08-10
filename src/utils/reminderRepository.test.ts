@@ -135,6 +135,106 @@ describe('ReminderRepository (event CLI backend)', () => {
       ]);
     });
 
+    it('passes --start/--end to the CLI when a full window is supplied', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await reminderRepository.findReminders({
+        startDate: '2026-08-10',
+        endDate: '2026-08-24',
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'list',
+        '--start',
+        '2026-08-10',
+        '--end',
+        '2026-08-24',
+        '--json',
+      ]);
+    });
+
+    it('trims time components off window bounds before passing to the CLI', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await reminderRepository.findReminders({
+        startDate: '2026-08-10 09:30:00',
+        endDate: '2026-08-24 18:00:00',
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'list',
+        '--start',
+        '2026-08-10',
+        '--end',
+        '2026-08-24',
+        '--json',
+      ]);
+    });
+
+    it('fills a missing end from a 14-day window when only startDate is given', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await reminderRepository.findReminders({ startDate: '2026-08-10' });
+
+      // Start is passed through untouched; the end is today+14 as date-only.
+      const call = mockJson.mock.calls[0]?.[0] as string[];
+      expect(call).toEqual([
+        'reminders',
+        'list',
+        '--start',
+        '2026-08-10',
+        '--end',
+        expect.any(String),
+        '--json',
+      ]);
+      const endDate = call[call.length - 2];
+      expect(endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('fills a missing start from a 14-day window when only endDate is given', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await reminderRepository.findReminders({ endDate: '2026-08-24' });
+
+      // End is passed through untouched; the start is end-14 as date-only.
+      const call = mockJson.mock.calls[0]?.[0] as string[];
+      expect(call).toEqual([
+        'reminders',
+        'list',
+        '--start',
+        expect.any(String),
+        '--end',
+        '2026-08-24',
+        '--json',
+      ]);
+      const startDate = call[call.length - 4];
+      expect(startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(startDate).not.toBe('2026-08-24');
+    });
+
+    it('falls back to today when an unparseable bound is used to size the window', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      // `parseReminderDueDate` rejects this string, so the window is sized from
+      // `new Date()`; the passed-through bound is still forwarded untouched.
+      await reminderRepository.findReminders({
+        startDate: 'not-a-real-date',
+      });
+
+      const call = mockJson.mock.calls[0]?.[0] as string[];
+      expect(call).toEqual([
+        'reminders',
+        'list',
+        '--start',
+        'not-a-real-date',
+        '--end',
+        expect.any(String),
+        '--json',
+      ]);
+    });
+
     it('pre-filters raw JSON for the structural filters (priority/recurring/locationBased) before mapReminder', async () => {
       mockJson.mockResolvedValueOnce([reminderFixture()]);
       const filters = {

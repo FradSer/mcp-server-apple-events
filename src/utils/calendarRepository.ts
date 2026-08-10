@@ -15,6 +15,7 @@ import type {
   ICalendarRepository,
   UpdateEventData,
 } from '../types/repository.js';
+import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import { addOptionalArg, nullToUndefined } from './helpers.js';
@@ -30,26 +31,6 @@ const DEFAULT_READ_WINDOW_DAYS = 14;
  * roughly that to stay within Apple's limits.
  */
 const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
-
-const formatDateOnly = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const shiftDays = (date: Date, days: number): Date => {
-  const shifted = new Date(date);
-  shifted.setDate(shifted.getDate() + days);
-  return shifted;
-};
-
-// `event calendar list --start/--end` expects bare `yyyy-MM-dd`; trim any
-// time component from caller-supplied dates so the predicate succeeds.
-const toDateOnly = (value: string): string => {
-  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match?.[1] ?? value;
-};
 
 const resolveReadDateRange = (filters: {
   startDate?: string;
