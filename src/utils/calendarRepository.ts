@@ -1,24 +1,25 @@
 /**
  * calendarRepository.ts
- * Repository pattern implementation for calendar event data access operations using EventKitCLI.
+ * Repository for calendar event data access via the vendored `event` CLI.
+ *
+ * Read-only fields (URL, structured location, all-day toggle, availability,
+ * alarms, recurrence rules) are passed through from JSON when present;
+ * write paths only cover what `event` exposes today. See
+ * `docs/migration-to-event-cli.md` for the full table.
  */
 
 import type { Calendar, CalendarEvent } from '../types/index.js';
 import type {
-  CalendarJSON,
   CreateEventData,
   EventJSON,
-  EventsReadResult,
   ICalendarRepository,
   UpdateEventData,
 } from '../types/repository.js';
-import { executeCli } from './cliExecutor.js';
-import {
-  addOptionalArg,
-  addOptionalBooleanArg,
-  addOptionalJsonArg,
-  nullToUndefined,
-} from './helpers.js';
+import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
+import { CliUserError } from './errorHandling.js';
+import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
+import { addOptionalArg, nullToUndefined } from './helpers.js';
+import { parseReminderDueDate } from './reminderDateParser.js';
 
 const DEFAULT_READ_WINDOW_DAYS = 14;
 
@@ -31,39 +32,20 @@ const DEFAULT_READ_WINDOW_DAYS = 14;
  */
 const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
 
-const formatDateOnly = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const parseDateInput = (value: string): Date | undefined => {
-  const normalized = value.includes(' ')
-    ? value.replace(' ', 'T')
-    : /^\d{4}-\d{2}-\d{2}$/.test(value)
-      ? `${value}T00:00:00`
-      : value;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-};
-
-const shiftDays = (date: Date, days: number): Date => {
-  const shifted = new Date(date);
-  shifted.setDate(shifted.getDate() + days);
-  return shifted;
-};
-
 const resolveReadDateRange = (filters: {
   startDate?: string;
   endDate?: string;
-}): { startDate?: string; endDate?: string } => {
+}): { startDate: string; endDate: string } => {
+  const today = new Date();
+
   if (filters.startDate && filters.endDate) {
-    return { startDate: filters.startDate, endDate: filters.endDate };
+    return {
+      startDate: toDateOnly(filters.startDate),
+      endDate: toDateOnly(filters.endDate),
+    };
   }
 
   if (!filters.startDate && !filters.endDate) {
-    const today = new Date();
     return {
       startDate: formatDateOnly(today),
       endDate: formatDateOnly(shiftDays(today, DEFAULT_READ_WINDOW_DAYS)),
@@ -71,34 +53,35 @@ const resolveReadDateRange = (filters: {
   }
 
   if (filters.startDate && !filters.endDate) {
-    const start = parseDateInput(filters.startDate);
-    if (!start) return { startDate: filters.startDate };
+    // `parseReminderDueDate` is the strict parser shared with the reminder
+    // pipeline; it rejects auto-corrected dates like `2025-02-30` that the
+    // native `Date` constructor silently coerces to March 2.
+    const start = parseReminderDueDate(filters.startDate);
     return {
-      startDate: filters.startDate,
-      endDate: formatDateOnly(shiftDays(start, DEFAULT_READ_WINDOW_DAYS)),
+      startDate: toDateOnly(filters.startDate),
+      endDate: formatDateOnly(
+        shiftDays(start ?? today, DEFAULT_READ_WINDOW_DAYS),
+      ),
     };
   }
 
-  if (!filters.startDate && filters.endDate) {
-    const end = parseDateInput(filters.endDate);
-    if (!end) return { endDate: filters.endDate };
-    return {
-      startDate: formatDateOnly(shiftDays(end, -DEFAULT_READ_WINDOW_DAYS)),
-      endDate: filters.endDate,
-    };
-  }
-
-  return {};
+  // !filters.startDate && filters.endDate
+  const endStr = filters.endDate as string;
+  const end = parseReminderDueDate(endStr);
+  return {
+    startDate: formatDateOnly(
+      shiftDays(end ?? today, -DEFAULT_READ_WINDOW_DAYS),
+    ),
+    endDate: toDateOnly(endStr),
+  };
 };
 
-// Centralized list of nullable EventJSON fields — duplicated in two callsites
-// previously, which made it easy to forget to keep them in sync as the JSON
-// schema evolved.
-const EVENT_NULLABLE_FIELDS = [
+const EVENT_NULLABLE_FIELDS: (keyof EventJSON)[] = [
   'notes',
   'location',
   'structuredLocation',
   'url',
+  'timeZone',
   'availability',
   'alarms',
   'recurrenceRules',
@@ -110,59 +93,52 @@ const EVENT_NULLABLE_FIELDS = [
   'creationDate',
   'lastModifiedDate',
   'externalId',
-] as const;
+];
 
 const mapEvent = (event: EventJSON): CalendarEvent =>
-  nullToUndefined(event, [...EVENT_NULLABLE_FIELDS]) as CalendarEvent;
+  nullToUndefined(event, EVENT_NULLABLE_FIELDS) as CalendarEvent;
 
-const mapCalendar = (calendar: CalendarJSON): Calendar => ({
-  id: calendar.id,
-  title: calendar.title,
-  account: calendar.account,
-  accountType: calendar.accountType,
-});
+type EventSpan = 'this-event' | 'future-events';
+
+/**
+ * Maps our schema span values to `event calendar delete --span` strings.
+ * `event` understands "this" (default → `.thisEvent`) and "all"
+ * (→ `.futureEvents`).
+ */
+const mapSpanForEvent = (
+  span: EventSpan | undefined,
+): 'this' | 'all' | undefined =>
+  span === 'this-event' ? 'this' : span === 'future-events' ? 'all' : undefined;
 
 class CalendarRepository implements ICalendarRepository {
-  private async readEvents(
-    startDate?: string,
-    endDate?: string,
+  private async listEvents(
+    startDate: string,
+    endDate: string,
     calendarName?: string,
-    search?: string,
-    accountName?: string,
-  ): Promise<EventsReadResult> {
-    const args = ['--action', 'read-events'];
-    addOptionalArg(args, '--startDate', startDate);
-    addOptionalArg(args, '--endDate', endDate);
-    addOptionalArg(args, '--filterCalendar', calendarName);
-    addOptionalArg(args, '--search', search);
-    addOptionalArg(args, '--filterAccount', accountName);
-
-    return executeCli<EventsReadResult>(args);
+  ): Promise<EventJSON[]> {
+    const args = ['calendar', 'list', '--start', startDate, '--end', endDate];
+    addOptionalArg(args, '--calendar', calendarName);
+    args.push('--json');
+    return executeEventCliJson<EventJSON[]>(args);
   }
 
-  /**
-   * Find a calendar event by its identifier.
-   *
-   * Performance note: the Swift CLI does not currently expose an
-   * `event-by-id` action, so this method asks for a wide ±4-year window of
-   * events and linear-scans the result. For users with very many events the
-   * Swift→JSON→JS transfer can be sizable. The proper fix is a dedicated
-   * Swift `read-event-by-id` action mirroring the reminder side; this method
-   * should switch to that as soon as it lands.
-   *
-   * The previous implementation used the default 14-day window, which
-   * silently hid any event outside that range from id-based lookups — the
-   * widened window prioritises correctness over scan cost.
-   */
-  async findEventById(id: string): Promise<CalendarEvent> {
+  // `findEventById` and `findAllCalendars` both need a wide read window
+  // because EventKit can't be queried for a single event by id directly via
+  // `event`, and empty calendars don't appear in narrow windows. Centralize
+  // the bounds here so both paths stay in sync.
+  private listEventsWideWindow(): Promise<EventJSON[]> {
     const today = new Date();
-    const { events } = await this.readEvents(
+    return this.listEvents(
       formatDateOnly(shiftDays(today, -FIND_BY_ID_WINDOW_DAYS)),
       formatDateOnly(shiftDays(today, FIND_BY_ID_WINDOW_DAYS)),
     );
+  }
+
+  async findEventById(id: string): Promise<CalendarEvent> {
+    const events = await this.listEventsWideWindow();
     const event = events.find((e) => e.id === id);
     if (!event) {
-      throw new Error(`Event with ID '${id}' not found.`);
+      throw new CliUserError(`Event with ID '${id}' not found.`);
     }
     return mapEvent(event);
   }
@@ -174,24 +150,33 @@ class CalendarRepository implements ICalendarRepository {
       calendarName?: string;
       search?: string;
       availability?: string;
-      accountName?: string;
     } = {},
   ): Promise<CalendarEvent[]> {
     const dateRange = resolveReadDateRange({
       startDate: filters.startDate,
       endDate: filters.endDate,
     });
-    const { events } = await this.readEvents(
+    const events = await this.listEvents(
       dateRange.startDate,
       dateRange.endDate,
       filters.calendarName,
-      filters.search,
-      filters.accountName,
     );
-    const normalized = events.map(mapEvent);
+    let normalized = events.map(mapEvent);
+
+    // `event` does not surface `--search`; apply the substring match in TS
+    // against title / notes / location.
+    if (filters.search) {
+      const needle = filters.search.toLowerCase();
+      normalized = normalized.filter((event) => {
+        const haystack = [event.title, event.notes, event.location]
+          .filter((value): value is string => Boolean(value))
+          .map((value) => value.toLowerCase());
+        return haystack.some((value) => value.includes(needle));
+      });
+    }
 
     if (filters.availability) {
-      return normalized.filter(
+      normalized = normalized.filter(
         (event) => event.availability === filters.availability,
       );
     }
@@ -199,71 +184,104 @@ class CalendarRepository implements ICalendarRepository {
     return normalized;
   }
 
+  /**
+   * `event` has no first-class "list calendars" command — calendar names are
+   * surfaced only as the `calendar` field on each event in `calendar list`.
+   * Derive a unique-by-name listing from a wide read window so callers of
+   * `calendar_calendars` see every calendar that contains an event. Calendars
+   * with zero events in the window won't appear; see
+   * `docs/migration-to-event-cli.md` for the workaround.
+   */
   async findAllCalendars(): Promise<Calendar[]> {
-    const calendars = await executeCli<CalendarJSON[]>([
-      '--action',
-      'read-calendars',
-    ]);
-    return calendars.map(mapCalendar);
+    const events = await this.listEventsWideWindow();
+    const distinct = new Set<string>();
+    for (const event of events) {
+      if (event.calendar) distinct.add(event.calendar);
+    }
+    return Array.from(distinct)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ id: name, title: name }));
+  }
+
+  /**
+   * When a date range is supplied, scope the listing to that window instead
+   * of the default wide window and annotate each calendar with how many
+   * events it contributed — this is the only per-calendar signal `event`
+   * exposes (it has no EventKit account/identifier info to filter or key
+   * on), so counts are grouped by calendar title rather than a stable id.
+   */
+  async findCalendars(
+    filters: { startDate?: string; endDate?: string } = {},
+  ): Promise<Calendar[]> {
+    if (!filters.startDate && !filters.endDate) {
+      return this.findAllCalendars();
+    }
+
+    const dateRange = resolveReadDateRange({
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
+    const events = await this.listEvents(
+      dateRange.startDate,
+      dateRange.endDate,
+    );
+
+    const eventCountByTitle = new Map<string, number>();
+    for (const event of events) {
+      if (!event.calendar) continue;
+      eventCountByTitle.set(
+        event.calendar,
+        (eventCountByTitle.get(event.calendar) ?? 0) + 1,
+      );
+    }
+
+    return Array.from(eventCountByTitle.keys())
+      .sort((a, b) => a.localeCompare(b))
+      .map((title) => ({
+        id: title,
+        title,
+        eventCount: eventCountByTitle.get(title) ?? 0,
+      }));
   }
 
   async createEvent(data: CreateEventData): Promise<EventJSON> {
     const args = [
-      '--action',
-      'create-event',
+      'calendar',
+      'create',
       '--title',
       data.title,
-      '--startDate',
+      '--start',
       data.startDate,
-      '--endDate',
+      '--end',
       data.endDate,
     ];
-    addOptionalArg(args, '--targetCalendar', data.calendar);
-    addOptionalArg(args, '--note', data.notes);
+    addOptionalArg(args, '--calendar', data.calendar);
+    addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--location', data.location);
-    addOptionalJsonArg(args, '--structuredLocation', data.structuredLocation);
-    addOptionalArg(args, '--url', data.url);
-    addOptionalBooleanArg(args, '--isAllDay', data.isAllDay);
-    addOptionalArg(args, '--availability', data.availability);
-    addOptionalJsonArg(args, '--alarms', data.alarms);
-    addOptionalJsonArg(args, '--recurrenceRules', data.recurrenceRules);
-
-    return executeCli<EventJSON>(args);
+    addOptionalArg(args, '--timezone', data.timeZone);
+    args.push('--json');
+    return executeEventCliJson<EventJSON>(args);
   }
 
   async updateEvent(data: UpdateEventData): Promise<EventJSON> {
-    const args = ['--action', 'update-event', '--id', data.id];
+    const args = ['calendar', 'update', '--id', data.id];
     addOptionalArg(args, '--title', data.title);
-    addOptionalArg(args, '--targetCalendar', data.calendar);
-    addOptionalArg(args, '--startDate', data.startDate);
-    addOptionalArg(args, '--endDate', data.endDate);
-    addOptionalArg(args, '--note', data.notes);
+    addOptionalArg(args, '--start', data.startDate);
+    addOptionalArg(args, '--end', data.endDate);
     addOptionalArg(args, '--location', data.location);
-    if (data.structuredLocation === null) {
-      args.push('--structuredLocation', '');
-    } else {
-      addOptionalJsonArg(args, '--structuredLocation', data.structuredLocation);
-    }
-    addOptionalArg(args, '--url', data.url);
-    addOptionalBooleanArg(args, '--isAllDay', data.isAllDay);
-    addOptionalArg(args, '--availability', data.availability);
-    addOptionalJsonArg(args, '--alarms', data.alarms);
-    addOptionalBooleanArg(args, '--clearAlarms', data.clearAlarms);
-    addOptionalJsonArg(args, '--recurrenceRules', data.recurrenceRules);
-    addOptionalBooleanArg(args, '--clearRecurrence', data.clearRecurrence);
-    addOptionalArg(args, '--span', data.span);
-
-    return executeCli<EventJSON>(args);
+    addOptionalArg(args, '--notes', data.notes);
+    addOptionalArg(args, '--timezone', data.timeZone);
+    args.push('--json');
+    return executeEventCliJson<EventJSON>(args);
   }
 
-  async deleteEvent(id: string, span?: string): Promise<void> {
-    const args = ['--action', 'delete-event', '--id', id];
-    addOptionalArg(args, '--span', span);
-    await executeCli<unknown>(args);
+  async deleteEvent(id: string, span?: EventSpan): Promise<void> {
+    const args = ['calendar', 'delete', '--id', id];
+    addOptionalArg(args, '--span', mapSpanForEvent(span));
+    await executeEventCliPlain(args);
   }
 }
 
 export const calendarRepository = new CalendarRepository();
 
-// Export class for dependency injection and testing
 export { CalendarRepository };

@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **EventKit permission prompts now appear from any desktop MCP client**
+  (Codex Desktop, Claude Desktop, Cursor, …) — fixes
+  [#93](https://github.com/FradSer/mcp-server-apple-events/issues/93).
+  Previously macOS TCC attributed the Reminders/Calendar request to the
+  desktop app that launched the server; when that app lacked the EventKit
+  usage strings (Codex Desktop ships none), TCC refused the request before
+  EventKit was reached and no prompt ever appeared. The server now spawns
+  `bin/event` through a new `bin/event-disclaim` shim (compiled from
+  `scripts/disclaim.c`) that disclaims TCC responsibility at spawn time —
+  the same mechanism Chromium and LLDB use — making `event` its own
+  responsible process. `event` now embeds an Info.plist
+  (`scripts/event-Info.plist`, bundle id `me.frad.event`) with all six
+  Reminders/Calendar usage strings and is signed with the
+  `com.apple.security.personal-information.{calendars,reminders}`
+  entitlements (`scripts/event.entitlements`).
+
+  **Upgrade note:** the permission prompt and the entry in
+  `System Settings > Privacy & Security` now belong to `event`, not to the
+  host app — approve the new prompt once. Grants previously given to
+  Terminal / Claude Desktop no longer cover the MCP server.
+
+- **`event` CLI calls are now bounded by a timeout** — fixes
+  [#113](https://github.com/FradSer/mcp-server-apple-events/issues/113).
+  Previously a call that blocked on an EventKit permission prompt which could
+  never be displayed (headless/launchd context) hung the MCP request forever
+  and leaked a child process per call while every health signal stayed green.
+  Each spawn now uses a 30 s timeout with `SIGKILL` (tunable via the
+  `EVENTKIT_CLI_TIMEOUT_MS` env var, milliseconds; invalid/zero values fall
+  back to the default) and surfaces a readable, actionable error instead.
+  The vendored `event` CLI (pinned to
+  [FradSer/event#15](https://github.com/FradSer/event/pull/15)) matches —
+  fail fast when no GUI session exists, give up on an unanswerable prompt
+  after 15 s (`EVENT_PERMISSION_TIMEOUT_MS`) with a domain-typed
+  `Permission denied` error — so the host shows a permission-specific
+  message before the server's kill fires. A killed write may have completed
+  despite the error; verify before retrying.
+
+## [1.5.0] - 2026-05-14
+
+### Changed (BREAKING)
+
+- **EventKit backend swapped to the `event` CLI.** The bundled `bin/EventKitCLI`
+  Swift binary is gone; the server now shells out to the vendored
+  [FradSer/event](https://github.com/FradSer/event) CLI (`bin/event`, built
+  during `pnpm install` from the `vendor/event` git submodule). Two
+  EventKit-backed projects now share one Swift codebase.
+- **Dropped MCP tool fields** that the underlying CLI cannot set today
+  (writes only; read-side still returns these fields verbatim when they were
+  configured in Reminders.app / Calendar.app):
+  - `reminders_tasks`: `alarms`, `clearAlarms`, `recurrence`, `recurrenceRules`,
+    `clearRecurrence`, `locationTrigger`, `clearLocationTrigger`, reminder
+    `location`, `completionDate`, `startDate` on create (still available on
+    update), `completed` on create
+  - `reminders_lists`: `color`
+  - `calendar_events`: `alarms`, `clearAlarms`, `recurrenceRules`,
+    `clearRecurrence`, `structuredLocation`, `url`, `isAllDay` (inferred from
+    date format), `availability` on write (still supported as a read filter),
+    `targetCalendar` on update (cross-calendar moves require delete+recreate),
+    `filterAccount`
+  - `calendar_calendars`: `filterAccount` (`event` has no EventKit account
+    info to filter by); date-scoped listing and per-calendar `eventCount`
+    are still supported, grouped by calendar title instead of an EventKit
+    identifier
+- **Reminder list update/delete now resolve `name → id` internally** before
+  calling `event reminders lists update|delete --id <id>`. Behavior unchanged
+  from the host's perspective.
+- **Cross-list move and `isCompleted: false` on `reminders_tasks` update**
+  surface a clear `CliUserError` instead of silently dropping the change —
+  neither is supported by the `event` CLI today.
+
+### Added
+
+- `vendor/event/` git submodule pinning `FradSer/event` (initial pin: tag
+  `v0.5.0`).
+- `scripts/build-event.mjs` builds a universal (arm64 + x86_64) `vendor/event`
+  binary via `swift build -c release` (one build per architecture, merged
+  with `lipo`) and code-signs the result with a Developer ID Application
+  certificate when available (ad-hoc fallback otherwise), hardened runtime.
+- `src/utils/eventCli.ts` — new wrapper for the `event` binary. Parses raw
+  JSON (no envelope), maps `Error: Permission denied: …` stderr to
+  `CliPermissionError`, and maps other `Error: …` stderr to `CliUserError`.
+- `docs/migration-to-event-cli.md` — migration notes for downstream users,
+  including the dropped-field table.
+
+### Removed
+
+- `src/swift/` (all of it): `EventKitCLI.swift`, `Info.plist`,
+  `EventKitCLI.entitlements`, plus their tests.
+- `scripts/build-swift.mjs` and its corresponding test.
+- `src/utils/cliExecutor.ts` and its test, replaced by `eventCli.ts`.
+
+## [1.5.0] - 2026-08-12
+
+### Added
+
+- Date-range filtering for reminders.
+- Timezone-aware calendar events.
+- Per-event timezone support.
+- Calendar ID filtering and date validation.
+- Support for un-completing reminders.
+- Pre-built universal `event` CLI binary distribution.
+
+### Changed
+
+- Migrated to the vendored `event` CLI with hardened runtime and TCC permission handling.
+- Hardened validation, subprocess execution, path handling, and untrusted-data output.
+- Improved date parsing, timezone handling, recurrence support, and cross-list reminder moves.
+- Upgraded dependencies and build tooling.
+
+### Fixed
+
+- Local date-window boundaries and historical date parsing.
+- macOS permission prompts and TCC errors across desktop MCP clients.
+- Unicode tags, malformed dates, calendar event grouping, and reminder completion updates.
+
 ## [1.4.0] - 2026-03-10
 
 ### Added

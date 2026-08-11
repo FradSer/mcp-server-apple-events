@@ -21,19 +21,6 @@ export function addOptionalArg(
 }
 
 /**
- * Adds an optional boolean argument to the args array if the value is defined
- */
-export function addOptionalBooleanArg(
-  args: string[],
-  flag: string,
-  value: boolean | undefined,
-): void {
-  if (value !== undefined) {
-    args.push(flag, String(value));
-  }
-}
-
-/**
  * Adds an optional number argument to the args array if the value is defined
  */
 export function addOptionalNumberArg(
@@ -43,19 +30,6 @@ export function addOptionalNumberArg(
 ): void {
   if (value !== undefined) {
     args.push(flag, String(value));
-  }
-}
-
-/**
- * Adds an optional JSON argument to the args array if the value is defined
- */
-export function addOptionalJsonArg(
-  args: string[],
-  flag: string,
-  value: object | undefined,
-): void {
-  if (value) {
-    args.push(flag, JSON.stringify(value));
   }
 }
 
@@ -84,8 +58,6 @@ export function nullToUndefined<T>(obj: T, fields: (keyof T)[]): T {
 
 /**
  * Converts Buffer or string data to string, handling null/undefined values
- * @param data - Input data that may be string, Buffer, null, or undefined
- * @returns String representation or null
  */
 export function bufferToString(data?: string | Buffer | null): string | null {
   if (typeof data === 'string') return data;

@@ -85,9 +85,9 @@ describe('subtaskUtils', () => {
       const result = parseSubtasks(notes);
 
       expect(result).toHaveLength(3);
-      expect(result[0].isCompleted).toBe(false);
-      expect(result[1].isCompleted).toBe(true);
-      expect(result[2].isCompleted).toBe(false);
+      expect(result[0]!.isCompleted).toBe(false);
+      expect(result[1]!.isCompleted).toBe(true);
+      expect(result[2]!.isCompleted).toBe(false);
     });
 
     it('should ignore malformed subtask lines', () => {
@@ -100,8 +100,8 @@ Invalid line
       const result = parseSubtasks(notes);
 
       expect(result).toHaveLength(2);
-      expect(result[0].id).toBe('abc12345');
-      expect(result[1].id).toBe('def67890');
+      expect(result[0]!.id).toBe('abc12345');
+      expect(result[1]!.id).toBe('def67890');
     });
 
     it('should handle extra whitespace in subtask lines', () => {
@@ -110,7 +110,7 @@ Invalid line
       const result = parseSubtasks(notes);
 
       expect(result).toHaveLength(1);
-      expect(result[0].title).toBe('Task with spaces');
+      expect(result[0]!.title).toBe('Task with spaces');
     });
 
     it('should handle empty subtask section', () => {
@@ -404,15 +404,15 @@ Invalid line
       const result = createSubtasksFromTitles(titles);
 
       expect(result).toHaveLength(3);
-      expect(result[0].title).toBe('Task 1');
-      expect(result[1].title).toBe('Task 2');
-      expect(result[2].title).toBe('Task 3');
+      expect(result[0]!.title).toBe('Task 1');
+      expect(result[1]!.title).toBe('Task 2');
+      expect(result[2]!.title).toBe('Task 3');
     });
 
     it('should create all subtasks as incomplete', () => {
       const result = createSubtasksFromTitles(['Task']);
 
-      expect(result[0].isCompleted).toBe(false);
+      expect(result[0]!.isCompleted).toBe(false);
     });
 
     it('should generate unique IDs for each subtask', () => {
@@ -426,7 +426,7 @@ Invalid line
     it('should trim whitespace from titles', () => {
       const result = createSubtasksFromTitles(['  Trimmed  ']);
 
-      expect(result[0].title).toBe('Trimmed');
+      expect(result[0]!.title).toBe('Trimmed');
     });
 
     it('should return empty array for empty input', () => {

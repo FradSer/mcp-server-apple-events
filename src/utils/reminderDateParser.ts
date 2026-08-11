@@ -3,10 +3,10 @@
  * Helper utilities for parsing reminder dueDate strings safely across timezones.
  */
 
-const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_ONLY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DATE_ONLY_WITH_TZ_REGEX = /^(\d{4}-\d{2}-\d{2})(Z|[+-]\d{2}:?\d{2})$/i;
 const DATE_TIME_NO_TZ_REGEX =
-  /^(\d{4}-\d{2}-\d{2})[ T]+(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;
+  /^(\d{4})-(\d{2})-(\d{2})[ T]+(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;
 const TIMEZONE_SUFFIX_REGEX = /(Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
 const toNumber = (value: string): number => Number.parseInt(value, 10);
@@ -23,7 +23,11 @@ const createLocalDate = (
     return undefined;
   }
 
-  const date = new Date(year, month - 1, day, hour, minute, second, 0);
+  // `new Date(year, ...)` maps years 0-99 to 1900-1999, so the round-trip
+  // check would reject them. Seed from a far year, then `setFullYear` — which
+  // accepts 0-99 literally — so years below 100 parse correctly too.
+  const date = new Date(2000, month - 1, day, hour, minute, second, 0);
+  date.setFullYear(year);
 
   // Validate that the date wasn't auto-corrected by JavaScript
   if (
@@ -85,27 +89,35 @@ export const parseReminderDueDate = (
   const trimmed = dueDate.trim();
   if (!trimmed) return undefined;
 
-  if (DATE_ONLY_REGEX.test(trimmed)) {
-    const [year, month, day] = trimmed.split('-').map(toNumber);
-    return createLocalDate(year, month, day);
+  const dateOnlyMatch = trimmed.match(DATE_ONLY_REGEX);
+  if (dateOnlyMatch) {
+    // Groups 1-3 are mandatory in DATE_ONLY_REGEX, so they are always defined.
+    return createLocalDate(
+      toNumber(dateOnlyMatch[1]!),
+      toNumber(dateOnlyMatch[2]!),
+      toNumber(dateOnlyMatch[3]!),
+    );
   }
 
   const dateWithTzMatch = trimmed.match(DATE_ONLY_WITH_TZ_REGEX);
   if (dateWithTzMatch) {
-    const [, datePart, tzSegment] = dateWithTzMatch;
     return parseWithNative(
-      `${datePart}T00:00:00${normalizeTimezoneSegment(tzSegment)}`,
+      `${dateWithTzMatch[1]}T00:00:00${normalizeTimezoneSegment(dateWithTzMatch[2]!)}`,
     );
   }
 
   const localDateTimeMatch = trimmed.match(DATE_TIME_NO_TZ_REGEX);
   if (localDateTimeMatch) {
-    const [, datePart, hourStr, minuteStr, secondStr] = localDateTimeMatch;
-    const [year, month, day] = datePart.split('-').map(toNumber);
-    const hour = toNumber(hourStr);
-    const minute = toNumber(minuteStr);
-    const second = secondStr ? toNumber(secondStr) : 0;
-    return createLocalDate(year, month, day, hour, minute, second);
+    // Groups 1-5 are mandatory; group 6 (seconds) is optional.
+    const secondStr = localDateTimeMatch[6];
+    return createLocalDate(
+      toNumber(localDateTimeMatch[1]!),
+      toNumber(localDateTimeMatch[2]!),
+      toNumber(localDateTimeMatch[3]!),
+      toNumber(localDateTimeMatch[4]!),
+      toNumber(localDateTimeMatch[5]!),
+      secondStr ? toNumber(secondStr) : 0,
+    );
   }
 
   if (TIMEZONE_SUFFIX_REGEX.test(trimmed)) {

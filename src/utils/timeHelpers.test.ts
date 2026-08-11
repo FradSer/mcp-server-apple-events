@@ -165,13 +165,13 @@ describe('timeHelpers', () => {
       // Current time should be in valid 24-hour format
       expect(context.currentTime).toMatch(/^\d{2}:\d{2}$/);
       expect(
-        parseInt(context.currentTime.split(':')[0], 10),
+        parseInt(context.currentTime.split(':')[0]!, 10),
       ).toBeGreaterThanOrEqual(0);
-      expect(parseInt(context.currentTime.split(':')[0], 10)).toBeLessThan(24);
+      expect(parseInt(context.currentTime.split(':')[0]!, 10)).toBeLessThan(24);
       expect(
-        parseInt(context.currentTime.split(':')[1], 10),
+        parseInt(context.currentTime.split(':')[1]!, 10),
       ).toBeGreaterThanOrEqual(0);
-      expect(parseInt(context.currentTime.split(':')[1], 10)).toBeLessThan(60);
+      expect(parseInt(context.currentTime.split(':')[1]!, 10)).toBeLessThan(60);
     });
   });
 

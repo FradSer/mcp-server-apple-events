@@ -1,12 +1,6 @@
-/**
- * @fileoverview Comprehensive input validation schemas using Zod for security
- * @module validation/schemas
- * @description Security-focused validation with safe text patterns, URL validation,
- * and length limits to prevent injection attacks and malformed data
- */
-
 import { z } from 'zod/v3';
 import { VALIDATION } from '../utils/constants.js';
+import { parseReminderDueDate } from '../utils/reminderDateParser.js';
 
 // Security patterns – allow printable Unicode text while blocking dangerous control and delimiter chars.
 // Allows standard printable ASCII, extended Latin, CJK, plus newlines/tabs for notes.
@@ -15,21 +9,55 @@ import { VALIDATION } from '../utils/constants.js';
 // This keeps Chinese/Unicode names working while remaining safe with AppleScript quoting.
 const SAFE_TEXT_PATTERN =
   /^[\u0020-\u007E\u00A0-\u2027\u202F-\u2065\u206A-\uD7FF\uE000-\u{10FFFF}\n\r\t]*$/u;
-// Support multiple date formats: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, or ISO 8601
-// Basic validation - detailed parsing handled by Swift
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}.*$/;
-// URL validation that blocks internal/private network addresses and localhost
-// Prevents SSRF attacks while allowing legitimate external URLs
-// Blocks: IPv4 private/reserved (127.x, 192.168.x, 10.x, 172.16-31.x, 169.254.x, 0.0.0.0, 224-239.x multicast)
-// Blocks: IPv6 loopback (::1), unspecified (::), link-local (fe80::), private (fc/fd), multicast (ff)
-// Blocks: Cloud metadata (169.254.169.254, 100.100.100.200, metadata.google.internal)
-// Blocks: Internal hostnames (localhost, localhost.localdomain, local, internal)
+// Support multiple date formats: YYYY-MM-DD, YYYY-MM-DD HH:mm:ss, or ISO 8601.
+// Keep this strict enough that a malformed date cannot pass the TS layer and
+// later collapse to an unbounded EventKit query in the Swift CLI.
+const DATE_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+// URL validation: accept any valid URI (any scheme) so reminders can link to
+// custom-scheme deep links like obsidian://, shortcuts://, tel:, mailto: —
+// EventKit's EKReminder.url accepts any NSURL, so the MCP layer should not be
+// stricter than the underlying API (see issue #101).
+//
+// For http(s) URLs we still apply SSRF protection (private/internal addresses,
+// localhost, cloud metadata) because those map to real network hostnames the
+// model might be tricked into emitting. Custom schemes are app-handled by
+// macOS and don't reach the network through us, so scheme-validation alone is
+// sufficient there.
+//
+// We still reject a small set of schemes that are dangerous regardless of
+// hostname: file (local filesystem), javascript / vbscript (script execution
+// in any client that renders the link), jar / dict / gopher (historical SSRF
+// vectors via URL handlers), and data (can carry executable content).
+//
+// SSRF blocklist for http(s) hostnames:
+// - IPv4 private/reserved (127.x, 192.168.x, 10.x, 172.16-31.x, 169.254.x, 0.0.0.0, 224-239.x multicast)
+// - IPv6 loopback (::1), unspecified (::), link-local (fe80::), private (fc/fd), multicast (ff)
+// - Cloud metadata (169.254.169.254, 100.100.100.200, metadata.google.internal)
+// - Internal hostnames (localhost, localhost.localdomain, local, internal)
 // Note: For production use, consider using a dedicated SSRF protection library
 
-// Base URL pattern for HTTP/HTTPS with basic structure validation
-// SSRF checks are done via refinement function for accuracy
-const URL_PATTERN =
-  /^https?:\/\/(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|\[[0-9a-fA-F:]+\])(?::\d+)?(?:\/[^\s<>"{}|\\^`[\]]*)?$/i;
+// Schemes that are dangerous regardless of host — block unconditionally.
+// Compared case-insensitively against URL.protocol which includes the colon.
+const BLOCKED_URL_SCHEMES = new Set([
+  'file:',
+  'javascript:',
+  'vbscript:',
+  'data:',
+  'jar:',
+  'dict:',
+  'gopher:',
+]);
+
+// Schemes that resolve to a network hostname and therefore need SSRF checks.
+// Other schemes (mailto:, tel:, obsidian://, shortcuts://, ...) are app-routed
+// by macOS and never reach the network through this process.
+const HOST_BASED_URL_SCHEMES = new Set(['http:', 'https:']);
+
+// Reject control characters and whitespace anywhere in the URL — the URL
+// parser is lenient about some of these and we want a strict input.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional — must catch raw control chars and DEL injected into URLs
+const URL_FORBIDDEN_CHARS = /[\s\x00-\x1f\x7f]/;
 
 /**
  * Checks if a hostname is blocked for SSRF protection
@@ -81,16 +109,24 @@ function isBlockedHostname(hostname: string): boolean {
       parts.length === 4 &&
       parts.every((p) => !Number.isNaN(p) && p >= 0 && p <= 255)
     ) {
-      if (isBlockedIPv4(parts[0], parts[1], parts[2], parts[3])) return true;
+      if (isBlockedIPv4(parts[0]!, parts[1]!, parts[2]!, parts[3]!))
+        return true;
     }
   }
 
-  // IPv4 pattern checks (standard dotted decimal)
+  // IPv4 pattern checks (standard dotted decimal) — groups 1-4 are mandatory.
   const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::\d+)?$/;
   const ipv4Match = lowerHostname.match(ipv4Pattern);
   if (ipv4Match) {
-    const [, a, b, c, d] = ipv4Match.map(Number);
-    if (isBlockedIPv4(a, b, c, d)) return true;
+    if (
+      isBlockedIPv4(
+        Number(ipv4Match[1]),
+        Number(ipv4Match[2]),
+        Number(ipv4Match[3]),
+        Number(ipv4Match[4]),
+      )
+    )
+      return true;
   }
 
   // IPv6 pattern checks (remove brackets first)
@@ -111,6 +147,32 @@ function isBlockedHostname(hostname: string): boolean {
   if (/^ff[0-9a-f][0-9a-f]:/i.test(ipv6Hostname)) return true;
   // 2001:db8::/32 (documentation)
   if (/^2001:db8:/i.test(ipv6Hostname)) return true;
+
+  // ::ffff:0:0/96 (IPv4-mapped IPv6) and 64:ff9b::/96 (NAT64, RFC 6052).
+  // WHATWG URL normalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]` and the
+  // fully expanded form back to the same shorthand, so by the time we look at
+  // the hostname only the shorthand reaches here. Decode the trailing two
+  // hextets and run them through the IPv4 blocklist so a mapped or NAT64
+  // form of any blocked v4 address (loopback, private, link-local, cloud
+  // metadata) is rejected too — on NAT64-active hosts `[64:ff9b::7f00:1]`
+  // is routed straight to 127.0.0.1 by the gateway.
+  const v4EmbeddedMatch = ipv6Hostname.match(
+    /^(?:::ffff:|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i,
+  );
+  if (v4EmbeddedMatch) {
+    const high = parseInt(v4EmbeddedMatch[1]!, 16);
+    const low = parseInt(v4EmbeddedMatch[2]!, 16);
+    if (
+      isBlockedIPv4(
+        (high >>> 8) & 255,
+        high & 255,
+        (low >>> 8) & 255,
+        low & 255,
+      )
+    ) {
+      return true;
+    }
+  }
 
   return false;
 }
@@ -200,6 +262,38 @@ function createSafeTextSchema(
   return optional ? schema.optional() : schema;
 }
 
+// Days per month (1-indexed via month - 1). February is treated as 28; leap
+// years are accounted for explicitly below so we don't have to round-trip
+// through `Date`, which has surprising behavior for years 0-99 (mapped to
+// 1900-1999) and for Feb 29 seeded from a non-leap year.
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+const isLeapYear = (year: number): boolean =>
+  (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+
+function isValidDateInput(value: string): boolean {
+  const match = DATE_PATTERN.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = match[4] === undefined ? 0 : Number(match[4]);
+  const minute = match[5] === undefined ? 0 : Number(match[5]);
+  const second = match[6] === undefined ? 0 : Number(match[6]);
+
+  if (month < 1 || month > 12) return false;
+  if (hour > 23 || minute > 59 || second > 59) return false;
+
+  const monthDays = DAYS_IN_MONTH[month - 1];
+  if (monthDays === undefined) return false; // unreachable: month is 1-12
+  const maxDay = month === 2 && isLeapYear(year) ? 29 : monthDays;
+  if (day < 1 || day > maxDay) return false;
+
+  const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+  return !Number.isNaN(new Date(normalized).getTime());
+}
+
 /**
  * Base validation schemas using factory functions
  */
@@ -248,6 +342,7 @@ export const SafeDateSchema = z
     DATE_PATTERN,
     "Date must be in format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601 (e.g., '2025-10-30T04:00:00Z')",
   )
+  .refine(isValidDateInput, 'Date must be a real, parseable date/time')
   .optional();
 
 /**
@@ -256,27 +351,63 @@ export const SafeDateSchema = z
 const createRequiredDateSchema = (fieldName: string) =>
   z
     .string()
+    .min(1, `${fieldName} is required`)
     .regex(
       DATE_PATTERN,
       `${fieldName} must be in format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601`,
     )
-    .min(1, `${fieldName} is required`);
+    .refine(
+      isValidDateInput,
+      `${fieldName} must be a real, parseable date/time`,
+    );
+
+/**
+ * Validates a URL string against the project's URI policy.
+ *
+ * Accepts any valid URI so reminders can hold app-deep-link schemes such as
+ * `obsidian://`, `shortcuts://`, `tel:`, and `mailto:` — EventKit itself
+ * accepts any NSURL (issue #101). Schemes in {@link BLOCKED_URL_SCHEMES}
+ * (file, javascript, data, …) are rejected unconditionally, and for the
+ * host-based schemes in {@link HOST_BASED_URL_SCHEMES} (http/https) the
+ * SSRF hostname blocklist still applies.
+ *
+ * @returns `true` if accepted, otherwise an error message describing why.
+ */
+function validateUrl(url: string): true | string {
+  if (URL_FORBIDDEN_CHARS.test(url)) {
+    return 'URL cannot contain whitespace or control characters';
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'URL must be a valid URI (RFC 3986)';
+  }
+  const scheme = parsed.protocol.toLowerCase();
+  if (BLOCKED_URL_SCHEMES.has(scheme)) {
+    return `URL scheme '${scheme}' is not allowed`;
+  }
+  if (
+    HOST_BASED_URL_SCHEMES.has(scheme) &&
+    isBlockedHostname(parsed.hostname)
+  ) {
+    return 'URL must not point to internal, private, or blocked addresses';
+  }
+  return true;
+}
 
 export const SafeUrlSchema = z
   .string()
-  .regex(URL_PATTERN, 'URL must be a valid HTTP or HTTPS URL')
   .max(
     VALIDATION.MAX_URL_LENGTH,
     `URL cannot exceed ${VALIDATION.MAX_URL_LENGTH} characters`,
   )
-  .refine((url) => {
-    try {
-      const parsed = new URL(url);
-      return !isBlockedHostname(parsed.hostname);
-    } catch {
-      return false;
+  .superRefine((url, ctx) => {
+    const result = validateUrl(url);
+    if (result !== true) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: result });
     }
-  }, 'URL must not point to internal, private, or blocked addresses')
+  })
   .optional();
 
 // Reusable schemas for common fields
@@ -294,95 +425,6 @@ const PriorityValueSchema = z
   })
   .optional();
 
-/**
- * Recurrence rule schema for repeating reminders
- */
-const RecurrenceRuleObjectSchema = z.object({
-  frequency: z.enum([
-    'minutely',
-    'hourly',
-    'daily',
-    'weekly',
-    'monthly',
-    'yearly',
-  ]),
-  interval: z.number().int().positive().default(1),
-  endDate: SafeDateSchema,
-  occurrenceCount: z.number().int().positive().optional(),
-  daysOfWeek: z
-    .array(z.number().int().min(1).max(7))
-    .optional()
-    .refine((arr: number[] | undefined) => !arr || arr.length <= 7, {
-      message: 'daysOfWeek cannot have more than 7 entries',
-    }),
-  daysOfMonth: z
-    .array(z.number().int().min(1).max(31))
-    .optional()
-    .refine((arr: number[] | undefined) => !arr || arr.length <= 31, {
-      message: 'daysOfMonth cannot have more than 31 entries',
-    }),
-  monthsOfYear: z
-    .array(z.number().int().min(1).max(12))
-    .optional()
-    .refine((arr: number[] | undefined) => !arr || arr.length <= 12, {
-      message: 'monthsOfYear cannot have more than 12 entries',
-    }),
-});
-
-const RecurrenceRuleSchema = RecurrenceRuleObjectSchema.optional();
-
-const RecurrenceRulesSchema = z.array(RecurrenceRuleObjectSchema).optional();
-
-/**
- * Location trigger schema for geofence-based reminders
- */
-const LocationTriggerObjectSchema = z.object({
-  title: createSafeTextSchema(1, VALIDATION.MAX_TITLE_LENGTH, 'Location title'),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  radius: z.number().positive().default(100),
-  proximity: z.enum(['enter', 'leave']),
-});
-
-const LocationTriggerSchema = LocationTriggerObjectSchema.optional();
-
-const StructuredLocationSchema = z
-  .object({
-    title: createSafeTextSchema(
-      1,
-      VALIDATION.MAX_TITLE_LENGTH,
-      'Location title',
-    ),
-    latitude: z.number().min(-90).max(90).optional(),
-    longitude: z.number().min(-180).max(180).optional(),
-    radius: z.number().positive().optional(),
-  })
-  .optional();
-
-const AlarmTypeSchema = z
-  .enum(['display', 'audio', 'procedure', 'email'])
-  .optional();
-
-const AlarmSchema = z
-  .object({
-    relativeOffset: z.number().finite().optional(),
-    absoluteDate: SafeDateSchema,
-    locationTrigger: LocationTriggerObjectSchema.optional(),
-    alarmType: AlarmTypeSchema,
-  })
-  .refine(
-    (alarm) =>
-      [alarm.relativeOffset, alarm.absoluteDate, alarm.locationTrigger].filter(
-        (value) => value !== undefined,
-      ).length === 1,
-    {
-      message:
-        'Alarm must specify exactly one of relativeOffset, absoluteDate, or locationTrigger',
-    },
-  );
-
-const AlarmArraySchema = z.array(AlarmSchema).optional();
-
 const AvailabilitySchema = z
   .enum(['not-supported', 'busy', 'free', 'tentative', 'unavailable'])
   .optional();
@@ -390,13 +432,15 @@ const AvailabilitySchema = z
 const SpanSchema = z.enum(['this-event', 'future-events']).optional();
 
 /**
- * Tag schema for reminder tags
+ * Tag schema for reminder tags.
+ * Allows Unicode letters and numbers so non-Latin scripts (CJK, Cyrillic,
+ * Arabic, etc.) work as tag names — Apple Reminders natively supports them.
  */
 const TagSchema = z
   .string()
   .min(1)
   .max(50)
-  .regex(/^#?[a-zA-Z0-9_-]+$/, {
+  .regex(/^#?[\p{L}\p{N}_-]+$/u, {
     message: 'Tags can only contain letters, numbers, underscores, and hyphens',
   });
 
@@ -419,29 +463,14 @@ const SubtaskTitleSchema = createSafeTextSchema(
 
 const SubtaskTitleArraySchema = z.array(SubtaskTitleSchema).optional();
 
-/**
- * Common field combinations for reusability
- */
+/** Fields accepted by `event reminders create`. */
 const BaseReminderFields = {
   title: SafeTextSchema,
-  startDate: SafeDateSchema,
   dueDate: SafeDateSchema,
   note: SafeNoteSchema,
   url: SafeUrlSchema,
-  location: createSafeTextSchema(
-    0,
-    VALIDATION.MAX_LOCATION_LENGTH,
-    'Location',
-    true,
-  ),
   targetList: SafeListNameSchema,
   priority: PriorityValueSchema,
-  completed: z.boolean().optional(),
-  alarms: AlarmArraySchema,
-  clearAlarms: z.boolean().optional(),
-  recurrenceRules: RecurrenceRulesSchema,
-  recurrence: RecurrenceRuleSchema,
-  locationTrigger: LocationTriggerSchema,
   tags: TagArraySchema,
   subtasks: SubtaskTitleArraySchema,
 };
@@ -453,18 +482,39 @@ export const SafeIdSchema = z.string().min(1, 'ID cannot be empty');
  */
 export const CreateReminderSchema = z.object(BaseReminderFields);
 
-export const ReadRemindersSchema = z.object({
-  id: SafeIdSchema.optional(),
-  filterList: SafeListNameSchema,
-  showCompleted: z.boolean().optional().default(false),
-  search: SafeSearchSchema,
-  dueWithin: DueWithinEnum,
-  filterPriority: PriorityFilterEnum,
-  filterRecurring: z.boolean().optional(),
-  filterLocationBased: z.boolean().optional(),
-  filterTags: TagArraySchema,
-});
+export const ReadRemindersSchema = z
+  .object({
+    id: SafeIdSchema.optional(),
+    filterList: SafeListNameSchema,
+    showCompleted: z.boolean().optional().default(false),
+    search: SafeSearchSchema,
+    dueWithin: DueWithinEnum,
+    filterPriority: PriorityFilterEnum,
+    filterRecurring: z.boolean().optional(),
+    filterLocationBased: z.boolean().optional(),
+    filterTags: TagArraySchema,
+    startDate: SafeDateSchema,
+    endDate: SafeDateSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.startDate || !value.endDate) return;
+    // `parseReminderDueDate` interprets a bare `YYYY-MM-DD` as local midnight,
+    // matching how the window bounds are resolved downstream. `Date.parse`
+    // would treat a bare date as UTC midnight while a time-bearing bound is
+    // local, mixing timezones and wrongly rejecting valid windows off-UTC.
+    const start = parseReminderDueDate(value.startDate)?.getTime();
+    const end = parseReminderDueDate(value.endDate)?.getTime();
+    if (start === undefined || end === undefined) return; // shape errors surface elsewhere
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endDate'],
+        message: 'endDate must be on or after startDate',
+      });
+    }
+  });
 
+/** Fields accepted by `event reminders update`. */
 export const UpdateReminderSchema = z.object({
   id: SafeIdSchema,
   title: SafeTextSchema.optional(),
@@ -472,23 +522,9 @@ export const UpdateReminderSchema = z.object({
   dueDate: SafeDateSchema,
   note: SafeNoteSchema,
   url: SafeUrlSchema,
-  location: createSafeTextSchema(
-    0,
-    VALIDATION.MAX_LOCATION_LENGTH,
-    'Location',
-    true,
-  ),
   completed: z.boolean().optional(),
-  completionDate: SafeDateSchema,
   targetList: SafeListNameSchema,
   priority: PriorityValueSchema,
-  alarms: AlarmArraySchema,
-  clearAlarms: z.boolean().optional(),
-  recurrenceRules: RecurrenceRulesSchema,
-  recurrence: RecurrenceRuleSchema,
-  clearRecurrence: z.boolean().optional(),
-  locationTrigger: LocationTriggerSchema,
-  clearLocationTrigger: z.boolean().optional(),
   tags: TagArraySchema,
   addTags: TagArraySchema,
   removeTags: TagArraySchema,
@@ -498,7 +534,14 @@ export const DeleteReminderSchema = z.object({
   id: SafeIdSchema,
 });
 
-// Calendar event schemas
+// Calendar event schemas. All-day events are inferred from the date format
+// (bare `yyyy-MM-dd` without a time component).
+const TimeZoneSchema = z
+  .string()
+  .min(1, 'Timezone cannot be empty')
+  .max(128, 'Timezone cannot exceed 128 characters')
+  .optional();
+
 export const CreateCalendarEventSchema = z.object({
   title: SafeTextSchema,
   startDate: createRequiredDateSchema('Start date'),
@@ -510,19 +553,13 @@ export const CreateCalendarEventSchema = z.object({
     'Location',
     true,
   ),
-  structuredLocation: StructuredLocationSchema,
-  url: SafeUrlSchema,
-  isAllDay: z.boolean().optional(),
-  availability: AvailabilitySchema,
-  alarms: AlarmArraySchema,
-  recurrenceRules: RecurrenceRulesSchema,
   targetCalendar: SafeListNameSchema,
+  timezone: TimeZoneSchema,
 });
 
 export const ReadCalendarEventsSchema = z.object({
   id: SafeIdSchema.optional(),
   filterCalendar: SafeListNameSchema,
-  filterAccount: SafeListNameSchema,
   search: SafeSearchSchema,
   availability: AvailabilitySchema,
   startDate: SafeDateSchema,
@@ -541,16 +578,7 @@ export const UpdateCalendarEventSchema = z.object({
     'Location',
     true,
   ),
-  structuredLocation: StructuredLocationSchema.nullable(),
-  url: SafeUrlSchema,
-  isAllDay: z.boolean().optional(),
-  availability: AvailabilitySchema,
-  alarms: AlarmArraySchema,
-  clearAlarms: z.boolean().optional(),
-  recurrenceRules: RecurrenceRulesSchema,
-  clearRecurrence: z.boolean().optional(),
-  span: SpanSchema,
-  targetCalendar: SafeListNameSchema,
+  timezone: TimeZoneSchema,
 });
 
 export const DeleteCalendarEventSchema = z.object({
@@ -558,32 +586,37 @@ export const DeleteCalendarEventSchema = z.object({
   span: SpanSchema,
 });
 
-export const ReadCalendarsSchema = z.object({});
+export const ReadCalendarsSchema = z
+  .object({
+    startDate: SafeDateSchema,
+    endDate: SafeDateSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.startDate || !value.endDate) return;
+    // `parseReminderDueDate` interprets a bare `YYYY-MM-DD` as local midnight,
+    // matching how the window bounds are resolved downstream. `Date.parse`
+    // would treat a bare date as UTC midnight while a time-bearing bound is
+    // local, mixing timezones and wrongly rejecting valid windows off-UTC.
+    const start = parseReminderDueDate(value.startDate)?.getTime();
+    const end = parseReminderDueDate(value.endDate)?.getTime();
+    if (start === undefined || end === undefined) return; // shape errors surface elsewhere
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endDate'],
+        message: 'endDate must be on or after startDate',
+      });
+    }
+  });
 
 export const CreateReminderListSchema = z.object({
   name: RequiredListNameSchema,
-  color: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, {
-      message: 'Color must be a valid hex code (e.g., "#FF5733")',
-    })
-    .optional(),
 });
 
-export const UpdateReminderListSchema = z
-  .object({
-    name: RequiredListNameSchema,
-    newName: SafeListNameSchema,
-    color: z
-      .string()
-      .regex(/^#[0-9A-Fa-f]{6}$/, {
-        message: 'Color must be a valid hex code (e.g., "#FF5733")',
-      })
-      .optional(),
-  })
-  .refine((data) => data.newName || data.color, {
-    message: 'At least one of newName or color must be provided',
-  });
+export const UpdateReminderListSchema = z.object({
+  name: RequiredListNameSchema,
+  newName: RequiredListNameSchema,
+});
 
 export const DeleteReminderListSchema = z.object({
   name: RequiredListNameSchema,

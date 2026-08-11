@@ -4,6 +4,7 @@
  */
 
 import type { Reminder } from '../types/index.js';
+import type { ReminderJSON } from '../types/repository.js';
 import {
   getTodayStart,
   getTomorrowStart,
@@ -123,6 +124,55 @@ export interface ReminderFilters {
   recurring?: boolean;
   locationBased?: boolean;
   tags?: string[];
+  /**
+   * Due-date window bounds passed straight to `event reminders list
+   * --start/--end`. Unlike `dueWithin` (which is applied in TS against a full
+   * fetch), a window is pushed down to the CLI so the fetch itself is scoped.
+   */
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * Narrows the raw `event` JSON response by the filter predicates that don't
+ * require `mapReminder`'s notes-field regex scans. Used by the repository to
+ * skip mapping reminders that the caller will discard anyway.
+ *
+ * Notes-dependent filters (tags, full-text search) and date-window filters
+ * stay in {@link applyReminderFilters} for now — date parsing per reminder is
+ * not free, and tag filtering needs the mapped form.
+ */
+export function prefilterReminderJsons(
+  reminders: ReminderJSON[],
+  filters: ReminderFilters,
+): ReminderJSON[] {
+  let result = reminders;
+
+  if (filters.priority) {
+    const target = PRIORITY_FILTER_MAP[filters.priority];
+    result = result.filter((reminder) => reminder.priority === target);
+  }
+
+  if (filters.recurring) {
+    result = result.filter(
+      (reminder) => (reminder.recurrenceRules?.length ?? 0) > 0,
+    );
+  }
+
+  if (filters.locationBased) {
+    result = result.filter(
+      (reminder) =>
+        reminder.locationTrigger != null ||
+        (reminder.alarms?.some(
+          (alarm) =>
+            alarm?.locationTrigger != null &&
+            alarm.locationTrigger.proximity !== 'none',
+        ) ??
+          false),
+    );
+  }
+
+  return result;
 }
 
 /**

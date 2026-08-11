@@ -4,7 +4,12 @@
  */
 
 import type { Reminder } from '../types/index.js';
-import { applyReminderFilters, type ReminderFilters } from './dateFiltering.js';
+import type { ReminderJSON } from '../types/repository.js';
+import {
+  applyReminderFilters,
+  prefilterReminderJsons,
+  type ReminderFilters,
+} from './dateFiltering.js';
 
 /**
  * Factory function to create test reminders with sensible defaults
@@ -44,7 +49,7 @@ const installDateMock = () => {
       }
     }
 
-    static now(): number {
+    static override now(): number {
       return mockNow.getTime();
     }
   } as typeof global.Date;
@@ -121,7 +126,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should filter by search term in notes', () => {
@@ -129,7 +134,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should filter by due date', () => {
@@ -137,7 +142,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('5');
+      expect(result[0]!.id).toBe('5');
     });
 
     it('should apply multiple filters together', () => {
@@ -149,7 +154,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should return all reminders when no filters applied', () => {
@@ -171,7 +176,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(reminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('4');
+      expect(result[0]!.id).toBe('4');
     });
 
     it('should filter reminders with no due date', () => {
@@ -205,7 +210,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(overdueReminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('1');
+      expect(result[0]!.id).toBe('1');
     });
 
     it('should filter tomorrow reminders', () => {
@@ -231,7 +236,7 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(tomorrowReminders, filters);
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('2');
+      expect(result[0]!.id).toBe('2');
     });
 
     it('should filter this-week reminders using calendar week boundaries', () => {
@@ -263,8 +268,8 @@ describe('DateFiltering', () => {
       const result = applyReminderFilters(weekReminders, filters);
 
       expect(result).toHaveLength(2);
-      expect(result[0].id).toBe('2');
-      expect(result[1].id).toBe('3');
+      expect(result[0]!.id).toBe('2');
+      expect(result[1]!.id).toBe('3');
     });
 
     it('should handle unknown dueWithin filter (default branch)', () => {
@@ -308,7 +313,7 @@ describe('DateFiltering', () => {
         });
 
         expect(result).toHaveLength(1);
-        expect(result[0].id).toBe('floating-date');
+        expect(result[0]!.id).toBe('floating-date');
       });
 
       it('should treat local datetime strings without timezone as today for America/New_York timezone', () => {
@@ -326,7 +331,7 @@ describe('DateFiltering', () => {
         });
 
         expect(result).toHaveLength(1);
-        expect(result[0].id).toBe('floating-datetime');
+        expect(result[0]!.id).toBe('floating-datetime');
       });
     });
   });
@@ -354,7 +359,7 @@ describe('DateFiltering', () => {
         tags: ['social'],
       });
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('bare-tags');
+      expect(result[0]!.id).toBe('bare-tags');
     });
 
     it('should filter reminders requiring ALL tags (AND logic)', () => {
@@ -362,7 +367,7 @@ describe('DateFiltering', () => {
         tags: ['work', 'urgent'],
       });
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('bracket-tags');
+      expect(result[0]!.id).toBe('bracket-tags');
     });
 
     it('should return all reminders when no tags filter', () => {
@@ -375,6 +380,110 @@ describe('DateFiltering', () => {
         tags: ['nonexistent'],
       });
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('prefilterReminderJsons', () => {
+    const jsonFixture = (overrides: Partial<ReminderJSON>): ReminderJSON =>
+      ({
+        id: 'rem-1',
+        title: 'Fixture',
+        isCompleted: false,
+        list: 'Default',
+        notes: null,
+        url: null,
+        dueDate: null,
+        priority: 0,
+        locationTrigger: null,
+        ...overrides,
+      }) as ReminderJSON;
+
+    it('passes everything through when no structural filter is set', () => {
+      const reminders = [jsonFixture({ id: 'a' }), jsonFixture({ id: 'b' })];
+      expect(prefilterReminderJsons(reminders, {})).toEqual(reminders);
+    });
+
+    it('keeps only reminders matching the priority filter', () => {
+      const reminders = [
+        jsonFixture({ id: 'high', priority: 1 }),
+        jsonFixture({ id: 'medium', priority: 5 }),
+        jsonFixture({ id: 'none', priority: 0 }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, { priority: 'high' });
+      expect(result.map((r) => r.id)).toEqual(['high']);
+    });
+
+    it('keeps only recurring reminders when recurring=true', () => {
+      const reminders = [
+        jsonFixture({ id: 'plain' }),
+        jsonFixture({
+          id: 'weekly',
+          recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
+        }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, { recurring: true });
+      expect(result.map((r) => r.id)).toEqual(['weekly']);
+    });
+
+    it('keeps location-based reminders with a top-level locationTrigger', () => {
+      const reminders = [
+        jsonFixture({ id: 'none' }),
+        jsonFixture({
+          id: 'top-level',
+          locationTrigger: {
+            title: 'Office',
+            latitude: 1,
+            longitude: 2,
+            proximity: 'enter',
+          },
+        }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, {
+        locationBased: true,
+      });
+      expect(result.map((r) => r.id)).toEqual(['top-level']);
+    });
+
+    it('keeps location-based reminders with a configured alarm trigger', () => {
+      const reminders = [
+        jsonFixture({ id: 'no-alarm' }),
+        jsonFixture({
+          id: 'alarm-enter',
+          alarms: [
+            {
+              locationTrigger: {
+                title: 'Home',
+                latitude: 1,
+                longitude: 2,
+                proximity: 'enter',
+              },
+            },
+          ],
+        }),
+        jsonFixture({
+          id: 'alarm-none',
+          alarms: [
+            {
+              locationTrigger: {
+                title: 'Unconfigured',
+                latitude: 1,
+                longitude: 2,
+                proximity: 'none',
+              },
+            },
+          ],
+        }),
+      ];
+
+      const result = prefilterReminderJsons(reminders, {
+        locationBased: true,
+      });
+      // alarms with proximity='none' are unconfigured — they shouldn't
+      // surface as location-based.
+      expect(result.map((r) => r.id)).toEqual(['alarm-enter']);
     });
   });
 });

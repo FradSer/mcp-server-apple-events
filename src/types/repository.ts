@@ -19,7 +19,7 @@ import type {
 } from './index.js';
 
 /**
- * Recurrence rule JSON interface matching EventKitCLI output
+ * Recurrence rule JSON interface as emitted by the `event` CLI
  */
 export interface RecurrenceRuleJSON {
   frequency: 'minutely' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -32,7 +32,7 @@ export interface RecurrenceRuleJSON {
 }
 
 /**
- * Location trigger JSON interface matching EventKitCLI output
+ * Location trigger JSON interface as emitted by the `event` CLI
  */
 export interface LocationTriggerJSON {
   title: string; // Location name/title
@@ -66,7 +66,7 @@ export interface ParticipantJSON {
 }
 
 /**
- * JSON interfaces matching the output from EventKitCLI
+ * JSON interfaces emitted by the `event` CLI
  */
 
 export interface ReminderJSON {
@@ -107,6 +107,8 @@ export interface EventJSON {
   structuredLocation?: StructuredLocationJSON | null;
   url: string | null;
   isAllDay: boolean;
+  timeZone?: string | null;
+  dateFormatVersion?: number | null;
   availability?: string | null;
   alarms?: AlarmJSON[] | null;
   recurrenceRules?: RecurrenceRuleJSON[] | null;
@@ -120,67 +122,36 @@ export interface EventJSON {
   externalId?: string | null;
 }
 
-export interface CalendarJSON {
-  id: string;
-  title: string;
-  account: string;
-  accountType: string;
-}
-
-/**
- * Read result interfaces
- */
-
-export interface ReminderReadResult {
-  lists: ListJSON[];
-  reminders: ReminderJSON[];
-}
-
-export interface EventsReadResult {
-  calendars: CalendarJSON[];
-  events: EventJSON[];
-}
-
 /**
  * Data interfaces for repository methods
  */
 
+/** Fields accepted by `event reminders create`. */
 export interface CreateReminderData {
   title: string;
   list?: string;
   notes?: string;
   url?: string;
-  location?: string;
-  startDate?: string;
   dueDate?: string;
   priority?: number;
-  isCompleted?: boolean;
-  completionDate?: string;
-  alarms?: AlarmJSON[];
-  recurrenceRules?: RecurrenceRuleJSON[];
-  locationTrigger?: LocationTriggerJSON;
 }
 
+/** Fields accepted by `event reminders update`. */
 export interface UpdateReminderData {
   id: string;
   newTitle?: string;
-  list?: string;
   notes?: string;
   url?: string;
-  location?: string;
   isCompleted?: boolean;
-  completionDate?: string;
   startDate?: string;
   dueDate?: string;
   priority?: number;
-  alarms?: AlarmJSON[];
-  clearAlarms?: boolean;
-  recurrenceRules?: RecurrenceRuleJSON[];
-  clearRecurrence?: boolean;
-  locationTrigger?: LocationTriggerJSON;
-  clearLocationTrigger?: boolean;
 }
 
+/**
+ * Fields accepted by `event calendar create`. All-day events are inferred
+ * from the date format (bare `YYYY-MM-DD` without a time component).
+ */
 export interface CreateEventData {
   title: string;
   startDate: string;
@@ -188,31 +159,18 @@ export interface CreateEventData {
   calendar?: string;
   notes?: string;
   location?: string;
-  structuredLocation?: StructuredLocationJSON;
-  url?: string;
-  isAllDay?: boolean;
-  availability?: string;
-  alarms?: AlarmJSON[];
-  recurrenceRules?: RecurrenceRuleJSON[];
+  timeZone?: string;
 }
 
+/** Fields accepted by `event calendar update`. */
 export interface UpdateEventData {
   id: string;
   title?: string;
   startDate?: string;
   endDate?: string;
-  calendar?: string;
   notes?: string;
   location?: string;
-  structuredLocation?: StructuredLocationJSON | null;
-  url?: string;
-  isAllDay?: boolean;
-  availability?: string;
-  alarms?: AlarmJSON[];
-  clearAlarms?: boolean;
-  recurrenceRules?: RecurrenceRuleJSON[];
-  clearRecurrence?: boolean;
-  span?: 'this-event' | 'future-events';
+  timeZone?: string;
 }
 
 /**
@@ -231,16 +189,17 @@ export interface IReminderRepository {
     recurring?: boolean;
     locationBased?: boolean;
     tags?: string[];
+    startDate?: string;
+    endDate?: string;
   }): Promise<Reminder[]>;
   findAllLists(): Promise<ReminderList[]>;
   createReminder(data: CreateReminderData): Promise<ReminderJSON>;
   updateReminder(data: UpdateReminderData): Promise<ReminderJSON>;
   deleteReminder(id: string): Promise<void>;
-  createReminderList(name: string, color?: string): Promise<ReminderList>;
+  createReminderList(name: string): Promise<ReminderList>;
   updateReminderList(
     currentName: string,
-    newName?: string,
-    color?: string,
+    newName: string,
   ): Promise<ReminderList>;
   deleteReminderList(name: string): Promise<void>;
 }
@@ -257,10 +216,13 @@ export interface ICalendarRepository {
     calendarName?: string;
     search?: string;
     availability?: string;
-    accountName?: string;
   }): Promise<CalendarEvent[]>;
   findAllCalendars(): Promise<Calendar[]>;
+  findCalendars(filters?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<Calendar[]>;
   createEvent(data: CreateEventData): Promise<EventJSON>;
   updateEvent(data: UpdateEventData): Promise<EventJSON>;
-  deleteEvent(id: string, span?: string): Promise<void>;
+  deleteEvent(id: string, span?: 'this-event' | 'future-events'): Promise<void>;
 }

@@ -11,6 +11,7 @@ import {
   DeleteCalendarEventSchema,
   DeleteReminderSchema,
   ReadCalendarEventsSchema,
+  ReadCalendarsSchema,
   ReadRemindersSchema,
   RequiredListNameSchema,
   SafeDateSchema,
@@ -165,6 +166,23 @@ describe('ValidationSchemas', () => {
         expect(() =>
           SafeDateSchema.parse('2024-01-15T10:30:00Z'),
         ).not.toThrow();
+        expect(() => SafeDateSchema.parse('0005-01-01')).not.toThrow();
+      });
+
+      it('should accept Feb 29 in leap years', () => {
+        // Regression: an earlier implementation seeded the validity check
+        // from year 0 (mapped to 1900, a non-leap year), so every Feb 29
+        // overflowed to Mar 1 and was rejected even for real leap years.
+        expect(() => SafeDateSchema.parse('2024-02-29')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2000-02-29')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2028-02-29')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2024-02-29 23:59:59')).not.toThrow();
+      });
+
+      it('should reject Feb 29 in non-leap years', () => {
+        expect(() => SafeDateSchema.parse('2023-02-29')).toThrow();
+        expect(() => SafeDateSchema.parse('1900-02-29')).toThrow();
+        expect(() => SafeDateSchema.parse('2100-02-29')).toThrow();
       });
 
       it('should accept undefined dates', () => {
@@ -174,8 +192,12 @@ describe('ValidationSchemas', () => {
       it('should reject invalid date formats', () => {
         expect(() => SafeDateSchema.parse('01/15/2024')).toThrow();
         expect(() => SafeDateSchema.parse('not-a-date')).toThrow();
-        // Note: DATE_PATTERN only checks basic format, doesn't validate date ranges
-        expect(() => SafeDateSchema.parse('2024-13-45')).not.toThrow();
+        expect(() => SafeDateSchema.parse('2024-13-45')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-02-30')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-00-15')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-01-00')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-01-15oops')).toThrow();
+        expect(() => SafeDateSchema.parse('2024-01-15 25:00:00')).toThrow();
       });
     });
 
@@ -205,7 +227,47 @@ describe('ValidationSchemas', () => {
 
       it('should reject invalid URL formats', () => {
         expect(() => SafeUrlSchema.parse('not-a-url')).toThrow();
-        expect(() => SafeUrlSchema.parse('ftp://example.com')).toThrow();
+        expect(() => SafeUrlSchema.parse('')).toThrow();
+      });
+
+      it('should accept custom app-deep-link URI schemes (issue #101)', () => {
+        // EventKit's EKReminder.url accepts any NSURL, so the MCP layer must
+        // not be stricter than the underlying API.
+        expect(() =>
+          SafeUrlSchema.parse('obsidian://open?vault=MyVault&file=my-note'),
+        ).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('shortcuts://run-shortcut?name=MyShortcut'),
+        ).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('bear://x-callback-url/open-note?id=123'),
+        ).not.toThrow();
+        expect(() => SafeUrlSchema.parse('tel:+1234567890')).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('mailto:user@example.com'),
+        ).not.toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('omnifocus:///add?name=Task'),
+        ).not.toThrow();
+      });
+
+      it('should reject URLs containing whitespace or control chars', () => {
+        expect(() => SafeUrlSchema.parse('https://example.com/ a')).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\nfoo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\tfoo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\rfoo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('https://example.com/\x00foo'),
+        ).toThrow();
+        expect(() =>
+          SafeUrlSchema.parse('obsidian://open?file=my note'),
+        ).toThrow();
       });
 
       describe('SSRF Protection', () => {
@@ -351,6 +413,76 @@ describe('ValidationSchemas', () => {
           });
         });
 
+        describe('IPv4-mapped IPv6 protection', () => {
+          // WHATWG URL normalises [::ffff:127.0.0.1] to [::ffff:7f00:1], so the
+          // dotted-quad form never reaches the blocklist. Decode the trailing
+          // two hextets and run them through the IPv4 blocklist.
+          it('should block ::ffff:127.0.0.1 loopback (dotted-quad input)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:127.0.0.1]/admin'),
+            ).toThrow();
+          });
+
+          it('should block ::ffff:7f00:1 loopback (canonical hex form)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:7f00:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should block ::ffff:a9fe:a9fe (AWS metadata 169.254.169.254)', () => {
+            expect(() =>
+              SafeUrlSchema.parse(
+                'http://[::ffff:a9fe:a9fe]/latest/meta-data/',
+              ),
+            ).toThrow();
+          });
+
+          it('should block ::ffff:c0a8:1 (192.168.0.1 private)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:c0a8:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should not block ::ffff:0808:0808 (8.8.8.8 public)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[::ffff:0808:0808]/api'),
+            ).not.toThrow();
+          });
+        });
+
+        describe('NAT64 prefix protection (RFC 6052)', () => {
+          // 64:ff9b::/96 is the well-known NAT64 prefix. On NAT64-active
+          // networks (default on iOS cellular and many enterprise networks)
+          // these addresses are routed to the embedded IPv4 by the gateway,
+          // so they're an SSRF vector even though the host itself doesn't
+          // speak IPv4. Block them the same way ::ffff:* is blocked.
+          it('should block 64:ff9b::7f00:1 (loopback via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[64:ff9b::7f00:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should block 64:ff9b::a9fe:a9fe (AWS metadata via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse(
+                'http://[64:ff9b::a9fe:a9fe]/latest/meta-data/',
+              ),
+            ).toThrow();
+          });
+
+          it('should block 64:ff9b::c0a8:1 (192.168.0.1 via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[64:ff9b::c0a8:1]/admin'),
+            ).toThrow();
+          });
+
+          it('should not block 64:ff9b::0808:0808 (8.8.8.8 via NAT64)', () => {
+            expect(() =>
+              SafeUrlSchema.parse('http://[64:ff9b::0808:0808]/api'),
+            ).not.toThrow();
+          });
+        });
+
         describe('IPv6 documentation prefix', () => {
           it('should block 2001:db8::/32 range', () => {
             expect(() =>
@@ -480,23 +612,35 @@ describe('ValidationSchemas', () => {
         });
 
         describe('Protocol restrictions', () => {
-          it('should reject non-HTTP protocols', () => {
+          it('should reject dangerous protocols regardless of host', () => {
             expect(() => SafeUrlSchema.parse('file:///etc/passwd')).toThrow();
-            expect(() => SafeUrlSchema.parse('ftp://example.com')).toThrow();
+            expect(() => SafeUrlSchema.parse('javascript:alert(1)')).toThrow();
+            expect(() => SafeUrlSchema.parse('vbscript:msgbox("x")')).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('data:text/html,<script>alert(1)</script>'),
+            ).toThrow();
             expect(() =>
               SafeUrlSchema.parse('jar:http://evil.com!/'),
             ).toThrow();
             expect(() =>
               SafeUrlSchema.parse('dict://127.0.0.1:11211/'),
             ).toThrow();
+            expect(() =>
+              SafeUrlSchema.parse('gopher://example.com/'),
+            ).toThrow();
           });
 
-          it('should only allow http and https', () => {
+          it('should allow http, https, and arbitrary app schemes', () => {
             expect(() =>
               SafeUrlSchema.parse('http://example.com'),
             ).not.toThrow();
             expect(() =>
               SafeUrlSchema.parse('https://example.com'),
+            ).not.toThrow();
+            // ftp is now accepted — the model can store any URI and the
+            // user (not this server) is the one that follows the link.
+            expect(() =>
+              SafeUrlSchema.parse('ftp://example.com'),
             ).not.toThrow();
           });
         });
@@ -530,6 +674,78 @@ describe('ValidationSchemas', () => {
             tags: ['work', '#urgent'],
           }),
         ).not.toThrow();
+      });
+
+      it('allows CJK tags (Chinese / Japanese / Korean)', () => {
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'CJK tagged reminder',
+            tags: ['雷蒙三十', '日本語', '한국어', '#中文_mix'],
+          }),
+        ).not.toThrow();
+      });
+
+      it('allows CJK tags in filterTags for read action', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            filterTags: ['雷蒙三十'],
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects tags with whitespace or punctuation', () => {
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'Bad tag',
+            tags: ['has space'],
+          }),
+        ).toThrow();
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'Bad tag',
+            tags: ['bad,comma'],
+          }),
+        ).toThrow();
+      });
+    });
+
+    describe('ReadCalendarsSchema', () => {
+      it('accepts no arguments', () => {
+        expect(() => ReadCalendarsSchema.parse({})).not.toThrow();
+      });
+
+      it('accepts a forward range', () => {
+        expect(() =>
+          ReadCalendarsSchema.parse({
+            startDate: '2026-05-04',
+            endDate: '2026-05-11',
+          }),
+        ).not.toThrow();
+      });
+
+      it('accepts startDate equal to endDate', () => {
+        expect(() =>
+          ReadCalendarsSchema.parse({
+            startDate: '2026-05-04',
+            endDate: '2026-05-04',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects endDate before startDate', () => {
+        expect(() =>
+          ReadCalendarsSchema.parse({
+            startDate: '2026-05-11',
+            endDate: '2026-05-04',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
+
+      it('silently drops filterAccount (dropped: not exposed by the event CLI)', () => {
+        const parsed = ReadCalendarsSchema.parse({
+          filterAccount: 'Google',
+        }) as Record<string, unknown>;
+        expect(parsed.filterAccount).toBeUndefined();
       });
     });
 
@@ -598,94 +814,180 @@ describe('ValidationSchemas', () => {
       });
     });
 
-    describe('Reminders schema alignment', () => {
-      it('CreateReminderSchema keeps EventKit-aligned fields', () => {
+    describe('Reminders schema alignment (event CLI subset)', () => {
+      it('CreateReminderSchema keeps the fields event reminders create accepts', () => {
         const parsed = CreateReminderSchema.parse({
           title: 'Aligned reminder',
-          startDate: '2024-01-15T09:00:00Z',
           dueDate: '2024-01-15T10:00:00Z',
-          location: 'Office',
-          alarms: [{ relativeOffset: -900 }],
-          recurrenceRules: [
-            { frequency: 'weekly', interval: 1, daysOfWeek: [2, 4] },
-          ],
+          note: 'short note',
+          priority: 1,
+          targetList: 'Work',
+          tags: ['urgent'],
+          subtasks: ['Step 1'],
         }) as Record<string, unknown>;
 
-        expect(parsed.startDate).toBe('2024-01-15T09:00:00Z');
-        expect(parsed.location).toBe('Office');
-        expect(parsed.alarms).toEqual([{ relativeOffset: -900 }]);
-        expect(parsed.recurrenceRules).toEqual([
-          { frequency: 'weekly', interval: 1, daysOfWeek: [2, 4] },
-        ]);
+        expect(parsed.title).toBe('Aligned reminder');
+        expect(parsed.dueDate).toBe('2024-01-15T10:00:00Z');
+        expect(parsed.priority).toBe(1);
+        expect(parsed.tags).toEqual(['urgent']);
+        expect(parsed.subtasks).toEqual(['Step 1']);
       });
 
-      it('UpdateReminderSchema keeps completionDate and other aligned fields', () => {
+      it('CreateReminderSchema silently strips dropped fields (alarms, recurrence, locationTrigger, startDate, location, completed)', () => {
+        const parsed = CreateReminderSchema.parse({
+          title: 'Trimmed',
+          alarms: [{ relativeOffset: -900 }],
+          recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
+          locationTrigger: {
+            title: 'Office',
+            latitude: 1,
+            longitude: 2,
+            proximity: 'enter',
+          },
+          startDate: '2024-01-15T09:00:00Z',
+          location: 'Office',
+          completed: true,
+        }) as Record<string, unknown>;
+
+        expect(parsed.alarms).toBeUndefined();
+        expect(parsed.recurrenceRules).toBeUndefined();
+        expect(parsed.locationTrigger).toBeUndefined();
+        expect(parsed.startDate).toBeUndefined();
+        expect(parsed.location).toBeUndefined();
+        expect(parsed.completed).toBeUndefined();
+      });
+
+      it('UpdateReminderSchema keeps start/due dates, priority, completed, tags', () => {
         const parsed = UpdateReminderSchema.parse({
           id: 'rem-1',
           completed: true,
-          completionDate: '2024-01-16T10:00:00Z',
           startDate: '2024-01-15T09:00:00Z',
           dueDate: '2024-01-15T10:00:00Z',
-          location: 'Office',
-          alarms: [{ absoluteDate: '2024-01-15T10:15:00Z' }],
-          recurrenceRules: [
-            { frequency: 'monthly', interval: 1, daysOfMonth: [1, 15] },
-          ],
+          priority: 5,
+          addTags: ['done'],
+          removeTags: ['todo'],
         }) as Record<string, unknown>;
 
-        expect(parsed.completionDate).toBe('2024-01-16T10:00:00Z');
+        expect(parsed.completed).toBe(true);
         expect(parsed.startDate).toBe('2024-01-15T09:00:00Z');
-        expect(parsed.location).toBe('Office');
-        expect(parsed.alarms).toEqual([
-          { absoluteDate: '2024-01-15T10:15:00Z' },
-        ]);
-        expect(parsed.recurrenceRules).toEqual([
-          { frequency: 'monthly', interval: 1, daysOfMonth: [1, 15] },
-        ]);
+        expect(parsed.dueDate).toBe('2024-01-15T10:00:00Z');
+        expect(parsed.priority).toBe(5);
+        expect(parsed.addTags).toEqual(['done']);
+        expect(parsed.removeTags).toEqual(['todo']);
+      });
+
+      it('UpdateReminderSchema silently strips dropped fields (alarms, recurrence, locationTrigger, location, completionDate)', () => {
+        const parsed = UpdateReminderSchema.parse({
+          id: 'rem-1',
+          alarms: [{ absoluteDate: '2024-01-15T10:15:00Z' }],
+          recurrenceRules: [{ frequency: 'monthly', interval: 1 }],
+          clearAlarms: true,
+          clearRecurrence: true,
+          locationTrigger: {
+            title: 'Office',
+            latitude: 1,
+            longitude: 2,
+            proximity: 'enter',
+          },
+          clearLocationTrigger: true,
+          location: 'Office',
+          completionDate: '2024-01-16T10:00:00Z',
+        }) as Record<string, unknown>;
+
+        for (const field of [
+          'alarms',
+          'recurrenceRules',
+          'clearAlarms',
+          'clearRecurrence',
+          'locationTrigger',
+          'clearLocationTrigger',
+          'location',
+          'completionDate',
+        ]) {
+          expect(parsed[field]).toBeUndefined();
+        }
       });
     });
 
-    describe('Calendar schema alignment', () => {
-      it('CreateCalendarEventSchema keeps alarms/recurrenceRules/availability/structuredLocation', () => {
+    describe('Calendar schema alignment (event CLI subset)', () => {
+      it('CreateCalendarEventSchema keeps the fields event calendar create accepts', () => {
         const parsed = CreateCalendarEventSchema.parse({
           title: 'Aligned event',
           startDate: '2025-11-04T09:00:00+08:00',
           endDate: '2025-11-04T10:00:00+08:00',
-          availability: 'busy',
-          alarms: [{ relativeOffset: -1800 }],
-          recurrenceRules: [
-            { frequency: 'weekly', interval: 1, daysOfWeek: [2] },
-          ],
-          structuredLocation: { title: 'Office', latitude: 1, longitude: 2 },
+          location: 'Office',
+          note: 'agenda',
+          targetCalendar: 'Work',
         }) as Record<string, unknown>;
 
-        expect(parsed.availability).toBe('busy');
-        expect(parsed.alarms).toEqual([{ relativeOffset: -1800 }]);
-        expect(parsed.recurrenceRules).toEqual([
-          { frequency: 'weekly', interval: 1, daysOfWeek: [2] },
-        ]);
-        expect(parsed.structuredLocation).toEqual({
-          title: 'Office',
-          latitude: 1,
-          longitude: 2,
-        });
+        expect(parsed.title).toBe('Aligned event');
+        expect(parsed.startDate).toBe('2025-11-04T09:00:00+08:00');
+        expect(parsed.location).toBe('Office');
+        expect(parsed.targetCalendar).toBe('Work');
       });
 
-      it('UpdateCalendarEventSchema keeps span for recurring changes', () => {
+      it('CreateCalendarEventSchema silently strips dropped fields (alarms, recurrence, structuredLocation, url, isAllDay, availability)', () => {
+        const parsed = CreateCalendarEventSchema.parse({
+          title: 'Trimmed',
+          startDate: '2025-11-04T09:00:00+08:00',
+          endDate: '2025-11-04T10:00:00+08:00',
+          alarms: [{ relativeOffset: -1800 }],
+          recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
+          structuredLocation: { title: 'Office', latitude: 1, longitude: 2 },
+          url: 'https://example.com',
+          isAllDay: true,
+          availability: 'busy',
+        }) as Record<string, unknown>;
+
+        for (const field of [
+          'alarms',
+          'recurrenceRules',
+          'structuredLocation',
+          'url',
+          'isAllDay',
+          'availability',
+        ]) {
+          expect(parsed[field]).toBeUndefined();
+        }
+      });
+
+      it('UpdateCalendarEventSchema drops span (event has no --span on update)', () => {
         const parsed = UpdateCalendarEventSchema.parse({
           id: 'evt-1',
           span: 'future-events',
         }) as Record<string, unknown>;
-        expect(parsed.span).toBe('future-events');
+        // span is honored only by DeleteCalendarEventSchema; on update it
+        // would be silently ignored, so we reject it from the input schema.
+        expect(parsed.span).toBeUndefined();
       });
 
-      it('UpdateCalendarEventSchema allows clearing structuredLocation', () => {
+      it('UpdateCalendarEventSchema silently strips dropped fields (alarms, recurrence, structuredLocation, url, isAllDay, availability, targetCalendar)', () => {
         const parsed = UpdateCalendarEventSchema.parse({
           id: 'evt-1',
+          alarms: [{ relativeOffset: -1800 }],
+          clearAlarms: true,
+          recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
+          clearRecurrence: true,
           structuredLocation: null,
+          url: 'https://example.com',
+          isAllDay: true,
+          availability: 'free',
+          targetCalendar: 'Other',
         }) as Record<string, unknown>;
 
-        expect(parsed.structuredLocation).toBeNull();
+        for (const field of [
+          'alarms',
+          'clearAlarms',
+          'recurrenceRules',
+          'clearRecurrence',
+          'structuredLocation',
+          'url',
+          'isAllDay',
+          'availability',
+          'targetCalendar',
+        ]) {
+          expect(parsed[field]).toBeUndefined();
+        }
       });
 
       it('DeleteCalendarEventSchema keeps span for recurring deletes', () => {
@@ -696,11 +998,45 @@ describe('ValidationSchemas', () => {
         expect(parsed.span).toBe('future-events');
       });
 
-      it('ReadCalendarEventsSchema keeps availability filter', () => {
+      it('ReadCalendarEventsSchema keeps availability filter (TS-side)', () => {
         const parsed = ReadCalendarEventsSchema.parse({
           availability: 'free',
         }) as Record<string, unknown>;
         expect(parsed.availability).toBe('free');
+      });
+
+      it('ReadCalendarEventsSchema silently strips filterAccount (not surfaced by event)', () => {
+        const parsed = ReadCalendarEventsSchema.parse({
+          filterAccount: 'iCloud',
+        }) as Record<string, unknown>;
+        expect(parsed.filterAccount).toBeUndefined();
+      });
+    });
+
+    describe('Reminder list schema alignment (event CLI subset)', () => {
+      it('CreateReminderListSchema accepts a single name field', () => {
+        const parsed = CreateReminderListSchema.parse({
+          name: 'Project Alpha',
+        }) as Record<string, unknown>;
+        expect(parsed.name).toBe('Project Alpha');
+      });
+
+      it('CreateReminderListSchema silently strips the now-unsupported color field', () => {
+        const parsed = CreateReminderListSchema.parse({
+          name: 'Project Alpha',
+          color: '#FF5733',
+        }) as Record<string, unknown>;
+        expect(parsed.color).toBeUndefined();
+      });
+
+      it('UpdateReminderListSchema requires both current name and new name', () => {
+        expect(() =>
+          UpdateReminderListSchema.parse({ name: 'Old', newName: 'New' }),
+        ).not.toThrow();
+        expect(() => UpdateReminderListSchema.parse({ name: 'Old' })).toThrow();
+        expect(() =>
+          UpdateReminderListSchema.parse({ newName: 'New' }),
+        ).toThrow();
       });
     });
 
@@ -717,22 +1053,89 @@ describe('ValidationSchemas', () => {
         expect(() => ReadRemindersSchema.parse(validInput)).not.toThrow();
         expect(() => ReadRemindersSchema.parse({})).not.toThrow();
       });
-    });
 
-    describe('UpdateReminderListSchema', () => {
-      it('should validate update list input with both required fields', () => {
-        const validInput = {
-          name: 'Old Name',
-          newName: 'New Name',
-        };
-
-        expect(() => UpdateReminderListSchema.parse(validInput)).not.toThrow();
-        expect(() => UpdateReminderListSchema.parse({ name: 'Old' })).toThrow();
+      it('accepts a due-date window', () => {
         expect(() =>
-          UpdateReminderListSchema.parse({ newName: 'New' }),
-        ).toThrow();
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10',
+            endDate: '2026-08-24',
+          }),
+        ).not.toThrow();
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10 09:00:00',
+            endDate: '2026-08-24 18:00:00',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects a malformed window bound', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: 'not-a-date',
+            endDate: '2026-08-24',
+          }),
+        ).toThrow(/Date/);
+      });
+
+      it('rejects a reversed window (endDate before startDate)', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-24',
+            endDate: '2026-08-10',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
+
+      it('accepts a single-day window (startDate equal to endDate)', () => {
+        // The end day is exclusive, so this returns zero reminders, but it is
+        // a valid window — no validation error.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10',
+            endDate: '2026-08-10',
+          }),
+        ).not.toThrow();
+      });
+
+      it('accepts a window whose bare date is interpreted in local time (no timezone mixing)', () => {
+        // Regression: the end<start comparison used to mix timezones — a bare
+        // `YYYY-MM-DD` bound was parsed as UTC midnight by `Date.parse` while a
+        // time-bearing bound was local, wrongly rejecting this valid window
+        // outside UTC. `parseReminderDueDate` treats the bare date as local
+        // midnight, matching how the CLI resolves the bounds.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10 23:30:00',
+            endDate: '2026-08-11',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects a genuinely reversed window regardless of format mixing', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-11 09:00:00',
+            endDate: '2026-08-10',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
+
+      it('rejects a reversed window with years 0000-0099 (parsed correctly via setFullYear)', () => {
+        // Regression: `createLocalDate` used `new Date(year, ...)` which maps
+        // years 0-99 to 1900-1999, so `parseReminderDueDate` returned undefined
+        // and the reversed-window guard silently skipped these inputs. Now the
+        // reversed window is properly rejected.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '0099-01-01',
+            endDate: '0098-01-01',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
       });
     });
+
+    // UpdateReminderListSchema is covered by the alignment block above.
   });
 
   describe('validateInput', () => {

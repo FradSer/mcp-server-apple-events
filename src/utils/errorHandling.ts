@@ -14,6 +14,10 @@ const USER_ACTIONABLE_PERMISSION_PATTERNS = [
   /System Settings > Privacy & Security/i,
   /full calendar access/i,
   /full reminder access/i,
+  // The disclaim shim's own spawn failures (`event-disclaim: …`) are
+  // classified upstream in eventCli.ts as CliUserError; no broad
+  // subprocess/responsible-process patterns here — they would leak
+  // unrelated internal errors past production sanitization.
 ] as const;
 
 function isUserActionablePermissionError(message: string): boolean {
@@ -23,8 +27,9 @@ function isUserActionablePermissionError(message: string): boolean {
 }
 
 /**
- * Custom error class for user-facing CLI failures (e.g., not found, invalid input).
- * Defined here to avoid circular/heavy imports from cliExecutor.
+ * Custom error class for user-facing CLI failures (e.g., not found, invalid
+ * input). Lives in this leaf module so it's importable from both repository
+ * and handler layers without circular imports.
  */
 export class CliUserError extends Error {
   constructor(message: string) {
