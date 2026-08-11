@@ -100,6 +100,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/build-swift.mjs` and its corresponding test.
 - `src/utils/cliExecutor.ts` and its test, replaced by `eventCli.ts`.
 
+## [1.5.0] - 2026-08-12
+
+### Added
+
+- Date-range filtering for reminders.
+- Timezone-aware calendar events.
+- Per-event timezone support.
+- Calendar ID filtering and date validation.
+- Support for un-completing reminders.
+- Pre-built universal `event` CLI binary distribution.
+
+### Changed
+
+- Migrated to the vendored `event` CLI with hardened runtime and TCC permission handling.
+- Hardened validation, subprocess execution, path handling, and untrusted-data output.
+- Improved date parsing, timezone handling, recurrence support, and cross-list reminder moves.
+- Upgraded dependencies and build tooling.
+
+### Fixed
+
+- Local date-window boundaries and historical date parsing.
+- macOS permission prompts and TCC errors across desktop MCP clients.
+- Unicode tags, malformed dates, calendar event grouping, and reminder completion updates.
+
 ## [1.4.0] - 2026-03-10
 
 ### Added
