@@ -1,5 +1,6 @@
 import { z } from 'zod/v3';
 import { VALIDATION } from '../utils/constants.js';
+import { parseReminderDueDate } from '../utils/reminderDateParser.js';
 
 // Security patterns – allow printable Unicode text while blocking dangerous control and delimiter chars.
 // Allows standard printable ASCII, extended Latin, CJK, plus newlines/tabs for notes.
@@ -481,17 +482,37 @@ export const SafeIdSchema = z.string().min(1, 'ID cannot be empty');
  */
 export const CreateReminderSchema = z.object(BaseReminderFields);
 
-export const ReadRemindersSchema = z.object({
-  id: SafeIdSchema.optional(),
-  filterList: SafeListNameSchema,
-  showCompleted: z.boolean().optional().default(false),
-  search: SafeSearchSchema,
-  dueWithin: DueWithinEnum,
-  filterPriority: PriorityFilterEnum,
-  filterRecurring: z.boolean().optional(),
-  filterLocationBased: z.boolean().optional(),
-  filterTags: TagArraySchema,
-});
+export const ReadRemindersSchema = z
+  .object({
+    id: SafeIdSchema.optional(),
+    filterList: SafeListNameSchema,
+    showCompleted: z.boolean().optional().default(false),
+    search: SafeSearchSchema,
+    dueWithin: DueWithinEnum,
+    filterPriority: PriorityFilterEnum,
+    filterRecurring: z.boolean().optional(),
+    filterLocationBased: z.boolean().optional(),
+    filterTags: TagArraySchema,
+    startDate: SafeDateSchema,
+    endDate: SafeDateSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.startDate || !value.endDate) return;
+    // `parseReminderDueDate` interprets a bare `YYYY-MM-DD` as local midnight,
+    // matching how the window bounds are resolved downstream. `Date.parse`
+    // would treat a bare date as UTC midnight while a time-bearing bound is
+    // local, mixing timezones and wrongly rejecting valid windows off-UTC.
+    const start = parseReminderDueDate(value.startDate)?.getTime();
+    const end = parseReminderDueDate(value.endDate)?.getTime();
+    if (start === undefined || end === undefined) return; // shape errors surface elsewhere
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endDate'],
+        message: 'endDate must be on or after startDate',
+      });
+    }
+  });
 
 /** Fields accepted by `event reminders update`. */
 export const UpdateReminderSchema = z.object({
@@ -572,17 +593,13 @@ export const ReadCalendarsSchema = z
   })
   .superRefine((value, ctx) => {
     if (!value.startDate || !value.endDate) return;
-    const start = Date.parse(
-      value.startDate.includes(' ')
-        ? value.startDate.replace(' ', 'T')
-        : value.startDate,
-    );
-    const end = Date.parse(
-      value.endDate.includes(' ')
-        ? value.endDate.replace(' ', 'T')
-        : value.endDate,
-    );
-    if (Number.isNaN(start) || Number.isNaN(end)) return; // shape errors surface elsewhere
+    // `parseReminderDueDate` interprets a bare `YYYY-MM-DD` as local midnight,
+    // matching how the window bounds are resolved downstream. `Date.parse`
+    // would treat a bare date as UTC midnight while a time-bearing bound is
+    // local, mixing timezones and wrongly rejecting valid windows off-UTC.
+    const start = parseReminderDueDate(value.startDate)?.getTime();
+    const end = parseReminderDueDate(value.endDate)?.getTime();
+    if (start === undefined || end === undefined) return; // shape errors surface elsewhere
     if (end < start) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

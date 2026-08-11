@@ -1053,6 +1053,86 @@ describe('ValidationSchemas', () => {
         expect(() => ReadRemindersSchema.parse(validInput)).not.toThrow();
         expect(() => ReadRemindersSchema.parse({})).not.toThrow();
       });
+
+      it('accepts a due-date window', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10',
+            endDate: '2026-08-24',
+          }),
+        ).not.toThrow();
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10 09:00:00',
+            endDate: '2026-08-24 18:00:00',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects a malformed window bound', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: 'not-a-date',
+            endDate: '2026-08-24',
+          }),
+        ).toThrow(/Date/);
+      });
+
+      it('rejects a reversed window (endDate before startDate)', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-24',
+            endDate: '2026-08-10',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
+
+      it('accepts a single-day window (startDate equal to endDate)', () => {
+        // The end day is exclusive, so this returns zero reminders, but it is
+        // a valid window — no validation error.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10',
+            endDate: '2026-08-10',
+          }),
+        ).not.toThrow();
+      });
+
+      it('accepts a window whose bare date is interpreted in local time (no timezone mixing)', () => {
+        // Regression: the end<start comparison used to mix timezones — a bare
+        // `YYYY-MM-DD` bound was parsed as UTC midnight by `Date.parse` while a
+        // time-bearing bound was local, wrongly rejecting this valid window
+        // outside UTC. `parseReminderDueDate` treats the bare date as local
+        // midnight, matching how the CLI resolves the bounds.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10 23:30:00',
+            endDate: '2026-08-11',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects a genuinely reversed window regardless of format mixing', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-11 09:00:00',
+            endDate: '2026-08-10',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
+
+      it('rejects a reversed window with years 0000-0099 (parsed correctly via setFullYear)', () => {
+        // Regression: `createLocalDate` used `new Date(year, ...)` which maps
+        // years 0-99 to 1900-1999, so `parseReminderDueDate` returned undefined
+        // and the reversed-window guard silently skipped these inputs. Now the
+        // reversed window is properly rejected.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '0099-01-01',
+            endDate: '0098-01-01',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
     });
 
     // UpdateReminderListSchema is covered by the alignment block above.

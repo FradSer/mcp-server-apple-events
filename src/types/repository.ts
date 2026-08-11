@@ -189,6 +189,8 @@ export interface IReminderRepository {
     recurring?: boolean;
     locationBased?: boolean;
     tags?: string[];
+    startDate?: string;
+    endDate?: string;
   }): Promise<Reminder[]>;
   findAllLists(): Promise<ReminderList[]>;
   createReminder(data: CreateReminderData): Promise<ReminderJSON>;

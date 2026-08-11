@@ -39,11 +39,6 @@ export const TOOLS: Tool[] = [
           description:
             'The title of the reminder (REQUIRED for create, optional for update).',
         },
-        startDate: {
-          type: 'string',
-          description:
-            "Start date. UPDATE-ONLY: the underlying CLI cannot set a start date at create time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone). Also supports 'YYYY-MM-DD' and ISO 8601 with timezone.",
-        },
         dueDate: {
           type: 'string',
           description:
@@ -93,6 +88,16 @@ export const TOOLS: Tool[] = [
           enum: DUE_WITHIN_OPTIONS,
           description:
             'Filter reminders by a due date range (applied in TS after fetch).',
+        },
+        startDate: {
+          type: 'string',
+          description:
+            "Start date. When action='update': sets the reminder's start date (the CLI cannot set it at create time) — format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601. When action='read': start of the due-date window, passed to the CLI as `--start` (start day inclusive). For read, only the date part is used — any time/zone component is truncated to the date prefix, so a window is resolved at day granularity. If only one of startDate/endDate is supplied for read, the other is filled in as a 14-day window.",
+        },
+        endDate: {
+          type: 'string',
+          description:
+            "End of the due-date window (READ-only, action='read'). Passed to the CLI as `--end`; the end day is exclusive. Only the date part is used — any time/zone component is truncated to the date prefix (day granularity). If only one of startDate/endDate is supplied, the other is filled in as a 14-day window.",
         },
         filterPriority: {
           type: 'string',

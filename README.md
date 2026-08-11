@@ -171,7 +171,7 @@ Service-scoped tools mirror Apple Reminders and Calendar domains. All take an `a
 
 | Tool | Actions | Notes |
 | --- | --- | --- |
-| `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks. `startDate` is set via `update`, not `create`. Cross-list moves unsupported. |
+| `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks. `startDate` is set via `update`, not `create`; on `read` it scopes the due-date window alongside `endDate`. Cross-list moves unsupported. |
 | `reminders_subtasks` | `read`, `create`, `update`, `delete`, `toggle`, `reorder` | Stored in the notes field (human-readable in Reminders.app). |
 | `reminders_lists` | `read`, `create`, `update`, `delete` | Rename via `name` → `newName`. |
 | `calendar_events` | `read`, `create`, `update`, `delete` | All-day inferred from date format. Cross-calendar moves unsupported. `span` scopes recurring deletes. |
@@ -194,6 +194,10 @@ Example calls:
 
 ```json
 { "action": "read", "filterList": "Work", "dueWithin": "today", "filterPriority": "high", "filterTags": ["urgent"] }
+```
+
+```json
+{ "action": "read", "startDate": "2026-08-01", "endDate": "2026-08-31" }
 ```
 
 ```json

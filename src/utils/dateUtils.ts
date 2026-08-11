@@ -76,3 +76,34 @@ export function getWeekEnd(): Date {
 export function getDateStart(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
+
+/**
+ * Formats a Date as a local `yyyy-MM-dd` string — the shape the `event` CLI
+ * accepts for `calendar list` / `reminders list` window bounds.
+ */
+export function formatDateOnly(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns a new Date shifted by `days` (negative for the past), leaving the
+ * argument untouched.
+ */
+export function shiftDays(date: Date, days: number): Date {
+  const shifted = new Date(date);
+  shifted.setDate(shifted.getDate() + days);
+  return shifted;
+}
+
+/**
+ * Trims a caller-supplied date to a bare `yyyy-MM-dd` bound. The `event` CLI
+ * only accepts date-only window bounds, so any time component is dropped
+ * rather than passed through.
+ */
+export function toDateOnly(value: string): string {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? value;
+}

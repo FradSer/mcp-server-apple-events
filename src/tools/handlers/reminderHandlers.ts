@@ -298,6 +298,8 @@ export const handleReadReminders = async (
       recurring: validatedArgs.filterRecurring,
       locationBased: validatedArgs.filterLocationBased,
       tags: validatedArgs.filterTags,
+      startDate: validatedArgs.startDate,
+      endDate: validatedArgs.endDate,
     });
 
     return formatListMarkdown(
