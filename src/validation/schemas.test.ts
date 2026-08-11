@@ -1120,6 +1120,19 @@ describe('ValidationSchemas', () => {
           }),
         ).toThrow(/endDate must be on or after startDate/);
       });
+
+      it('rejects a reversed window with years 0000-0099 (parsed correctly via setFullYear)', () => {
+        // Regression: `createLocalDate` used `new Date(year, ...)` which maps
+        // years 0-99 to 1900-1999, so `parseReminderDueDate` returned undefined
+        // and the reversed-window guard silently skipped these inputs. Now the
+        // reversed window is properly rejected.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '0099-01-01',
+            endDate: '0098-01-01',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
     });
 
     // UpdateReminderListSchema is covered by the alignment block above.

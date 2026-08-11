@@ -23,7 +23,11 @@ const createLocalDate = (
     return undefined;
   }
 
-  const date = new Date(year, month - 1, day, hour, minute, second, 0);
+  // `new Date(year, ...)` maps years 0-99 to 1900-1999, so the round-trip
+  // check would reject them. Seed from a far year, then `setFullYear` — which
+  // accepts 0-99 literally — so years below 100 parse correctly too.
+  const date = new Date(2000, month - 1, day, hour, minute, second, 0);
+  date.setFullYear(year);
 
   // Validate that the date wasn't auto-corrected by JavaScript
   if (
