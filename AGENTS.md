@@ -2,11 +2,11 @@
 
 ## Project Structure & Module Organization
 
-Source lives in `src/`, segmented into clean architecture rings so dependencies flow inward. Transport adapters sit in `src/server/`, the Swift bridge lives in `src/swift/`, and automation workflows stay under `src/tools/`. Shared helpers live in `src/utils/`, while `src/validation/` enforces Zod contracts on every reminder payload. Tests co-locate as `*.test.ts` beside subjects to keep TDD feedback immediate, and generated binaries rebuild instead of touching `dist/`.
+Source lives in `src/`, segmented into clean architecture rings so dependencies flow inward. Transport adapters sit in `src/server/`, the vendored Swift CLI binary (`bin/event`) is built from the `vendor/event` git submodule, and automation workflows stay under `src/tools/`. Shared helpers live in `src/utils/` (including `eventCli.ts` — the wrapper around `bin/event`), while `src/validation/` enforces Zod contracts on every reminder payload. Tests co-locate as `*.test.ts` beside subjects to keep TDD feedback immediate, and generated binaries rebuild instead of touching `dist/`.
 
 ## Build, Test, and Development Commands
 
-Run `pnpm install` to sync the locked dependency graph that coordinates TypeScript and Swift toolchains. Use `pnpm dev` for watch-mode development without recompiling Swift components. Execute `pnpm test` to run the Jest suite through `ts-jest` and mocks. Run `pnpm exec biome check` before commits to enforce formatting, linting, and import ordering, and rebuild native helpers with `pnpm build:swift` whenever AppleScript or Swift glue changes.
+Run `pnpm install` to sync the locked dependency graph (and to build the vendored `event` CLI via the postinstall hook). Use `pnpm dev` for watch-mode TypeScript development without recompiling the Swift binary. Execute `pnpm test` to run the Jest suite through `ts-jest` and the `__mocks__/eventCli.ts` mock. Run `pnpm exec biome check` before commits to enforce formatting, linting, and import ordering, and rebuild the native helper with `pnpm build:event` whenever the `vendor/event` submodule pin moves.
 
 ## Coding Style & Naming Conventions
 
@@ -26,10 +26,10 @@ Store secrets exclusively in `.env.local` and load them through typed contracts 
 
 ## Permission Handling
 
-macOS permissions for Reminders and Calendar are now automatically requested when needed. The Swift CLI (`src/swift/EventKitCLI.swift`) handles all permission checking and requesting using `EKEventStore.authorizationStatus()` following EventKit best practices. It checks permission status before operations:
+macOS permissions for Reminders and Calendar are requested by the vendored [`event`](https://github.com/FradSer/event) CLI when needed. It checks permission status before each operation:
 
 - If authorized: proceeds directly
-- If notDetermined: requests permission automatically
-- If denied/restricted: returns clear error message
+- If notDetermined: requests permission automatically via `requestFullAccessToReminders` / `requestFullAccessToEvents`
+- If denied / restricted / write-only: emits `Error: Permission denied: …` on stderr with a non-zero exit code
 
-TypeScript handlers trust Swift layer's permission handling and do not duplicate permission checks. The Swift CLI automatically handles permission requests following EventKit best practices.
+`src/utils/eventCli.ts` maps that stderr message into a domain-typed `CliPermissionError`. TypeScript handlers do not duplicate permission checks. `eventCli.ts` spawns `bin/event` through the `bin/event-disclaim` TCC shim (falling back to a direct, host-attributed spawn when the shim is absent), so permission prompts are attributed to `event` itself (it embeds an Info.plist with the EventKit usage strings) rather than to the host MCP client (issue #93).

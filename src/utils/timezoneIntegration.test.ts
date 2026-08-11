@@ -1,50 +1,46 @@
 /**
  * timezoneIntegration.test.ts
- * Integration tests for timezone handling across TypeScript and Swift layers
+ * Integration tests for timezone handling across TypeScript and the `event`
+ * Swift CLI.
  *
- * Since the TypeScript layer (Repository) is designed to be a pass-through for date strings,
- * these tests primarily verify that the Repository layer does NOT modify the date strings
- * returned by the Swift CLI. Actual timezone logic resides in the Swift layer.
+ * The TS layer (Repository) is a pass-through for date strings: it must not
+ * coerce, reformat, or shift zones. These tests assert that property for both
+ * reminder dueDate / startDate and calendar event start/endDate, since the
+ * actual timezone semantics are implemented in `event`'s Swift code.
  */
 
 import type { CalendarEvent, Reminder } from '../types/index.js';
 import { calendarRepository } from './calendarRepository.js';
-import { executeCli } from './cliExecutor.js';
+import { executeEventCliJson } from './eventCli.js';
 import { reminderRepository } from './reminderRepository.js';
 
-// Mock CLI executor
-jest.mock('./cliExecutor.js');
-const mockExecuteCli = executeCli as jest.MockedFunction<typeof executeCli>;
+jest.mock('./eventCli.js');
+const mockJson = executeEventCliJson as jest.MockedFunction<
+  typeof executeEventCliJson
+>;
 
 describe('Timezone Data Passthrough Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('Reminder Date Handling', () => {
-    it('should pass through date strings from CLI without modification', async () => {
-      // Test various formats that might be returned by Swift CLI
+  describe('Reminder date handling', () => {
+    it('passes through dueDate strings from the event CLI without modification', async () => {
       const testCases = [
-        '2025-11-15T08:30:00Z', // UTC
-        '2025-11-15T16:30:00+08:00', // Offset
-        '2025-11-15 16:30:00', // Local
-        '2025-11-15', // Date only
+        '2025-11-15T08:30:00Z',
+        '2025-11-15T16:30:00+08:00',
+        '2025-11-15 16:30:00',
+        '2025-11-15',
       ];
 
-      const mockReminders: Partial<Reminder>[] = testCases.map(
-        (date, index) => ({
-          id: `rem-${index}`,
-          title: `Reminder ${index}`,
-          isCompleted: false,
-          list: 'Default',
-          dueDate: date,
-        }),
-      );
-
-      mockExecuteCli.mockResolvedValue({
-        reminders: mockReminders,
-        lists: [],
-      });
+      const reminders: Partial<Reminder>[] = testCases.map((date, index) => ({
+        id: `rem-${index}`,
+        title: `Reminder ${index}`,
+        isCompleted: false,
+        list: 'Default',
+        dueDate: date,
+      }));
+      mockJson.mockResolvedValueOnce(reminders);
 
       const results = await reminderRepository.findReminders();
 
@@ -55,20 +51,17 @@ describe('Timezone Data Passthrough Tests', () => {
     });
   });
 
-  describe('Calendar Event Date Handling', () => {
-    it('should pass through start and end date strings from CLI without modification', async () => {
+  describe('Calendar event date handling', () => {
+    it('passes through start/end strings from the event CLI without modification', async () => {
       const testCases = [
-        {
-          start: '2025-11-15T08:30:00Z',
-          end: '2025-11-15T09:30:00Z',
-        },
+        { start: '2025-11-15T08:30:00Z', end: '2025-11-15T09:30:00Z' },
         {
           start: '2025-11-15T16:30:00+08:00',
           end: '2025-11-15T17:30:00+08:00',
         },
       ];
 
-      const mockEvents: Partial<CalendarEvent>[] = testCases.map(
+      const events: Partial<CalendarEvent>[] = testCases.map(
         (dates, index) => ({
           id: `evt-${index}`,
           title: `Event ${index}`,
@@ -78,18 +71,14 @@ describe('Timezone Data Passthrough Tests', () => {
           isAllDay: false,
         }),
       );
-
-      mockExecuteCli.mockResolvedValue({
-        calendars: [],
-        events: mockEvents,
-      });
+      mockJson.mockResolvedValueOnce(events);
 
       const results = await calendarRepository.findEvents();
 
       expect(results).toHaveLength(testCases.length);
       results.forEach((event, index) => {
-        expect(event.startDate).toBe(testCases[index].start);
-        expect(event.endDate).toBe(testCases[index].end);
+        expect(event.startDate).toBe(testCases[index]?.start);
+        expect(event.endDate).toBe(testCases[index]?.end);
       });
     });
   });

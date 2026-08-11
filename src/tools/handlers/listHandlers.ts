@@ -19,11 +19,6 @@ import {
   formatSuccessMessage,
 } from './shared.js';
 
-/**
- * Formats a reminder list for display
- * @param list - The reminder list to format
- * @returns Array of markdown strings
- */
 const formatReminderList = (list: {
   title: string;
   id: string;
@@ -58,7 +53,6 @@ export const handleCreateReminderList = async (
     );
     const list = await reminderRepository.createReminderList(
       validatedArgs.name,
-      validatedArgs.color,
     );
     return formatSuccessMessage('created', 'list', list.title, list.id);
   }, 'create reminder list');
@@ -75,7 +69,6 @@ export const handleUpdateReminderList = async (
     const list = await reminderRepository.updateReminderList(
       validatedArgs.name,
       validatedArgs.newName,
-      validatedArgs.color,
     );
     return formatSuccessMessage('updated', 'list', list.title, list.id);
   }, 'update reminder list');

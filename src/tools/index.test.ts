@@ -332,7 +332,7 @@ describe('Tools Index', () => {
         );
 
         expect(result.isError).toBe(true);
-        expect(result.content[0]?.type).toBe('text');
+        expect(result.content[0]!.type).toBe('text');
         const textContent = result.content[0] as
           | { type: 'text'; text: string }
           | undefined;

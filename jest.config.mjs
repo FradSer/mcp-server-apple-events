@@ -1,31 +1,24 @@
 /** @type {import('jest').Config} */
 export default {
-  preset: 'ts-jest/presets/default-esm',
   extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: './jest-env.cjs',
+  // SWC is ~10x faster than ts-jest and avoids ts-jest 29's internal
+  // `node10` moduleResolution fallback that TS6 now flags as deprecated.
+  // Type checking is handled separately by `tsc --noEmit` in `pnpm lint`.
   transform: {
     '^.+\\.ts$': [
-      'ts-jest',
+      '@swc/jest',
       {
-        useESM: true,
-        tsconfig: {
-          module: 'ES2022',
-          target: 'ES2020',
-          moduleResolution: 'Node',
-          allowSyntheticDefaultImports: true,
-          esModuleInterop: true,
-          isolatedModules: true,
-          types: ['jest', 'node'],
+        jsc: {
+          parser: { syntax: 'typescript' },
+          target: 'es2020',
         },
-        diagnostics: {
-          ignoreCodes: ['TS151001'],
-        },
+        module: { type: 'es6' },
       },
     ],
   },
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
-    '^import-meta$': '<rootDir>/src/__mocks__/importMeta.js',
   },
   transformIgnorePatterns: ['node_modules/'],
   testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.spec.ts'],
@@ -40,18 +33,18 @@ export default {
     '!src/utils/projectUtils.ts', // Excluded: import.meta.url line cannot be tested in Jest
   ],
   coveragePathIgnorePatterns: ['/node_modules/', '/dist/'],
-  // Ignore import.meta.url line in projectUtils.ts
   coverageReporters: ['text', 'text-summary', 'html'],
   // Thresholds set just below the suite's current ceiling — leaves a thin
   // buffer for unrelated future patches without papering over regressions.
   // Branches still trails the other metrics; the largest remaining gaps are
-  // SSRF-blocking paths in `schemas.ts` and tag/date filter edge cases —
-  // good targets for the next coverage pass.
+  // SSRF-blocking paths in `schemas.ts`, defensive catch/null guards in
+  // `eventCli.ts`, and tag/date filter edge cases — good targets for the
+  // next coverage pass.
   coverageThreshold: {
     global: {
       statements: 93,
       branches: 78,
-      functions: 96,
+      functions: 97,
       lines: 94,
     },
   },

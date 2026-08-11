@@ -4,10 +4,12 @@
  */
 
 /**
- * Priority levels for reminders (native EventKit values)
- * 0 = none, 1 = high, 2 = medium, 3 = low
+ * Priority levels for reminders, matching `EKReminderPriority` raw values:
+ * 0 = none, 1 = high, 5 = medium, 9 = low. Other integers in 1–9 fall in
+ * between those buckets but are not produced by Apple's UI; the read path
+ * still tolerates them via `PRIORITY_LABELS[priority] ?? 'unknown'`.
  */
-export type ReminderPriority = 0 | 1 | 2 | 3;
+export type ReminderPriority = 0 | 1 | 5 | 9;
 
 /**
  * Priority label mapping for display
@@ -15,8 +17,8 @@ export type ReminderPriority = 0 | 1 | 2 | 3;
 export const PRIORITY_LABELS: Record<number, string> = {
   0: 'none',
   1: 'high',
-  2: 'medium',
-  3: 'low',
+  5: 'medium',
+  9: 'low',
 };
 
 /**
@@ -151,6 +153,7 @@ export interface CalendarEvent {
   structuredLocation?: StructuredLocation;
   url?: string;
   isAllDay: boolean;
+  timeZone?: string;
   availability?:
     | 'not-supported'
     | 'busy'
@@ -183,8 +186,11 @@ export interface CalendarEvent {
 export interface Calendar {
   id: string;
   title: string;
-  account: string;
-  accountType: string;
+  // The vendored `event` CLI has no concept of EventKit accounts, so
+  // `account` / `accountType` are dropped rather than kept as always-empty
+  // fields. `eventCount` is set only when the caller scoped the listing to a
+  // date range (see `findCalendars` in calendarRepository.ts).
+  eventCount?: number;
 }
 
 /**
@@ -253,9 +259,8 @@ interface BaseToolArgs {
  */
 export interface RemindersToolArgs extends BaseToolArgs {
   action: ReminderAction;
-  // ID parameter
   id?: string;
-  // Filtering parameters (for list action)
+  // Read filters
   filterList?: string;
   showCompleted?: boolean;
   search?: string;
@@ -263,34 +268,25 @@ export interface RemindersToolArgs extends BaseToolArgs {
   filterPriority?: 'high' | 'medium' | 'low' | 'none';
   filterRecurring?: boolean;
   filterLocationBased?: boolean;
-  filterTags?: string[]; // Filter by tags (reminders must have ALL specified tags)
-  // Single item parameters
+  filterTags?: string[];
+  // Write fields
   title?: string;
   newTitle?: string;
+  // Read-only: start of the due-date window (action='read'); update: set the
+  // start date on an existing reminder (the CLI cannot set it at create time).
   startDate?: string;
   dueDate?: string;
   note?: string;
   url?: string;
-  location?: string;
-  completed?: boolean;
-  completionDate?: string;
+  completed?: boolean; // update only
   priority?: number; // 0=none, 1=high, 5=medium, 9=low
-  alarms?: Alarm[];
-  clearAlarms?: boolean;
-  // Recurrence parameters
-  recurrenceRules?: RecurrenceRule[];
-  clearRecurrence?: boolean;
-  // Location trigger parameters
-  locationTrigger?: LocationTrigger;
-  clearLocationTrigger?: boolean;
-  // Tag parameters
-  tags?: string[]; // Tags to add to the reminder
-  addTags?: string[]; // Tags to add (for update)
-  removeTags?: string[]; // Tags to remove (for update)
-  // Subtask parameters
-  subtasks?: string[]; // Subtask titles (for create - creates initial subtasks)
-  // Target list for create/update operations
+  // Tag / subtask payload (TS-managed in the notes field)
+  tags?: string[];
+  addTags?: string[];
+  removeTags?: string[];
+  subtasks?: string[];
   targetList?: string;
+  endDate?: string; // read only: due-date window end
 }
 
 /**
@@ -320,16 +316,13 @@ export interface ListsToolArgs extends BaseToolArgs {
   action: ListAction;
   name?: string;
   newName?: string;
-  color?: string;
 }
 
 export interface CalendarToolArgs extends BaseToolArgs {
   action: CalendarAction;
-  // ID parameter
   id?: string;
-  // Filtering parameters (for read action)
+  // Read filters
   filterCalendar?: string;
-  filterAccount?: string;
   search?: string;
   availability?:
     | 'not-supported'
@@ -339,24 +332,19 @@ export interface CalendarToolArgs extends BaseToolArgs {
     | 'unavailable';
   startDate?: string;
   endDate?: string;
-  // Single item parameters
+  // Write fields
   title?: string;
   note?: string;
   location?: string;
-  structuredLocation?: StructuredLocation;
-  url?: string;
-  isAllDay?: boolean;
-  alarms?: Alarm[];
-  clearAlarms?: boolean;
-  recurrenceRules?: RecurrenceRule[];
-  clearRecurrence?: boolean;
-  span?: 'this-event' | 'future-events';
-  // Target calendar for create/update operations
-  targetCalendar?: string;
+  timezone?: string;
+  span?: 'this-event' | 'future-events'; // delete only
+  targetCalendar?: string; // create only
 }
 
 export interface CalendarsToolArgs extends BaseToolArgs {
   action: CalendarsAction;
+  startDate?: string;
+  endDate?: string;
 }
 
 /**

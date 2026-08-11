@@ -24,13 +24,29 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "bin": {
-    "mcp-server-apple-events": "./bin/run.cjs"
+    "mcp-server-apple-events": "./dist/index.js"
+  },
+  "files": [
+    "bin/event",
+    "bin/event-disclaim",
+    "dist/",
+    "scripts/postinstall.mjs",
+    "scripts/build-event.mjs",
+    "scripts/event-Info.plist",
+    "scripts/event.entitlements",
+    "scripts/disclaim.c",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build:ts": "tsc -p tsconfig.json",
-    "build:swift": "node scripts/build-swift.mjs",
-    "build": "pnpm run clean && pnpm run build:ts && pnpm run build:swift",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "build:event": "node scripts/build-event.mjs",
+    "build": "pnpm run clean && pnpm run build:ts && pnpm run build:event",
+    "notarize": "node scripts/notarize.mjs",
+    "build:release": "pnpm run clean && pnpm run build:ts && pnpm run build:event && pnpm run notarize",
     "postinstall": "node scripts/postinstall.mjs",
     "test": "NODE_NO_WARNINGS=1 jest",
     "test:ci": "NODE_NO_WARNINGS=1 jest --coverage",
@@ -38,23 +54,42 @@
     "check": "pnpm run lint && pnpm run test:ci"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "exit-on-epipe": "^1.0.1",
-    "tsx": "^4.21.0",
-    "zod": "^4.3.5"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.11",
+    "@biomejs/biome": "2.5.2",
+    "@swc/core": "^1.15.43",
+    "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.0.3",
-    "babel-jest": "^30.2.0",
-    "babel-plugin-transform-import-meta": "^2.3.3",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.6",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.1.0",
+    "jest": "^30.4.2",
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": ">=5.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "test-exclude": "^8.0.0",
+      "glob": "^13.0.6"
+    },
+    "onlyBuiltDependencies": [
+      ",",
+      "b",
+      "d",
+      "e",
+      "i",
+      "k",
+      "l",
+      "o",
+      "r",
+      "s",
+      "u",
+      "unrs-resolver",
+      "w"
+    ]
   },
   "packageManager": "pnpm@10.28.2+sha512.41872f037ad22f7348e3b1debbaf7e867cfd448f2726d9cf74c08f19507c31d2c8e7a11525b983febc2df640b5438dee6023ebb1f84ed43cc2d654d2bc326264"
 }

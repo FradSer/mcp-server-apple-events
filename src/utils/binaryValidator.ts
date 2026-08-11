@@ -21,19 +21,17 @@ interface BinarySecurityConfig {
  * Default security configuration.
  *
  * Each `allowedPaths` entry is a path suffix that the candidate binary must
- * match against either its full normalized path or its parent directory. The
- * previous "contiguous segments anywhere in the path" matcher accepted
- * unrelated locations such as `/etc/swift/bin/passwd`; anchoring to the tail
- * of the resolved path is what we actually want.
- *
- * The defaults intentionally do NOT include a bare `bin` entry — that would
- * pass for any `/<anywhere>/bin/<anything>` (e.g. `/usr/local/bin/curl`).
- * Production callers must opt into the specific `bin/EventKitCLI` filename
- * suffix via configuration (see `cliExecutor.ts`).
+ * match against either its full normalized path or its parent directory.
+ * Suffix matching is segment-aligned so `foo-bin` doesn't partial-match
+ * `bin`. The defaults intentionally do NOT include a bare `bin` entry — that
+ * would pass for any `/<anywhere>/bin/<anything>` (e.g. `/usr/local/bin/curl`).
+ * Production callers pass an absolute path tied to the project root via
+ * configuration (see `src/utils/eventCli.ts`); the defaults below exist for
+ * tests that exercise the suffix matcher.
  */
 const DEFAULT_CONFIG: BinarySecurityConfig = {
   maxFileSize: 50 * 1024 * 1024, // 50MB max
-  allowedPaths: ['dist/swift/bin', 'src/swift/bin', 'swift/bin'],
+  allowedPaths: ['dist/swift/bin', 'src/swift/bin', 'swift/bin', 'bin/event'],
   requireAbsolutePath: true,
 };
 
@@ -79,11 +77,10 @@ export function validateBinaryPath(
   }
 
   // An entry matches when it is a suffix of either the full binary path
-  // (including its filename, e.g. `bin/EventKitCLI`) or the binary's parent
-  // directory (e.g. `dist/swift/bin`). Suffix matching is segment-aligned —
-  // `endsWith('/bin')` after stripping trailing separators avoids the
-  // `foo-bin` partial-match trap while still working for absolute and
-  // relative allowed paths.
+  // (including its filename, e.g. `bin/event`) or the binary's parent
+  // directory. Suffix matching is segment-aligned — `endsWith('/bin')` after
+  // stripping trailing separators avoids the `foo-bin` partial-match trap
+  // while still working for absolute and relative allowed paths.
   const parentDir = path.dirname(normalizedPath);
   const isInAllowedPath = fullConfig.allowedPaths.some((allowedPath) => {
     const allowedNormalized = path
@@ -188,16 +185,11 @@ export function validateBinarySecurity(
     // Path validation
     validateBinaryPath(binaryPath, config);
 
-    // Calculate hash
-    hash = calculateBinaryHash(binaryPath);
-
-    // Integrity check if expected hash provided
+    // Hashing the multi-MB binary takes 10–30 ms and blocks the event loop;
+    // only do it when the caller will actually compare the result.
     if (config.expectedHash) {
-      const integrityValid = validateBinaryIntegrity(
-        binaryPath,
-        config.expectedHash,
-      );
-      if (!integrityValid) {
+      hash = calculateBinaryHash(binaryPath);
+      if (hash !== config.expectedHash) {
         errors.push('Binary integrity check failed - hash mismatch');
       }
     }
@@ -259,7 +251,10 @@ export function getEnvironmentBinaryConfig(): Partial<BinarySecurityConfig> {
   // Production mode - strict validation
   return {
     expectedHash: process.env.SWIFT_BINARY_HASH,
-    maxFileSize: 50 * 1024 * 1024, // 50MB
+    // The universal bin/event sits at ~51.7MB today; 80MB matches the
+    // published-tarball size-sanity bound and leaves room for vendor bumps
+    // without surfacing as a misleading "binary not found" error.
+    maxFileSize: 80 * 1024 * 1024, // 80MB
     requireAbsolutePath: true,
   };
 }
