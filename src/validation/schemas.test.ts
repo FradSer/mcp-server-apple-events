@@ -1097,6 +1097,29 @@ describe('ValidationSchemas', () => {
           }),
         ).not.toThrow();
       });
+
+      it('accepts a window whose bare date is interpreted in local time (no timezone mixing)', () => {
+        // Regression: the end<start comparison used to mix timezones — a bare
+        // `YYYY-MM-DD` bound was parsed as UTC midnight by `Date.parse` while a
+        // time-bearing bound was local, wrongly rejecting this valid window
+        // outside UTC. `parseReminderDueDate` treats the bare date as local
+        // midnight, matching how the CLI resolves the bounds.
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-10 23:30:00',
+            endDate: '2026-08-11',
+          }),
+        ).not.toThrow();
+      });
+
+      it('rejects a genuinely reversed window regardless of format mixing', () => {
+        expect(() =>
+          ReadRemindersSchema.parse({
+            startDate: '2026-08-11 09:00:00',
+            endDate: '2026-08-10',
+          }),
+        ).toThrow(/endDate must be on or after startDate/);
+      });
     });
 
     // UpdateReminderListSchema is covered by the alignment block above.
