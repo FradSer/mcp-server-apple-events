@@ -1,5 +1,7 @@
 # Apple Events MCP Server ![Version 1.5.0](https://img.shields.io/badge/version-1.5.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2FFradSer%2Fmcp-server-apple-events.svg)](https://mcptoplist.com/server/glama%2FFradSer%2Fmcp-server-apple-events)
+
 [![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
 
 English | [简体中文](README.zh-CN.md)
