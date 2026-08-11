@@ -92,12 +92,12 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Start date. When action='update': sets the reminder's start date (the CLI cannot set it at create time). When action='read': start of the due-date window, passed to the CLI as `--start` (start day inclusive). If only one of startDate/endDate is supplied for read, the other is filled in as a 14-day window. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601.",
+            "Start date. When action='update': sets the reminder's start date (the CLI cannot set it at create time) — format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601. When action='read': start of the due-date window, passed to the CLI as `--start` (start day inclusive). For read, only the date part is used — any time/zone component is truncated to the date prefix, so a window is resolved at day granularity. If only one of startDate/endDate is supplied for read, the other is filled in as a 14-day window.",
         },
         endDate: {
           type: 'string',
           description:
-            "End of the due-date window (READ-only, action='read'). Passed to the CLI as `--end`; the end day is exclusive. If only one of startDate/endDate is supplied, the other is filled in as a 14-day window. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601.",
+            "End of the due-date window (READ-only, action='read'). Passed to the CLI as `--end`; the end day is exclusive. Only the date part is used — any time/zone component is truncated to the date prefix (day granularity). If only one of startDate/endDate is supplied, the other is filled in as a 14-day window.",
         },
         filterPriority: {
           type: 'string',
