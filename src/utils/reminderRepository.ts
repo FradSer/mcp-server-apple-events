@@ -106,8 +106,10 @@ const resolveReadDateWindow = (filters: {
   if (filters.startDate && !filters.endDate) {
     // `parseReminderDueDate` is the strict parser shared with the calendar
     // pipeline; it rejects auto-corrected dates like `2025-02-30` that the
-    // native `Date` constructor silently coerces to March 2.
-    const start = parseReminderDueDate(filters.startDate);
+    // native `Date` constructor silently coerces to March 2. Parse the
+    // date-prefix so a DST-gap time (e.g. 2026-03-08 02:30:00 in a spring-forward
+    // zone) still anchors the fill to the supplied date instead of today.
+    const start = parseReminderDueDate(toDateOnly(filters.startDate));
     return {
       startDate: toDateOnly(filters.startDate),
       endDate: formatDateOnly(
@@ -118,7 +120,7 @@ const resolveReadDateWindow = (filters: {
 
   // !filters.startDate && filters.endDate
   const endStr = filters.endDate as string;
-  const end = parseReminderDueDate(endStr);
+  const end = parseReminderDueDate(toDateOnly(endStr));
   return {
     startDate: formatDateOnly(
       shiftDays(end ?? new Date(), -DEFAULT_READ_WINDOW_DAYS),

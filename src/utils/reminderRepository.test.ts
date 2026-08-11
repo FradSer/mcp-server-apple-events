@@ -235,6 +235,29 @@ describe('ReminderRepository (event CLI backend)', () => {
       ]);
     });
 
+    it('anchors a one-sided fill to the date prefix even when the time is a DST gap', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      // A spring-forward time like 2026-03-08 02:30:00 is rejected by
+      // `parseReminderDueDate` (the hour normalizes away), but the truncated
+      // date prefix 2026-03-08 parses fine, so the filled end derives from
+      // March 8 (plus 14 days), not today.
+      await reminderRepository.findReminders({
+        startDate: '2026-03-08 02:30:00',
+      });
+
+      const call = mockJson.mock.calls[0]?.[0] as string[];
+      expect(call).toEqual([
+        'reminders',
+        'list',
+        '--start',
+        '2026-03-08',
+        '--end',
+        '2026-03-22',
+        '--json',
+      ]);
+    });
+
     it('pre-filters raw JSON for the structural filters (priority/recurring/locationBased) before mapReminder', async () => {
       mockJson.mockResolvedValueOnce([reminderFixture()]);
       const filters = {
