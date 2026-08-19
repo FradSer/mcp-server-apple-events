@@ -64,7 +64,7 @@ describe('release package contents', () => {
       /pnpm install --frozen-lockfile --ignore-scripts/,
     );
     expect(releaseWorkflow).toMatch(
-      /pnpm test -- --runInBand --testPathIgnorePatterns=src\/e2e\.test\.ts/,
+      /pnpm exec jest --runInBand --testPathIgnorePatterns=src\/e2e\.test\.ts/,
     );
   });
 
