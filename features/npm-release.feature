@@ -8,6 +8,16 @@ Feature: Publish the documented package version to npm
     Then the workflow does not declare a conflicting pnpm version
     And pnpm action setup can use the package manager declaration
 
+  Scenario: Package the upstream event release assets
+    Given the FradSer/event v0.6.0 release provides Darwin arm64 and amd64 archives
+    When the release workflow prepares the npm package
+    Then it downloads event-darwin-arm64.tar.gz and event-darwin-amd64.tar.gz
+    And it combines both binaries with lipo into bin/event
+    And it compiles only scripts/disclaim.c for bin/event-disclaim
+    And it ad-hoc signs bin/event with scripts/event-Info.plist and scripts/event.entitlements
+    And it does not build, notarize, or invoke Swift for event locally
+    And dependency installation ignores lifecycle scripts
+
   Scenario: Publish through npm trusted publishing
     Given npm has a trusted publisher configured for FradSer/mcp-server-apple-events and release.yml
     When the release workflow publishes a tagged release

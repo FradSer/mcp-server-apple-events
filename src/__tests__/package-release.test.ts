@@ -42,15 +42,33 @@ describe('release package contents', () => {
     expect(releaseWorkflow).not.toMatch(/bin\/EventKitCLI/);
   });
 
-  it('checks out submodules and builds via build:event', () => {
-    expect(releaseWorkflow).toMatch(/submodules:\s*recursive/);
-    expect(releaseWorkflow).toMatch(/build:event/);
+  it('downloads and packages the upstream event release assets', () => {
+    expect(releaseWorkflow).toMatch(
+      /FradSer\/event\/releases\/download\/v0\.6\.0\/event-darwin-amd64\.tar\.gz/,
+    );
+    expect(releaseWorkflow).toMatch(
+      /FradSer\/event\/releases\/download\/v0\.6\.0\/event-darwin-arm64\.tar\.gz/,
+    );
+    expect(releaseWorkflow).toMatch(/lipo -create/);
+    expect(releaseWorkflow).toMatch(/scripts\/disclaim\.c/);
+    expect(releaseWorkflow).toMatch(/scripts\/event-Info\.plist/);
+    expect(releaseWorkflow).toMatch(/scripts\/event\.entitlements/);
+    expect(releaseWorkflow).toMatch(/codesign .*--sign -/);
+    expect(releaseWorkflow).not.toMatch(/build:event/);
+    expect(releaseWorkflow).not.toMatch(/notarize/);
+    expect(releaseWorkflow).not.toMatch(/\bswift\b/);
+    expect(releaseWorkflow).not.toMatch(
+      /APPLE_CERTIFICATE|APPLE_ID|APPLE_TEAM_ID/,
+    );
+    expect(releaseWorkflow).toMatch(
+      /pnpm install --frozen-lockfile --ignore-scripts/,
+    );
   });
 
-  it('pins the CI runner image and fails on non-Developer-ID signatures', () => {
+  it('pins the CI runner image and verifies the ad-hoc signed universal binary', () => {
     expect(releaseWorkflow).toMatch(/runs-on: macos-14/);
-    expect(releaseWorkflow).toMatch(/Authority=Developer ID Application:/);
     expect(releaseWorkflow).toMatch(/codesign --verify --strict/);
+    expect(releaseWorkflow).not.toMatch(/Authority=Developer ID Application:/);
   });
 
   it('uses the package manager version declared by package.json', () => {
