@@ -63,6 +63,9 @@ describe('release package contents', () => {
     expect(releaseWorkflow).toMatch(
       /pnpm install --frozen-lockfile --ignore-scripts/,
     );
+    expect(releaseWorkflow).toMatch(
+      /pnpm test -- --runInBand --testPathIgnorePatterns=src\/e2e\.test\.ts/,
+    );
   });
 
   it('pins the CI runner image and verifies the ad-hoc signed universal binary', () => {
