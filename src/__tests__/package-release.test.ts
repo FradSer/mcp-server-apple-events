@@ -52,4 +52,13 @@ describe('release package contents', () => {
     expect(releaseWorkflow).toMatch(/Authority=Developer ID Application:/);
     expect(releaseWorkflow).toMatch(/codesign --verify --strict/);
   });
+
+  it('uses the package manager version declared by package.json', () => {
+    expect(packageJson.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+/);
+    const pnpmSetup = releaseWorkflow.match(
+      /- name: Setup pnpm[\s\S]*?(?=\n\s+- name:)/,
+    )?.[0];
+    expect(pnpmSetup).toMatch(/uses: pnpm\/action-setup@v4/);
+    expect(pnpmSetup).not.toMatch(/version:/);
+  });
 });
