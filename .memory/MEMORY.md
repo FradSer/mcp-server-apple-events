@@ -1,0 +1,1 @@
+- project_npm-trusted-publishing.md — npm releases use GitHub OIDC Trusted Publishing with exact repository metadata, tag-triggered workflows, and upstream FradSer/event release binaries. v1.5.0 was successfully published; future releases use version tag pushes.
