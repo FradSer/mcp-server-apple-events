@@ -139,7 +139,7 @@ jobs:
       - name: Run release tests
         # EventKit E2E calls require a user GUI and Reminders/Calendar
         # permissions, which are unavailable on GitHub-hosted runners.
-        run: pnpm test -- --runInBand --testPathIgnorePatterns=src/e2e.test.ts
+        run: pnpm exec jest --runInBand --testPathIgnorePatterns=src/e2e.test.ts
 
       - name: Publish to npm
         run: npm publish --access public
