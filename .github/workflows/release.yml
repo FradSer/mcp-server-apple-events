@@ -13,17 +13,13 @@ on:
         options:
           - v1.5.0
 
-# Serialize release runs so rapid tag pushes don't race on `npm publish`.
+# Serialize release runs so rapid tag pushes don't race on npm publish.
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
   release:
-    # Pin to macos-14 (Sonoma) instead of macos-latest so the deployment
-    # target (arm64-apple-macosx14.0 / x86_64-apple-macosx14.0, matching
-    # vendor/event's `platforms: [.macOS(.v14)]`) stays buildable as GitHub
-    # rotates runner images. Bumping is intentional.
     runs-on: macos-14
 
     # npm trusted publishing exchanges this job's OIDC identity for a
@@ -37,7 +33,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-          submodules: recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -48,8 +43,8 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Verify npm trusted publishing client
         run: |
@@ -57,49 +52,50 @@ jobs:
           npm install --global npm@11.5.1
           npm --version
 
-      - name: Import Developer ID Application certificate
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          security create-keychain -p "ci-keychain-password" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "ci-keychain-password" build.keychain
-          # Keep keychain unlocked for the duration of the job (6 hours)
-          security set-keychain-settings -lut 21600 build.keychain
-
-          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > certificate.p12
-          security import certificate.p12 \
-            -k build.keychain \
-            -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign
-          rm certificate.p12
-
-          # Allow codesign to access the key without a password prompt
-          security set-key-partition-list \
-            -S apple-tool:,apple: \
-            -s -k "ci-keychain-password" build.keychain
-
       - name: Build TypeScript
         run: pnpm run build:ts
 
-      - name: Build universal event binary and sign
-        # resolveSigningIdentity() in build-event.mjs auto-detects the
-        # Developer ID Application certificate imported in the previous step.
-        run: pnpm run build:event
+      - name: Prepare universal event binary from upstream release assets
+        run: |
+          set -euo pipefail
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          mkdir -p bin "$work_dir/amd64" "$work_dir/arm64"
 
-      - name: Notarize binary
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm run notarize
+          curl --fail --location --silent --show-error \
+            --output "$work_dir/event-darwin-amd64.tar.gz" \
+            https://github.com/FradSer/event/releases/download/v0.6.0/event-darwin-amd64.tar.gz
+          curl --fail --location --silent --show-error \
+            --output "$work_dir/event-darwin-arm64.tar.gz" \
+            https://github.com/FradSer/event/releases/download/v0.6.0/event-darwin-arm64.tar.gz
+          echo "0b08719dcc8a035f5219bb4867fa82dbd31da12121cbcacc046b5d7ee1756c26  $work_dir/event-darwin-amd64.tar.gz" | shasum -a 256 -c -
+          echo "a03eea57f162c237c9627907bb21da9db8474e9a1e04d5795e181751d87ab74f  $work_dir/event-darwin-arm64.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$work_dir/event-darwin-amd64.tar.gz" -C "$work_dir/amd64"
+          tar -xzf "$work_dir/event-darwin-arm64.tar.gz" -C "$work_dir/arm64"
 
-      - name: Verify binary
-        # Belt-and-braces: assert the universal binary actually carries a
-        # Developer ID Application signature and passes a strict verify pass,
-        # so an accidentally-ad-hoc-signed build cannot reach `npm publish`.
+          amd64_binary="$(find "$work_dir/amd64" -type f -perm -111 -print -quit)"
+          arm64_binary="$(find "$work_dir/arm64" -type f -perm -111 -print -quit)"
+          test -n "$amd64_binary" && test -n "$arm64_binary"
+          lipo -create "$amd64_binary" "$arm64_binary" -output bin/event
+          chmod 755 bin/event
+
+          # Keep the EventKit identity and permissions expected by the runtime.
+          plutil -lint scripts/event-Info.plist
+          event_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' scripts/event-Info.plist)"
+          codesign --force --sign - --options runtime \
+            --identifier "$event_identifier" \
+            --entitlements scripts/event.entitlements \
+            bin/event
+
+      - name: Compile event TCC responsibility shim
+        run: |
+          set -euo pipefail
+          clang -O2 -mmacosx-version-min=14.0 \
+            -arch arm64 -arch x86_64 \
+            -o bin/event-disclaim scripts/disclaim.c
+          chmod 755 bin/event-disclaim
+
+      - name: Verify universal ad-hoc event binary
         run: |
           set -euo pipefail
           echo "=== Architecture ==="
@@ -107,13 +103,10 @@ jobs:
           grep -q "are: x86_64 arm64\|are: arm64 x86_64" /tmp/lipo.out
           echo "=== Code signature ==="
           codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
-          grep -q "Authority=Developer ID Application:" /tmp/codesign.out
-          grep -q "flags=0x10000(runtime)" /tmp/codesign.out
+          ! grep -q "Authority=" /tmp/codesign.out
           codesign --verify --strict --verbose=2 bin/event
 
       - name: Verify npm package contents
-        # Fail the build if the pre-built binary is not included in the
-        # tarball or if dead-weight `src/**/*.test.ts` slips in.
         run: |
           set -euo pipefail
           PACK_JSON="$(npm pack --json --dry-run)"
@@ -122,9 +115,12 @@ jobs:
             const files = new Set(pack.files.map((file) => file.path));
             const requiredFiles = [
               "bin/event",
+              "bin/event-disclaim",
               "dist/index.js",
               "scripts/postinstall.mjs",
               "scripts/build-event.mjs",
+              "scripts/event-Info.plist",
+              "scripts/event.entitlements",
             ];
             const missing = requiredFiles.filter((file) => !files.has(file));
             if (missing.length > 0) {
@@ -145,10 +141,3 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --access public
-
-      - name: Restore default keychain and clean up
-        if: always()
-        run: |
-          set -euo pipefail
-          security default-keychain -s login.keychain 2>/dev/null || true
-          security delete-keychain build.keychain 2>/dev/null || true
