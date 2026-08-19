@@ -7,7 +7,7 @@
   "homepage": "https://frad.me",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fradser/mcp-server-apple-events.git"
+    "url": "git+https://github.com/FradSer/mcp-server-apple-events.git"
   },
   "bugs": {
     "url": "https://github.com/fradser/mcp-server-apple-events/issues"

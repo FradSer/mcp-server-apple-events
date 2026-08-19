@@ -84,6 +84,9 @@ describe('release package contents', () => {
   });
 
   it('uses npm trusted publishing requirements', () => {
+    expect(packageJson.repository.url).toBe(
+      'git+https://github.com/FradSer/mcp-server-apple-events.git',
+    );
     expect(releaseWorkflow).toMatch(/id-token:\s*write/);
     expect(releaseWorkflow).toMatch(/node-version:\s*['"]24['"]/);
     expect(releaseWorkflow).toMatch(
