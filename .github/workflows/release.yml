@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Publish the existing v1.5.0 tag
+        required: true
+        type: choice
+        options:
+          - v1.5.0
 
 # Serialize release runs so rapid tag pushes don't race on `npm publish`.
 concurrency:
@@ -18,8 +26,8 @@ jobs:
     # rotates runner images. Bumping is intentional.
     runs-on: macos-14
 
-    # id-token: write is required for `npm publish --provenance`, which binds
-    # the published tarball to this workflow run via Sigstore.
+    # npm trusted publishing exchanges this job's OIDC identity for a
+    # short-lived npm publish token; no long-lived npm secret is required.
     permissions:
       contents: read
       id-token: write
@@ -28,22 +36,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.tag || github.ref }}
           submodules: recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10.28.2
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify npm trusted publishing client
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.5.1
+          npm --version
 
       - name: Import Developer ID Application certificate
         env:
@@ -132,9 +144,7 @@ jobs:
         run: pnpm test
 
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish --access public
 
       - name: Restore default keychain and clean up
         if: always()

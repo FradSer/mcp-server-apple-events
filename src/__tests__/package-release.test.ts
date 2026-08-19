@@ -52,4 +52,34 @@ describe('release package contents', () => {
     expect(releaseWorkflow).toMatch(/Authority=Developer ID Application:/);
     expect(releaseWorkflow).toMatch(/codesign --verify --strict/);
   });
+
+  it('uses the package manager version declared by package.json', () => {
+    expect(packageJson.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+/);
+    const pnpmSetup = releaseWorkflow.match(
+      /- name: Setup pnpm[\s\S]*?(?=\n\s+- name:)/,
+    )?.[0];
+    expect(pnpmSetup).toMatch(/uses: pnpm\/action-setup@v4/);
+    expect(pnpmSetup).not.toMatch(/version:/);
+  });
+
+  it('uses npm trusted publishing requirements', () => {
+    expect(releaseWorkflow).toMatch(/id-token:\s*write/);
+    expect(releaseWorkflow).toMatch(/node-version:\s*['"]24['"]/);
+    expect(releaseWorkflow).toMatch(
+      /npm publish --access public(?![^\n]*--provenance)/,
+    );
+    expect(releaseWorkflow).not.toMatch(
+      /NPM_TOKEN|NODE_AUTH_TOKEN|provenance-token/,
+    );
+    expect(releaseWorkflow).toMatch(/npm --version/);
+    expect(releaseWorkflow).toMatch(/11\.5\.1/);
+  });
+
+  it('limits manual recovery publishing to v1.5.0', () => {
+    expect(releaseWorkflow).toMatch(/workflow_dispatch:/);
+    expect(releaseWorkflow).toMatch(/description:.*v1\.5\.0/);
+    expect(releaseWorkflow).toMatch(/type:\s*choice/);
+    expect(releaseWorkflow).toMatch(/options:\s*\n\s+- v1\.5\.0/);
+    expect(releaseWorkflow).toMatch(/ref:.*inputs\.tag \|\| github\.ref/);
+  });
 });
