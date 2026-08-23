@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`attendees` on `calendar_events` update** — invites email addresses to an
+  existing event, and the invitation is actually delivered.
+  `EKCalendarItem.attendees` is `readonly` in the macOS SDK and EventKit has no
+  attendee-mutation or invitation API at all — Apple models invitation delivery
+  as the calendar server's job, which is why the framework exposes only a
+  read-only `EKParticipantScheduleStatus` to observe it. No upstream `event`
+  flag can close that gap. The write therefore bypasses the `event` CLI and
+  goes through Calendar.app's scripting interface
+  (`src/utils/appleScriptAttendees.ts`): the sdef marks attendee properties
+  `access="r"`, which governs mutating an *existing* attendee, but
+  `make new attendee ... with properties` is a creation and is permitted.
+  Writing the attendee locally makes iCloud's CalDAV server perform RFC 6638
+  scheduling and send the invitation. Verified against live iCloud:
+  `SCHEDULE-STATUS=1.1` on the resource plus iMIP mail from
+  `noreply@email.apple.com`.
+
+  **Requires** Calendar.app, a GUI session, and an Automation grant under
+  `System Settings > Privacy & Security > Automation` — the first call prompts
+  for it. Attendees must be updated **alone**: they travel through Calendar.app
+  while every other field travels through EventKit, and the two share no
+  concurrency token, so a combined update has no safe ordering and is refused
+  with an explanation. An ambiguous match is refused rather than guessed —
+  Calendar.app can only be queried by title and start date, so two events
+  sharing both are indistinguishable and writing to the wrong one would send a
+  real invitation for it.
+
+- **`occurrenceDate` on `calendar_events` delete** — excepts one occurrence of
+  a recurring series, leaving the rest intact. Every occurrence of a series
+  shares one EventKit identifier, and resolving it returns the master, whose
+  occurrence date is its own `DTSTART`; `span: this-event` can therefore only
+  ever except the series start, and aimed at any later occurrence it writes
+  nothing and still reports success. Naming the occurrence routes the write
+  over CalDAV instead, appending an `EXDATE`
+  (`src/utils/caldavOccurrence.ts`). The `EXDATE` mirrors `DTSTART`'s value
+  type and TZID, because an occurrence of a zoned series is identified by local
+  wall time and a UTC-converted stamp matches no instance — it PUTs
+  successfully and excepts nothing. Verified against live iCloud.
+
+  **Requires** iCloud credentials: `ICLOUD_APPLE_ID` plus either
+  `ICLOUD_APP_PASSWORD` or a Keychain entry under the service
+  `icloud-caldav-mcp`, using an app-specific password. Credentials are read
+  from the environment first, then the Keychain, never from MCP client config,
+  and are never logged. Only iCloud-synced events qualify — an event with no
+  external identifier has no CalDAV resource to locate, and says so.
+
+  This is the server's first outbound network path. Requests are pinned to
+  `caldav.icloud.com` / `pN-caldav.icloud.com` over https only, URLs carrying
+  userinfo are refused, redirects are handled manually and re-validated on
+  every hop, and `If-Schedule-Tag-Match` is preferred over `If-Match` so an
+  inbound RSVP cannot cause a spurious 412.
+
 ### Fixed
 
 - **EventKit permission prompts now appear from any desktop MCP client**

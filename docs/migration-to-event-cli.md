@@ -94,6 +94,49 @@ so values set inside Reminders.app or Calendar.app remain visible.
 | `targetCalendar` | update | `event` cannot move an event between calendars. Delete and recreate in the target calendar. |
 | `filterAccount` | read | `event` does not surface EventKit account info. Filter by `filterCalendar` instead. |
 | `span` (on update) | update | Update always saves with `EKSpan.thisEvent`. `delete` still respects `span: 'this-event' | 'future-events'`. |
+| `attendees` | update | **Supported — bypasses the `event` CLI.** See below. |
+| `occurrenceDate` | delete | **Supported — bypasses the `event` CLI.** See below. |
+
+#### Two writes that bypass the `event` CLI
+
+`attendees` and `occurrenceDate` are the only `calendar_events` writes that do
+not go through `bin/event`. Neither is a gap in the CLI that an upstream flag
+could close — EventKit itself cannot express either one.
+
+**`attendees` (update)** — invites addresses to an existing event.
+`EKCalendarItem.attendees` is `readonly` in the macOS SDK, and there is no
+attendee-mutation or invitation API anywhere in EventKit; Apple models
+invitation delivery as the calendar server's job, which is why the framework
+exposes a read-only `EKParticipantScheduleStatus` to observe it rather than a
+method to trigger it. `event` is a pure EventKit wrapper and inherits that
+limitation. The write instead goes through Calendar.app's scripting interface
+(`src/utils/appleScriptAttendees.ts`) — the sdef marks attendee properties
+`access="r"`, which governs mutating an *existing* attendee, but
+`make new attendee ... with properties` is a creation and is permitted. Writing
+the attendee locally makes iCloud's CalDAV server perform RFC 6638 scheduling
+and deliver the invitation.
+
+Consequences of that route: it needs Calendar.app, a GUI session, and an
+Automation grant, so it is unsuitable for headless contexts. Attendees must be
+updated alone — they travel through Calendar.app while other fields travel
+through EventKit, with no shared concurrency token, so a combined update has no
+safe ordering and is refused. Calendar.app can only be queried by title and
+start date, so two events sharing both are refused rather than guessed between.
+
+**`occurrenceDate` (delete)** — excepts one occurrence of a recurring series.
+Every occurrence shares one EventKit identifier, and resolving it returns the
+master, whose occurrence date is its own `DTSTART`. A delete with
+`span: 'this-event'` can therefore only ever except the series start; aimed at
+any later occurrence it writes nothing and still reports success. Supplying
+`occurrenceDate` routes the write over CalDAV instead
+(`src/utils/caldavOccurrence.ts`), appending an `EXDATE` that names the instant
+directly. This needs iCloud credentials (`ICLOUD_APPLE_ID` plus either
+`ICLOUD_APP_PASSWORD` or a Keychain entry under service `icloud-caldav-mcp`,
+using an app-specific password) and an iCloud-synced event — one with no
+external identifier has no CalDAV resource to locate.
+
+Both are documented for end users in
+[README.md](../README.md#available-mcp-tools).
 
 ### `calendar_calendars`
 
