@@ -234,6 +234,21 @@ export const TOOLS: Tool[] = [
           description:
             'Scope for changes to recurring events: this-event or future-events.',
         },
+        attendees: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Update only. Email addresses to invite to an existing event. ' +
+            'Adding an attendee causes iCloud to send a real invitation, and ' +
+            'links the event so later moves and deletions propagate to them.',
+        },
+        occurrenceDate: {
+          type: 'string',
+          description:
+            'Delete only. Start of the single occurrence to except from a ' +
+            'recurring series, e.g. 2026-09-21T09:00:00. Without it, a ' +
+            'this-event delete can only ever except the series start.',
+        },
         targetCalendar: {
           type: 'string',
           description:

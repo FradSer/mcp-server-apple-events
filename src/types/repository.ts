@@ -225,4 +225,22 @@ export interface ICalendarRepository {
   createEvent(data: CreateEventData): Promise<EventJSON>;
   updateEvent(data: UpdateEventData): Promise<EventJSON>;
   deleteEvent(id: string, span?: 'this-event' | 'future-events'): Promise<void>;
+  /**
+   * Invites addresses to an existing event. Routed through Calendar.app
+   * scripting rather than the `event` CLI, because EventKit exposes attendees
+   * read-only and therefore cannot write them at all.
+   */
+  addAttendees(
+    id: string,
+    emails: string[],
+  ): Promise<{ event: CalendarEvent; updated: number }>;
+  /**
+   * Excepts one occurrence of a recurring series. Routed over CalDAV because
+   * every occurrence shares an EventKit identifier, so the CLI can only ever
+   * except the series start.
+   */
+  exceptOccurrence(
+    id: string,
+    occurrenceDate: string,
+  ): Promise<{ event: CalendarEvent; excepted: string }>;
 }

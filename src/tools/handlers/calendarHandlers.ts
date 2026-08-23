@@ -10,7 +10,10 @@ import type {
   CalendarToolArgs,
 } from '../../types/index.js';
 import { calendarRepository } from '../../utils/calendarRepository.js';
-import { handleAsyncOperation } from '../../utils/errorHandling.js';
+import {
+  CliUserError,
+  handleAsyncOperation,
+} from '../../utils/errorHandling.js';
 import { formatMultilineNotes } from '../../utils/helpers.js';
 import {
   CreateCalendarEventSchema,
@@ -104,6 +107,37 @@ export const handleUpdateCalendarEvent = async (
       args,
       UpdateCalendarEventSchema,
     );
+    // Attendees and EventKit fields travel through different subsystems with
+    // no shared concurrency token, so a combined write would have no defined
+    // ordering. Requiring attendees to stand alone keeps each call atomic.
+    if (validatedArgs.attendees && validatedArgs.attendees.length > 0) {
+      const others = [
+        validatedArgs.title,
+        validatedArgs.startDate,
+        validatedArgs.endDate,
+        validatedArgs.note,
+        validatedArgs.location,
+        validatedArgs.timezone,
+      ].filter((value) => value !== undefined);
+      if (others.length > 0) {
+        throw new CliUserError(
+          'Update attendees on their own. Adding attendees goes through ' +
+            'Calendar.app while other fields go through EventKit, so a ' +
+            'combined update has no safe ordering. Issue two calls.',
+        );
+      }
+      const { event: invited, updated } = await calendarRepository.addAttendees(
+        validatedArgs.id,
+        validatedArgs.attendees,
+      );
+      const list = validatedArgs.attendees.join(', ');
+      return (
+        `Invited ${list} to "${invited.title}" (${updated} event updated). ` +
+        'iCloud sends the invitation; the event is now linked, so later ' +
+        'changes and deletions propagate to the invitee.'
+      );
+    }
+
     const event = await calendarRepository.updateEvent({
       id: validatedArgs.id,
       title: validatedArgs.title,
@@ -125,6 +159,21 @@ export const handleDeleteCalendarEvent = async (
       args,
       DeleteCalendarEventSchema,
     );
+    // A this-event delete resolves to the series master, so without an
+    // explicit occurrence it can only ever except the series start — and
+    // silently no-ops on any later one. Naming the occurrence routes the write
+    // over CalDAV, which can address it.
+    if (validatedArgs.occurrenceDate) {
+      const { event, excepted } = await calendarRepository.exceptOccurrence(
+        validatedArgs.id,
+        validatedArgs.occurrenceDate,
+      );
+      return (
+        `Excepted the ${validatedArgs.occurrenceDate} occurrence of ` +
+        `"${event.title}" (${excepted}). The rest of the series is unchanged.`
+      );
+    }
+
     await calendarRepository.deleteEvent(validatedArgs.id, validatedArgs.span);
     return formatDeleteMessage('event', validatedArgs.id, {
       useQuotes: true,

@@ -35,6 +35,7 @@ export const VALIDATION = {
   MAX_SEARCH_LENGTH: 100,
   MAX_URL_LENGTH: 500,
   MAX_LOCATION_LENGTH: 200,
+  MAX_ATTENDEES: 50,
 } as const;
 
 /**
