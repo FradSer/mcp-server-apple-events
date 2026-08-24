@@ -32,11 +32,16 @@ function npmPackDryRun(): PackResult {
     ['pack', '--dry-run', '--json', '--ignore-scripts'],
     { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  const parsed = JSON.parse(stdout) as PackResult[];
-  if (!parsed[0]) {
-    throw new Error('npm pack --json returned an empty array');
+  // npm < 12 emits an array of pack results; npm >= 12 emits an object keyed
+  // by package name. Normalize both so the suite is host-npm independent.
+  const parsed = JSON.parse(stdout) as
+    | PackResult[]
+    | Record<string, PackResult>;
+  const pack = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+  if (!pack) {
+    throw new Error('npm pack --json returned no pack result');
   }
-  return parsed[0];
+  return pack;
 }
 
 function loadPackageJson(): {
