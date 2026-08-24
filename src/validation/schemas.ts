@@ -572,7 +572,7 @@ export const ReadCalendarEventsSchema = z.object({
  * literal, so the job here is rejecting anything that plainly is not an
  * address, while `escapeAppleScriptString` handles the quoting.
  */
-const ATTENDEE_EMAIL = /^[^\s@"\\]+@[^\s@"\\]+\.[^\s@"\\]+$/;
+const ATTENDEE_EMAIL = VALIDATION.ATTENDEE_EMAIL_PATTERN;
 
 export const AttendeesSchema = z
   .array(
