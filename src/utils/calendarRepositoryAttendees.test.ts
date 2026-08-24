@@ -94,3 +94,25 @@ describe('calendarRepository.addAttendees', () => {
     expect(mockApple).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Regression from PR review: span and occurrenceDate are contradictory, and
+ * routing on occurrenceDate silently dropped span.
+ */
+describe('handleDeleteCalendarEvent — span vs occurrenceDate', () => {
+  it('refuses a call carrying both rather than ignoring span', async () => {
+    const { handleDeleteCalendarEvent } = await import(
+      '../tools/handlers/calendarHandlers.js'
+    );
+    const result = await handleDeleteCalendarEvent({
+      action: 'delete',
+      id: 'CAL:EVT',
+      span: 'future-events',
+      occurrenceDate: '2026-09-21T09:00:00',
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toMatch(
+      /either span or occurrenceDate/i,
+    );
+  });
+});

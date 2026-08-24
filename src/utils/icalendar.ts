@@ -15,6 +15,8 @@
  * Rewriting by property name alone silently corrupts both.
  */
 
+import { CliUserError } from './errorHandling.js';
+
 const MAX_OCTETS = 75;
 
 /** RFC 5545 §3.1 line unfolding. */
@@ -133,7 +135,7 @@ export const exceptOccurrence = (
   occurrenceStart: string,
 ): string[] => {
   if (!ICAL_STAMP.test(occurrenceStart)) {
-    throw new Error(
+    throw new CliUserError(
       `Invalid occurrence format: expected an iCalendar date-time ` +
         `(YYYYMMDDTHHMMSS[Z]), received "${occurrenceStart}".`,
     );
@@ -144,15 +146,16 @@ export const exceptOccurrence = (
   const eventStarts = lines.filter(
     (l, i) => propName(l) === 'BEGIN' && components[i] === 'VEVENT',
   ).length;
-  if (eventStarts === 0) throw new Error('Calendar object contains no VEVENT.');
+  if (eventStarts === 0)
+    throw new CliUserError('Calendar object contains no VEVENT.');
   if (eventStarts > 1) {
-    throw new Error(
+    throw new CliUserError(
       'Calendar object contains more than one VEVENT. Excepting an occurrence ' +
         'of a series that already has overrides is not supported.',
     );
   }
   if (!lines.some((l, i) => inEvent(i) && propName(l) === 'RRULE')) {
-    throw new Error(
+    throw new CliUserError(
       'Event is not recurring; there is no occurrence to except.',
     );
   }
@@ -162,7 +165,16 @@ export const exceptOccurrence = (
   const params = dtstart
     ? dtstart.slice('DTSTART'.length, dtstart.indexOf(':'))
     : '';
-  const exdate = `EXDATE${params}:${occurrenceStart}`;
+  // The EXDATE must match DTSTART's value type as well as its TZID. A UTC
+  // series takes a UTC EXDATE; supplying a floating stamp against DTSTART:...Z
+  // yields an EXDATE that matches no generated instance, so the PUT succeeds
+  // and the occurrence stays — the silent no-op this feature exists to remove.
+  const dtstartValue = dtstart?.slice(dtstart.indexOf(':') + 1) ?? '';
+  const seriesIsUtc = dtstartValue.endsWith('Z');
+  const stamp = seriesIsUtc
+    ? `${occurrenceStart.replace(/Z$/, '')}Z`
+    : occurrenceStart.replace(/Z$/, '');
+  const exdate = `EXDATE${params}:${stamp}`;
 
   const already = lines.some(
     (l, i) =>
@@ -171,7 +183,7 @@ export const exceptOccurrence = (
       l
         .slice(l.indexOf(':') + 1)
         .split(',')
-        .includes(occurrenceStart),
+        .includes(stamp),
   );
   if (already) return [...lines];
 

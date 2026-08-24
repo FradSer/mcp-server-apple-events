@@ -10,6 +10,7 @@
  * directly is what makes arbitrary occurrences exceptable.
  */
 
+import { CliUserError } from './errorHandling.js';
 import {
   exceptOccurrence,
   getProperty,
@@ -115,6 +116,84 @@ describe('exceptOccurrence', () => {
     );
     expect(() => exceptOccurrence(multi, '20260921T090000')).toThrow(
       /one VEVENT/i,
+    );
+  });
+});
+
+/**
+ * Regressions from PR review. Each of these silently did the wrong thing:
+ * the value-type mismatch produced an EXDATE matching no instance, and the
+ * bare Errors were sanitized to "System error occurred" in production.
+ */
+describe('exceptOccurrence — value type mirrors DTSTART', () => {
+  const utcSeries = (dtstart: string) =>
+    [
+      'BEGIN:VCALENDAR',
+      'BEGIN:VEVENT',
+      'UID:abc',
+      'DTSTAMP:20260823T000000Z',
+      dtstart,
+      'RRULE:FREQ=WEEKLY;COUNT=6',
+      'SEQUENCE:0',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+  it('adds Z for a UTC series even when the stamp lacks one', () => {
+    const out = exceptOccurrence(
+      unfold(utcSeries('DTSTART:20260907T160000Z')),
+      '20260921T160000',
+    );
+    expect(out).toContain('EXDATE:20260921T160000Z');
+  });
+
+  it('keeps Z for a UTC series when the stamp already has one', () => {
+    const out = exceptOccurrence(
+      unfold(utcSeries('DTSTART:20260907T160000Z')),
+      '20260921T160000Z',
+    );
+    expect(out).toContain('EXDATE:20260921T160000Z');
+  });
+
+  it('strips a stray Z for a zoned series, which is local wall clock', () => {
+    const out = exceptOccurrence(
+      unfold(utcSeries('DTSTART;TZID=America/Los_Angeles:20260907T090000')),
+      '20260921T090000Z',
+    );
+    expect(out).toContain('EXDATE;TZID=America/Los_Angeles:20260921T090000');
+    expect(out).not.toContain('20260921T090000Z');
+  });
+
+  it('stays idempotent across the two stamp spellings', () => {
+    const once = exceptOccurrence(
+      unfold(utcSeries('DTSTART:20260907T160000Z')),
+      '20260921T160000Z',
+    );
+    const twice = exceptOccurrence(once, '20260921T160000');
+    expect(twice.filter((l) => propName(l) === 'EXDATE')).toHaveLength(1);
+  });
+});
+
+describe('exceptOccurrence — refusals survive production error sanitising', () => {
+  const series = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'UID:abc',
+    'DTSTART:20260907T160000Z',
+    'SEQUENCE:0',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+
+  it.each([
+    ['non-recurring', series, '20260921T160000'],
+    ['malformed stamp', series, 'nope'],
+    ['no VEVENT', ['BEGIN:VCALENDAR', 'END:VCALENDAR'], '20260921T160000'],
+  ])('raises CliUserError for %s', (_label, lines, stamp) => {
+    // A bare Error is collapsed to "System error occurred" by createErrorMessage,
+    // which would hide the reason the refusal exists to convey.
+    expect(() => exceptOccurrence(lines as string[], stamp as string)).toThrow(
+      CliUserError,
     );
   });
 });

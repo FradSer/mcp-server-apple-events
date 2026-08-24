@@ -163,6 +163,16 @@ export const handleDeleteCalendarEvent = async (
     // explicit occurrence it can only ever except the series start — and
     // silently no-ops on any later one. Naming the occurrence routes the write
     // over CalDAV, which can address it.
+    // span and occurrenceDate express contradictory intents — "this or all
+    // following" versus "exactly this one". Silently honouring occurrenceDate
+    // would leave the caller believing span applied.
+    if (validatedArgs.occurrenceDate && validatedArgs.span) {
+      throw new CliUserError(
+        'Provide either span or occurrenceDate, not both. span scopes a ' +
+          'change across a series; occurrenceDate excepts one occurrence.',
+      );
+    }
+
     if (validatedArgs.occurrenceDate) {
       const { event, excepted } = await calendarRepository.exceptOccurrence(
         validatedArgs.id,
