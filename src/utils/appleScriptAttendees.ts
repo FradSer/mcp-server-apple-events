@@ -25,6 +25,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { VALIDATION } from './constants.js';
 import { CliUserError } from './errorHandling.js';
 
 /**
@@ -73,7 +74,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Deliberately permissive on the local part, strict on shape. This guards
 // against a value that is obviously not an address reaching the script, not
 // against every RFC 5322 edge case.
-const EMAIL = /^[^\s@"\\]+@[^\s@"\\]+\.[^\s@"\\]+$/;
+const EMAIL = VALIDATION.ATTENDEE_EMAIL_PATTERN;
 
 /**
  * Extends CliUserError so the message survives production error formatting.

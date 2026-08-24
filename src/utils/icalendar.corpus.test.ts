@@ -15,13 +15,7 @@
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  exceptOccurrence,
-  getProperty,
-  propName,
-  serialize,
-  unfold,
-} from './icalendar.js';
+import { exceptOccurrence, propName, serialize, unfold } from './icalendar.js';
 
 const corpusDir = process.env.ICAL_CORPUS;
 const files = corpusDir
@@ -112,8 +106,10 @@ describeCorpus('real CalDAV corpus', () => {
       } catch {
         continue;
       }
-      const b = Number.parseInt(getProperty(before, 'SEQUENCE') ?? '0', 10);
-      const a = Number.parseInt(getProperty(after, 'SEQUENCE') ?? '0', 10);
+      const value = (lines: string[]): string =>
+        lines.find((l) => propName(l) === 'SEQUENCE')?.split(':')[1] ?? '0';
+      const b = Number.parseInt(value(before), 10);
+      const a = Number.parseInt(value(after), 10);
       if (!(a > b)) wrong.push(`${f}: ${b} -> ${a}`);
     }
     expect(wrong).toEqual([]);

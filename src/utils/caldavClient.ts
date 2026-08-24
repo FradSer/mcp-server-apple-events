@@ -158,22 +158,3 @@ export const request = async (
   }
   throw new CalDavError(`Too many CalDAV redirects (limit ${MAX_REDIRECTS}).`);
 };
-
-/**
- * SCHEDULE-STATUS values on an ATTENDEE line.
- *
- * Per RFC 6638 §3.2.9, `1.0` is Pending, `1.1` is Sent — explicitly WITHOUT
- * confirmation of delivery — and `1.2` is Delivered. Treat `1.1` as "the server
- * scheduled it", not as proof the recipient received anything. The value may be
- * quoted and comma-separated, which a naive regex misses and then misreports as
- * "not scheduled".
- */
-export const parseScheduleStatus = (attendeeLine: string): string[] => {
-  const match = /SCHEDULE-STATUS=("([^"]*)"|[^;:]*)/.exec(attendeeLine);
-  const raw = match?.[2] ?? match?.[1];
-  if (!raw) return [];
-  return raw
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value) => value !== '');
-};

@@ -7,7 +7,7 @@
  * X-APPLE-STRUCTURED-LOCATION, VTIMEZONE, TRANSP — is the whole point.
  */
 
-import { fold, getProperty, propName, serialize, unfold } from './icalendar.js';
+import { fold, propName, serialize, unfold } from './icalendar.js';
 
 // Verbatim from iCloud, folded exactly as the server returned it.
 const REAL_EVENT = [
@@ -129,17 +129,5 @@ describe('propName', () => {
     ['x-lower;P=1:v', 'X-LOWER'],
   ])('parses %s as %s', (line, expected) => {
     expect(propName(line)).toBe(expected);
-  });
-});
-
-describe('getProperty', () => {
-  it('returns the value of a property', () => {
-    expect(getProperty(unfold(REAL_EVENT), 'UID')).toBe(
-      '52694C69-7B46-432F-8B65-5D50BBAA913D',
-    );
-  });
-
-  it('returns undefined for an absent property', () => {
-    expect(getProperty(unfold(REAL_EVENT), 'ORGANIZER')).toBeUndefined();
   });
 });

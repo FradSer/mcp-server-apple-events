@@ -11,12 +11,7 @@
  */
 
 import { CliUserError } from './errorHandling.js';
-import {
-  exceptOccurrence,
-  getProperty,
-  propName,
-  unfold,
-} from './icalendar.js';
+import { exceptOccurrence, propName, unfold } from './icalendar.js';
 
 const SERIES = [
   'BEGIN:VCALENDAR',
@@ -70,7 +65,8 @@ describe('exceptOccurrence', () => {
 
   it('bumps SEQUENCE so the change is a recognised revision', () => {
     const out = exceptOccurrence(unfold(SERIES), '20260921T090000');
-    expect(getProperty(out, 'SEQUENCE')).toBe('1');
+    const seq = out.find((l) => propName(l) === 'SEQUENCE');
+    expect(seq && seq.slice(seq.indexOf(':') + 1)).toBe('1');
   });
 
   it('preserves the VTIMEZONE component untouched', () => {

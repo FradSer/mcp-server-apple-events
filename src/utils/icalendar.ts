@@ -79,20 +79,6 @@ export const propName = (line: string): string => {
   return line.slice(0, end).toUpperCase();
 };
 
-export const getProperty = (
-  lines: string[],
-  name: string,
-): string | undefined => {
-  const target = name.toUpperCase();
-  for (const line of lines) {
-    if (propName(line) === target) {
-      const i = line.indexOf(':');
-      return i === -1 ? '' : line.slice(i + 1);
-    }
-  }
-  return undefined;
-};
-
 /**
  * Innermost enclosing component for each line. BEGIN lines report the component
  * they open; END lines report the component they close.

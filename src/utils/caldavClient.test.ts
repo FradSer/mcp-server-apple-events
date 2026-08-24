@@ -14,7 +14,6 @@ import {
   assertAllowedCalDavUrl,
   CalDavAuthError,
   CalDavConflictError,
-  parseScheduleStatus,
   request,
 } from './caldavClient.js';
 
@@ -174,25 +173,5 @@ describe('request — auth and transport', () => {
     await request('PUT', OK, CREDS, { etag: '"e1"', body: 'x' });
     const headers = new Headers(f.mock.calls[0]?.[1]?.headers);
     expect(headers.get('if-match')).toBe('"e1"');
-  });
-});
-
-describe('parseScheduleStatus', () => {
-  it('reads a bare value', () => {
-    expect(
-      parseScheduleStatus('ATTENDEE;SCHEDULE-STATUS=1.1:mailto:a@b.c'),
-    ).toEqual(['1.1']);
-  });
-
-  // A legal quoted/multi-valued form must not read as "no status", which would
-  // report a false scheduling failure.
-  it('reads a quoted, multi-valued form', () => {
-    expect(
-      parseScheduleStatus('ATTENDEE;SCHEDULE-STATUS="1.1,2.0":mailto:a@b.c'),
-    ).toEqual(['1.1', '2.0']);
-  });
-
-  it('returns an empty list when the parameter is absent', () => {
-    expect(parseScheduleStatus('ATTENDEE:mailto:a@b.c')).toEqual([]);
   });
 });
