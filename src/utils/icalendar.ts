@@ -101,6 +101,41 @@ const componentOf = (lines: string[]): string[] => {
 const utcStamp = (): string =>
   `${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`;
 
+interface Block {
+  start: number;
+  end: number;
+}
+
+/** Index ranges of each top-level VEVENT, inclusive of its BEGIN and END. */
+const veventBlocks = (lines: string[], components: string[]): Block[] => {
+  const out: Block[] = [];
+  let open: number | null = null;
+  lines.forEach((line, i) => {
+    if (components[i] !== 'VEVENT') return;
+    if (propName(line) === 'BEGIN') open = i;
+    else if (propName(line) === 'END' && open !== null) {
+      out.push({ start: open, end: i });
+      open = null;
+    }
+  });
+  return out;
+};
+
+const lineIn = (
+  lines: string[],
+  block: Block,
+  name: string,
+): string | undefined => {
+  for (let i = block.start; i <= block.end; i++) {
+    const line = lines[i];
+    if (line !== undefined && propName(line) === name) return line;
+  }
+  return undefined;
+};
+
+const blockHas = (lines: string[], block: Block, name: string): boolean =>
+  lineIn(lines, block, name) !== undefined;
+
 const ICAL_STAMP = /^\d{8}T\d{6}Z?$/;
 
 /**
@@ -128,72 +163,92 @@ export const exceptOccurrence = (
   }
 
   const components = componentOf(lines);
-  const inEvent = (i: number): boolean => components[i] === 'VEVENT';
-  const eventStarts = lines.filter(
-    (l, i) => propName(l) === 'BEGIN' && components[i] === 'VEVENT',
-  ).length;
-  if (eventStarts === 0)
+  const blocks = veventBlocks(lines, components);
+  if (blocks.length === 0) {
     throw new CliUserError('Calendar object contains no VEVENT.');
-  if (eventStarts > 1) {
-    throw new CliUserError(
-      'Calendar object contains more than one VEVENT. Excepting an occurrence ' +
-        'of a series that already has overrides is not supported.',
-    );
   }
-  if (!lines.some((l, i) => inEvent(i) && propName(l) === 'RRULE')) {
+
+  // A series with overrides is the *common* case for occurrence editing — the
+  // overrides exist because someone already edited an occurrence. Only the
+  // master carries RRULE and no RECURRENCE-ID; the rest describe single
+  // instances and are left alone unless they name the instant being excepted.
+  const masters = blocks.filter(
+    (b) => !blockHas(lines, b, 'RECURRENCE-ID') && blockHas(lines, b, 'RRULE'),
+  );
+  if (masters.length === 0) {
     throw new CliUserError(
       'Event is not recurring; there is no occurrence to except.',
     );
   }
+  if (masters.length > 1) {
+    throw new CliUserError(
+      'Calendar object contains more than one recurring master; cannot tell ' +
+        'which series the occurrence belongs to.',
+    );
+  }
+  const master = masters[0] as Block;
 
-  // Mirror DTSTART's parameters so the EXDATE refers to the same wall clock.
-  const dtstart = lines.find((l, i) => inEvent(i) && propName(l) === 'DTSTART');
+  const dtstart = lineIn(lines, master, 'DTSTART');
   const params = dtstart
     ? dtstart.slice('DTSTART'.length, dtstart.indexOf(':'))
     : '';
-  // The EXDATE must match DTSTART's value type as well as its TZID. A UTC
-  // series takes a UTC EXDATE; supplying a floating stamp against DTSTART:...Z
-  // yields an EXDATE that matches no generated instance, so the PUT succeeds
-  // and the occurrence stays — the silent no-op this feature exists to remove.
-  const dtstartValue = dtstart?.slice(dtstart.indexOf(':') + 1) ?? '';
-  const seriesIsUtc = dtstartValue.endsWith('Z');
+  // The EXDATE must match DTSTART's value type as well as its TZID. A floating
+  // stamp against a UTC series matches no generated instance, so the write
+  // succeeds and the occurrence stays.
+  const seriesIsUtc = (dtstart?.slice(dtstart.indexOf(':') + 1) ?? '').endsWith(
+    'Z',
+  );
   const stamp = seriesIsUtc
     ? `${occurrenceStart.replace(/Z$/, '')}Z`
     : occurrenceStart.replace(/Z$/, '');
   const exdate = `EXDATE${params}:${stamp}`;
 
-  const already = lines.some(
+  const alreadyExcepted = lines.some(
     (l, i) =>
-      inEvent(i) &&
+      i >= master.start &&
+      i <= master.end &&
       propName(l) === 'EXDATE' &&
       l
         .slice(l.indexOf(':') + 1)
         .split(',')
         .includes(stamp),
   );
-  if (already) return [...lines];
 
-  const sequenceLine = lines.find(
-    (l, i) => inEvent(i) && propName(l) === 'SEQUENCE',
-  );
+  // An override naming this instant must go with it. Left behind it survives as
+  // a detached event once its parent occurrence is excepted, so the occurrence
+  // appears to come back — indistinguishable from the exception having failed.
+  const doomed = blocks.filter((b) => {
+    const rid = lineIn(lines, b, 'RECURRENCE-ID');
+    if (!rid) return false;
+    const value = rid.slice(rid.indexOf(':') + 1);
+    return value.replace(/Z$/, '') === stamp.replace(/Z$/, '');
+  });
+
+  if (alreadyExcepted && doomed.length === 0) return [...lines];
+
+  const sequenceLine = lineIn(lines, master, 'SEQUENCE');
   const sequence = Number.parseInt(
     sequenceLine?.slice(sequenceLine.indexOf(':') + 1) ?? '0',
     10,
   );
-  const endIndex = lines.findIndex(
-    (l, i) => propName(l) === 'END' && components[i] === 'VEVENT',
-  );
+  const now = utcStamp();
 
   const out: string[] = [];
   lines.forEach((line, index) => {
-    if (index === endIndex) out.push(exdate);
-    if (inEvent(index) && propName(line) === 'SEQUENCE') {
+    if (doomed.some((b) => index >= b.start && index <= b.end)) return;
+    const inMaster = index >= master.start && index <= master.end;
+    if (index === master.end && !alreadyExcepted) out.push(exdate);
+    if (inMaster && propName(line) === 'SEQUENCE') {
       out.push(`SEQUENCE:${Number.isNaN(sequence) ? 1 : sequence + 1}`);
-    } else if (inEvent(index) && propName(line) === 'DTSTAMP') {
-      out.push(`DTSTAMP:${utcStamp()}`);
+    } else if (inMaster && propName(line) === 'DTSTAMP') {
+      out.push(`DTSTAMP:${now}`);
     } else {
       out.push(line);
     }
   });
+
+  if (sequenceLine === undefined) {
+    out.splice(out.indexOf('END:VEVENT'), 0, 'SEQUENCE:1');
+  }
   return out;
 };

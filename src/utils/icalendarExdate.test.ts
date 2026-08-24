@@ -98,21 +98,24 @@ describe('exceptOccurrence', () => {
     expect(out).toContain('EXDATE:20260921T160000Z');
   });
 
-  it('refuses a resource with more than one VEVENT', () => {
+  // Superseded. A second VEVENT is an override, and a series HAS overrides
+  // because an occurrence was already edited — which makes it the common case
+  // for editing another one, not a reason to refuse. See icalendarOverrides.
+  it('accepts a series carrying an override and excepts from the master', () => {
     const multi = unfold(SERIES).flatMap((l) =>
       l === 'END:VCALENDAR'
         ? [
             'BEGIN:VEVENT',
-            'UID:abc',
-            'RECURRENCE-ID:20260914T090000',
+            'UID:x',
+            'RECURRENCE-ID:20260914T125500Z',
             'END:VEVENT',
             l,
           ]
         : [l],
     );
-    expect(() => exceptOccurrence(multi, '20260921T090000')).toThrow(
-      /one VEVENT/i,
-    );
+    const out = exceptOccurrence(multi, '20260921T090000');
+    expect(out).toContain('EXDATE;TZID=America/Los_Angeles:20260921T090000');
+    expect(out).toContain('RECURRENCE-ID:20260914T125500Z');
   });
 });
 
