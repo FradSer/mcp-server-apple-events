@@ -155,6 +155,8 @@ xcrun swiftc --version    # 应显示 Apple Swift version 6.3 或更高
 显示"工作"列表中的提醒，并列出我所有的提醒列表。
 在"工作"日历创建明天 9:00–9:30 的 "Team standup" 事件。
 显示我下周的日历事件。
+邀请 alex@example.com 参加我的 "Team standup" 事件。
+只取消我每周 "Team standup" 在 9 月 21 日的那一次。
 ```
 
 服务器处理自然语言请求，与 Apple 原生提醒事项和日历应用交互，并返回格式化结果。
@@ -170,7 +172,7 @@ xcrun swiftc --version    # 应显示 Apple Swift version 6.3 或更高
 | `reminders_tasks` | `read`、`create`、`update`、`delete` | 优先级、标签、子任务。`startDate` 通过 `update` 设置，`create` 不可用。不支持跨列表搬移。 |
 | `reminders_subtasks` | `read`、`create`、`update`、`delete`、`toggle`、`reorder` | 存储在备注字段中（Reminders.app 中人类可读）。 |
 | `reminders_lists` | `read`、`create`、`update`、`delete` | 通过 `name` → `newName` 重命名。 |
-| `calendar_events` | `read`、`create`、`update`、`delete` | All-day 由日期格式推断。不支持跨日历搬移。`span` 限定循环事件删除范围。 |
+| `calendar_events` | `read`、`create`、`update`、`delete` | All-day 由日期格式推断。不支持跨日历搬移。`span` 限定循环事件删除范围。`attendees`（update）邀请与会者；`occurrenceDate`（delete）排除循环序列中的单次实例——两者都需要额外配置，见[与会者与单次实例](#与会者与单次实例)。 |
 | `calendar_calendars` | `read` | 在（可选）`startDate`/`endDate` 窗口内至少包含一个事件的日历。 |
 
 调用示例：
@@ -207,6 +209,35 @@ xcrun swiftc --version    # 应显示 Apple Swift version 6.3 或更高
 ```json
 { "action": "create", "title": "Team standup", "startDate": "2026-05-04 09:00:00", "endDate": "2026-05-04 09:30:00", "targetCalendar": "工作" }
 ```
+
+```json
+{ "action": "update", "id": "event-123", "attendees": ["alex@example.com", "sam@example.com"] }
+```
+
+```json
+{ "action": "delete", "id": "event-123", "occurrenceDate": "2026-09-21T09:00:00" }
+```
+
+### 与会者与单次实例
+
+这两个 `calendar_events` 参数是唯一不经过 `event` CLI 的写操作，因为 EventKit 本身无法表达它们。两者都需要服务器其余部分不需要的额外配置。
+
+**`attendees`（update）**——邀请电子邮件地址加入已有事件。`EKCalendarItem.attendees` 在 macOS SDK 中是只读的，且 EventKit 没有任何发送邀请的 API，因此该写操作走 Calendar.app 的脚本接口；在本地写入与会者正是促使 iCloud 发送邀请的动作。
+
+- 需要 **Automation（自动化）** 授权：首次调用会弹窗，授权记录出现在 `系统设置 > 隐私与安全性 > 自动化`。需要 GUI 会话，因此无法在无头环境中使用。
+- 与会者必须**单独**更新。它们走 Calendar.app，而其他所有字段走 EventKit，两者之间没有共享的并发标记——合并更新没有安全的执行顺序，因此会被拒绝。请分两次调用。
+- 标题与开始日期都相同的两个事件会被**拒绝，而不是猜测**。Calendar.app 只能按标题和日期查询，写错事件会为它发出一封真实的邀请。
+
+**`occurrenceDate`（delete）**——排除循环序列中的单次实例。序列的每个实例共享同一个 EventKit 标识符，因此 `span: "this-event"` 只能排除序列的首次实例；针对之后任何一次实例时，它什么都不会写入，却仍然报告成功。提供 `occurrenceDate` 会将删除操作改走 CalDAV，后者可以直接定位到该实例。
+
+- 需要 iCloud 凭据。设置 `ICLOUD_APPLE_ID` 与 `ICLOUD_APP_PASSWORD`，或设置 `ICLOUD_APPLE_ID` 并把密码存入钥匙串：
+
+  ```bash
+  security add-generic-password -a "you@icloud.com" -s "icloud-caldav-mcp" -w
+  ```
+
+  请使用[应用专用密码](https://support.apple.com/zh-cn/102654)，切勿使用账户密码。凭据优先从环境变量读取，其次是钥匙串，绝不从 MCP 客户端配置读取，也绝不写入日志。
+- 仅支持已同步到 iCloud 的事件——没有外部标识符的事件没有可定位的 CalDAV 资源。
 
 ### 读取响应结构
 

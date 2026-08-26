@@ -159,6 +159,8 @@ Update "Buy groceries" — change the title to "Buy organic groceries" and set p
 Show reminders from my "Work" list, and list all my reminder lists.
 Create a calendar event "Team standup" tomorrow from 9:00 to 9:30 in "Work".
 Show my calendar events for the next week.
+Invite alex@example.com to my "Team standup" event.
+Cancel just the September 21 occurrence of my weekly "Team standup".
 ```
 
 The server processes natural-language requests, interacts with Apple's native Reminders and Calendar apps, and returns formatted results.
@@ -174,7 +176,7 @@ Service-scoped tools mirror Apple Reminders and Calendar domains. All take an `a
 | `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks. `startDate` is set via `update`, not `create`; on `read` it scopes the due-date window alongside `endDate`. Cross-list moves unsupported. |
 | `reminders_subtasks` | `read`, `create`, `update`, `delete`, `toggle`, `reorder` | Stored in the notes field (human-readable in Reminders.app). |
 | `reminders_lists` | `read`, `create`, `update`, `delete` | Rename via `name` → `newName`. |
-| `calendar_events` | `read`, `create`, `update`, `delete` | All-day inferred from date format. Cross-calendar moves unsupported. `span` scopes recurring deletes. |
+| `calendar_events` | `read`, `create`, `update`, `delete` | All-day inferred from date format. Cross-calendar moves unsupported. `span` scopes recurring deletes. `attendees` (update) invites addresses; `occurrenceDate` (delete) excepts one occurrence of a series — both need extra setup, see [Attendees and single occurrences](#attendees-and-single-occurrences). |
 | `calendar_calendars` | `read` | Calendars holding ≥1 event in the (optional) `startDate`/`endDate` window. |
 
 Example calls:
@@ -215,6 +217,35 @@ Example calls:
 ```json
 { "action": "create", "title": "Team standup", "startDate": "2026-05-04 09:00:00", "endDate": "2026-05-04 09:30:00", "targetCalendar": "Work" }
 ```
+
+```json
+{ "action": "update", "id": "event-123", "attendees": ["alex@example.com", "sam@example.com"] }
+```
+
+```json
+{ "action": "delete", "id": "event-123", "occurrenceDate": "2026-09-21T09:00:00" }
+```
+
+### Attendees and single occurrences
+
+These two `calendar_events` parameters are the only writes that do not go through the `event` CLI, because EventKit cannot express either one. Each needs setup the rest of the server does not.
+
+**`attendees` (update)** — invites email addresses to an existing event. `EKCalendarItem.attendees` is read-only in the macOS SDK and EventKit has no invitation API, so the write goes through Calendar.app's scripting interface; adding the attendee locally is what makes iCloud send the invitation.
+
+- Requires an **Automation** grant: the first call prompts, and the entry appears under `System Settings > Privacy & Security > Automation`. Needs a GUI session, so it does not work headless.
+- Attendees must be updated **alone**. They travel through Calendar.app while every other field travels through EventKit, and the two share no concurrency token — a combined update has no safe ordering, so it is refused. Issue two calls.
+- Two events sharing a title and a start date are **refused, not guessed between**. Calendar.app can only be queried by title and date, and writing to the wrong one would send a real invitation for it.
+
+**`occurrenceDate` (delete)** — excepts one occurrence of a recurring series. Every occurrence shares one EventKit identifier, so `span: "this-event"` can only ever except the series start; aimed at a later occurrence it writes nothing and still reports success. Supplying `occurrenceDate` routes the delete over CalDAV, which can address the instance directly.
+
+- Requires iCloud credentials. Set `ICLOUD_APPLE_ID` and `ICLOUD_APP_PASSWORD`, or set `ICLOUD_APPLE_ID` and store the password in the Keychain:
+
+  ```bash
+  security add-generic-password -a "you@icloud.com" -s "icloud-caldav-mcp" -w
+  ```
+
+  Use an [app-specific password](https://support.apple.com/en-us/102654), never your account password. Credentials are read from the environment first, then the Keychain, never from MCP client config, and are never logged.
+- Only iCloud-synced events qualify — an event with no external identifier has no CalDAV resource to locate.
 
 ### Read response shape
 

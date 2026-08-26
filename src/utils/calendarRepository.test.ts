@@ -3,10 +3,11 @@
  * Tests for the calendar repository against the vendored `event` CLI.
  *
  * Scenarios are organized by the shapes the repository exposes:
- *   - read by id   → list a wide ±4-year window, then array `.find`
+ *   - read by id   → list the backward and forward 4-year windows (EventKit
+ *                    caps one predicate at 4 years), then array `.find`
  *   - list events  → `event calendar list --start --end [--calendar] --json`
  *                    with TS-side search/availability filtering
- *   - calendars    → derive distinct calendar names from a wide read window
+ *   - calendars    → derive distinct calendar names from both wide windows
  *   - create       → `event calendar create` with the trimmed flag set
  *                    (no url / structuredLocation / isAllDay / availability /
  *                    alarms / recurrenceRules)
@@ -47,9 +48,10 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('findEventById', () => {
-    it('lists the wide read window then finds by id', async () => {
+    it('lists both wide read windows then finds by id', async () => {
+      // Backward half, then forward half.
+      mockJson.mockResolvedValueOnce([eventFixture()]);
       mockJson.mockResolvedValueOnce([
-        eventFixture(),
         eventFixture({
           id: 'evt-2',
           title: 'Lunch',
@@ -60,17 +62,47 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       const result = await calendarRepository.findEventById('evt-2');
 
-      const args = mockJson.mock.calls[0]![0];
-      expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
-      expect(args).toContain('--start');
-      expect(args).toContain('--end');
-      expect(args).toContain('--json');
+      expect(mockJson).toHaveBeenCalledTimes(2);
+      for (const [args] of mockJson.mock.calls) {
+        expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
+        expect(args).toContain('--start');
+        expect(args).toContain('--end');
+        expect(args).toContain('--json');
+      }
       expect(result.id).toBe('evt-2');
       expect(result.title).toBe('Lunch');
     });
 
+    it("splits at today so neither window exceeds EventKit's 4-year cap", async () => {
+      // A single today±4y predicate is silently truncated to its first four
+      // years, which hid every future event from id lookup.
+      mockJson.mockResolvedValue([]);
+
+      await expect(calendarRepository.findEventById('evt-1')).rejects.toThrow();
+
+      const [past, future] = mockJson.mock.calls.map(([args]) => ({
+        start: args[args.indexOf('--start') + 1] as string,
+        end: args[args.indexOf('--end') + 1] as string,
+      }));
+      expect(past!.end).toBe(future!.start);
+      const spanYears = (a: string, b: string) =>
+        (Date.parse(b) - Date.parse(a)) / (365.2425 * 24 * 60 * 60 * 1000);
+      expect(spanYears(past!.start, past!.end)).toBeLessThanOrEqual(4);
+      expect(spanYears(future!.start, future!.end)).toBeLessThanOrEqual(4);
+      expect(spanYears(past!.start, future!.end)).toBeGreaterThan(7);
+    });
+
+    it('deduplicates an event returned by both windows', async () => {
+      // Today's events sit on the shared boundary date and come back twice.
+      mockJson.mockResolvedValue([eventFixture()]);
+
+      const result = await calendarRepository.findEventById('evt-1');
+
+      expect(result.id).toBe('evt-1');
+    });
+
     it('throws CliUserError when the id is not present in the listing', async () => {
-      mockJson.mockResolvedValueOnce([eventFixture()]);
+      mockJson.mockResolvedValue([eventFixture()]);
 
       await expect(calendarRepository.findEventById('missing')).rejects.toThrow(
         "Event with ID 'missing' not found.",
@@ -146,10 +178,13 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('findAllCalendars', () => {
-    it('derives a distinct calendar listing from the wide read window', async () => {
+    it('derives a distinct calendar listing from both wide read windows', async () => {
       mockJson.mockResolvedValueOnce([
         eventFixture({ id: 'a', calendar: 'Work' }),
         eventFixture({ id: 'b', calendar: 'Personal' }),
+      ]);
+      // A calendar whose only events are in the future must still appear.
+      mockJson.mockResolvedValueOnce([
         eventFixture({ id: 'c', calendar: 'Work' }),
         eventFixture({ id: 'd', calendar: 'Family' }),
       ]);
@@ -166,7 +201,7 @@ describe('CalendarRepository (event CLI backend)', () => {
     });
 
     it('returns an empty array when no events exist in the window', async () => {
-      mockJson.mockResolvedValueOnce([]);
+      mockJson.mockResolvedValue([]);
 
       const result = await calendarRepository.findAllCalendars();
       expect(result).toEqual([]);
@@ -175,9 +210,7 @@ describe('CalendarRepository (event CLI backend)', () => {
 
   describe('findCalendars', () => {
     it('delegates to findAllCalendars when no date range is given', async () => {
-      mockJson.mockResolvedValueOnce([
-        eventFixture({ id: 'a', calendar: 'Work' }),
-      ]);
+      mockJson.mockResolvedValue([eventFixture({ id: 'a', calendar: 'Work' })]);
 
       const result = await calendarRepository.findCalendars({});
 

@@ -112,7 +112,7 @@ describe('eventCli', () => {
         '/test/project/bin/event',
         ['reminders', 'list', '--json'],
         {
-          maxBuffer: 10 * 1024 * 1024,
+          maxBuffer: 64 * 1024 * 1024,
           timeout: 30_000,
           killSignal: 'SIGKILL',
         },
@@ -322,7 +322,7 @@ describe('eventCli', () => {
         '/custom/project/bin/event',
         ['reminders', 'lists', 'list', '--json'],
         {
-          maxBuffer: 10 * 1024 * 1024,
+          maxBuffer: 64 * 1024 * 1024,
           timeout: 30_000,
           killSignal: 'SIGKILL',
         },
@@ -366,7 +366,7 @@ describe('eventCli', () => {
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/event',
         ['reminders', 'list', '--json'],
-        { maxBuffer: 10 * 1024 * 1024, timeout: 30_000, killSignal: 'SIGKILL' },
+        { maxBuffer: 64 * 1024 * 1024, timeout: 30_000, killSignal: 'SIGKILL' },
         expect.any(Function),
       );
     });
@@ -524,7 +524,7 @@ describe('eventCli', () => {
         '/test/project/bin/event-disclaim',
         ['/test/project/bin/event', 'reminders', 'list', '--json'],
         {
-          maxBuffer: 10 * 1024 * 1024,
+          maxBuffer: 64 * 1024 * 1024,
           timeout: 30_000,
           killSignal: 'SIGKILL',
         },
@@ -548,7 +548,7 @@ describe('eventCli', () => {
         '/test/project/bin/event-disclaim',
         ['/test/project/bin/event', 'reminders', 'delete', '--id', 'abc'],
         {
-          maxBuffer: 10 * 1024 * 1024,
+          maxBuffer: 64 * 1024 * 1024,
           timeout: 30_000,
           killSignal: 'SIGKILL',
         },
@@ -566,7 +566,7 @@ describe('eventCli', () => {
         '/test/project/bin/event',
         ['reminders', 'list', '--json'],
         {
-          maxBuffer: 10 * 1024 * 1024,
+          maxBuffer: 64 * 1024 * 1024,
           timeout: 30_000,
           killSignal: 'SIGKILL',
         },

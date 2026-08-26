@@ -15,6 +15,9 @@ import type {
   ICalendarRepository,
   UpdateEventData,
 } from '../types/repository.js';
+import { addAttendeesToEvent } from './appleScriptAttendees.js';
+import { resolveCalDavCredentials } from './caldavCredentials.js';
+import { exceptOccurrenceViaCalDav } from './caldavOccurrence.js';
 import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
@@ -22,6 +25,30 @@ import { addOptionalArg, nullToUndefined } from './helpers.js';
 import { parseReminderDueDate } from './reminderDateParser.js';
 
 const DEFAULT_READ_WINDOW_DAYS = 14;
+
+/**
+ * The iCalendar UID for an event, which iCloud also uses as the CalDAV
+ * resource name.
+ *
+ * The vendored `event` CLI never emits `calendarItemExternalIdentifier` — its
+ * `CalendarEvent` model has no such field — so `externalId` is absent in
+ * practice and reading it alone left the occurrence-exception path unable to
+ * address any resource at all. EventKit's identifier is
+ * `<calendar UUID>:<item UUID>` and on an iCloud account the item half *is*
+ * the UID: verified against a live collection, where the id tail, the `.ics`
+ * resource name, and the `UID:` property inside it all agreed, and where the
+ * same tail appeared on the organizer's and the attendee's separate copies of
+ * one invitation (a per-store row id would differ).
+ *
+ * `externalId` still wins when present so a future CLI that supplies it needs
+ * no change here. A non-iCloud event yields a UID that simply has no resource
+ * behind it, and the CalDAV GET reports that rather than writing anywhere.
+ */
+const icalUidFor = (event: CalendarEvent): string | undefined => {
+  if (event.externalId) return event.externalId;
+  const tail = event.id.split(':').pop();
+  return tail && tail !== event.id ? tail : undefined;
+};
 
 /**
  * When looking up a single event by ID, expand the read window aggressively
@@ -126,12 +153,36 @@ class CalendarRepository implements ICalendarRepository {
   // because EventKit can't be queried for a single event by id directly via
   // `event`, and empty calendars don't appear in narrow windows. Centralize
   // the bounds here so both paths stay in sync.
-  private listEventsWideWindow(): Promise<EventJSON[]> {
+  private async listEventsWideWindow(): Promise<EventJSON[]> {
+    // EventKit clamps `predicateForEvents` to four years measured from the
+    // *start* date and drops the remainder without reporting it, so a single
+    // today±4y query silently returns the backward half only — no future
+    // event is ever visible, which made `findEventById` fail for every event
+    // that had not happened yet. Splitting at today keeps each half inside
+    // the limit. Both halves are inclusive of today, so ids are deduplicated.
     const today = new Date();
-    return this.listEvents(
-      formatDateOnly(shiftDays(today, -FIND_BY_ID_WINDOW_DAYS)),
-      formatDateOnly(shiftDays(today, FIND_BY_ID_WINDOW_DAYS)),
-    );
+    const midpoint = formatDateOnly(today);
+    const [past, future] = await Promise.all([
+      this.listEvents(
+        formatDateOnly(shiftDays(today, -FIND_BY_ID_WINDOW_DAYS)),
+        midpoint,
+      ),
+      this.listEvents(
+        midpoint,
+        formatDateOnly(shiftDays(today, FIND_BY_ID_WINDOW_DAYS)),
+      ),
+    ]);
+
+    const seen = new Set<string>();
+    const merged: EventJSON[] = [];
+    for (const event of [...past, ...future]) {
+      if (event.id) {
+        if (seen.has(event.id)) continue;
+        seen.add(event.id);
+      }
+      merged.push(event);
+    }
+    return merged;
   }
 
   async findEventById(id: string): Promise<CalendarEvent> {
@@ -273,6 +324,50 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--timezone', data.timeZone);
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
+  }
+
+  /**
+   * Attendee writes bypass the `event` CLI entirely: EventKit declares
+   * `attendees` read-only, so the CLI has no flag that could carry them. The
+   * event is resolved here first so the caller addresses it the same way as any
+   * other update — by id — while Calendar.app is driven by title and date,
+   * which is the only handle its scripting interface offers.
+   */
+  async addAttendees(
+    id: string,
+    emails: string[],
+  ): Promise<{ event: CalendarEvent; updated: number }> {
+    const event = await this.findEventById(id);
+    const { updated } = await addAttendeesToEvent({
+      calendarName: event.calendar,
+      summary: event.title,
+      date: toDateOnly(event.startDate),
+      attendees: emails.map((email) => ({ email })),
+    });
+    return { event, updated };
+  }
+
+  async exceptOccurrence(
+    id: string,
+    occurrenceDate: string,
+  ): Promise<{ event: CalendarEvent; excepted: string }> {
+    const event = await this.findEventById(id);
+    const uid = icalUidFor(event);
+    if (!uid) {
+      throw new CliUserError(
+        `Event '${id}' carries no iCalendar UID, so its CalDAV resource ` +
+          'cannot be located. Only iCloud-synced events can have a single ' +
+          'occurrence excepted.',
+      );
+    }
+    const credentials = await resolveCalDavCredentials();
+    const { excepted } = await exceptOccurrenceViaCalDav({
+      credentials,
+      calendarName: event.calendar,
+      uid,
+      occurrenceDate,
+    });
+    return { event, excepted };
   }
 
   async deleteEvent(id: string, span?: EventSpan): Promise<void> {

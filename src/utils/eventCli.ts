@@ -99,6 +99,19 @@ const fingerprintMatches = (
  */
 const DEFAULT_CLI_TIMEOUT_MS = 30_000;
 
+/**
+ * Ceiling on a single `event` invocation's stdout.
+ *
+ * `findEventById` has no way to ask EventKit for one event, so it lists the
+ * full ±4-year window across every calendar and filters in TS. On a busy
+ * account that JSON is already past 10 MB, which silently turned every
+ * id-addressed operation — update, attendee invite, occurrence exception —
+ * into a generic failure. Sized well above the observed worst case rather
+ * than trimmed to it, because overflowing costs a whole spawn and the buffer
+ * is transient.
+ */
+const MAX_CLI_STDOUT_BYTES = 64 * 1024 * 1024;
+
 // Node's internal timer clamps at 2^31 - 1 ms (emitting a
 // TimeoutOverflowWarning and killing ~immediately); clamp here so absurd
 // values mean "effectively no timeout" instead of an instant SIGKILL.
@@ -155,7 +168,7 @@ const execFilePromise = (
       cliPath,
       args,
       {
-        maxBuffer: 10 * 1024 * 1024,
+        maxBuffer: MAX_CLI_STDOUT_BYTES,
         timeout: timeoutMs,
         killSignal: 'SIGKILL',
       },
@@ -272,6 +285,18 @@ async function runEventCli(
   const stderr = bufferToString(result.stderr) ?? '';
 
   if (error) {
+    // Buffer overflow is checked ahead of the timeout branch because Node
+    // kills the child to enforce `maxBuffer` too, and the two diagnoses call
+    // for opposite fixes. Left unclassified it reaches the host as a bare
+    // Error and production formatting collapses it to "System error
+    // occurred", which names neither the cause nor the remedy.
+    if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+      throw new CliUserError(
+        `event execution failed: output exceeded the ${MAX_CLI_STDOUT_BYTES}-byte ` +
+          'read buffer. Reads spanning many years of a large account can outgrow it; ' +
+          'narrow the date range, or raise MAX_CLI_STDOUT_BYTES in eventCli.ts.',
+      );
+    }
     // Check the timeout first: `killed: true` is set only when *we* killed
     // the child (verified: external signal deaths leave it false), so it is
     // timeout-specific. stderr flushed before the kill is appended rather

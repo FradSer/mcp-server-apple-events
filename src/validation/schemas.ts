@@ -566,6 +566,25 @@ export const ReadCalendarEventsSchema = z.object({
   endDate: SafeDateSchema,
 });
 
+/**
+ * Attendee addresses for an update. Deliberately shape-checked rather than
+ * RFC 5322-complete: the value is interpolated into an AppleScript string
+ * literal, so the job here is rejecting anything that plainly is not an
+ * address, while `escapeAppleScriptString` handles the quoting.
+ */
+const ATTENDEE_EMAIL = VALIDATION.ATTENDEE_EMAIL_PATTERN;
+
+export const AttendeesSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .regex(ATTENDEE_EMAIL, 'Attendee must be a valid email address'),
+  )
+  .min(1, 'Provide at least one attendee')
+  .max(VALIDATION.MAX_ATTENDEES, 'Too many attendees in a single call')
+  .optional();
+
 export const UpdateCalendarEventSchema = z.object({
   id: SafeIdSchema,
   title: SafeTextSchema.optional(),
@@ -579,11 +598,13 @@ export const UpdateCalendarEventSchema = z.object({
     true,
   ),
   timezone: TimeZoneSchema,
+  attendees: AttendeesSchema,
 });
 
 export const DeleteCalendarEventSchema = z.object({
   id: SafeIdSchema,
   span: SpanSchema,
+  occurrenceDate: SafeDateSchema,
 });
 
 export const ReadCalendarsSchema = z

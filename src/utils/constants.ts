@@ -35,6 +35,13 @@ export const VALIDATION = {
   MAX_SEARCH_LENGTH: 100,
   MAX_URL_LENGTH: 500,
   MAX_LOCATION_LENGTH: 200,
+  MAX_ATTENDEES: 50,
+  /**
+   * Shape check for attendee addresses. Deliberately permissive on the local
+   * part — the job is rejecting anything that plainly is not an address before
+   * it reaches AppleScript interpolation, not full RFC 5322 validation.
+   */
+  ATTENDEE_EMAIL_PATTERN: /^[^\s@"\\]+@[^\s@"\\]+\.[^\s@"\\]+$/,
 } as const;
 
 /**

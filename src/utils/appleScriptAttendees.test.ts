@@ -1,0 +1,192 @@
+/**
+ * appleScriptAttendees.test.ts
+ *
+ * Attendee writes go through Calendar.app's AppleScript interface rather than
+ * EventKit, because `EKCalendarItem.attendees` is read-only at the SDK level
+ * while `make new attendee ... with properties` is not. Adding the attendee
+ * locally causes iCloud's CalDAV server to send the invitation.
+ *
+ * The script is assembled by interpolating user-supplied text (calendar names,
+ * event titles, addresses) into an AppleScript source string, so escaping is
+ * the primary risk and gets the most coverage here.
+ */
+
+import { execFile } from 'node:child_process';
+import {
+  AmbiguousEventError,
+  addAttendeesToEvent,
+  buildAttendeeScript,
+  EventNotFoundError,
+  escapeAppleScriptString,
+} from './appleScriptAttendees.js';
+
+jest.mock('node:child_process');
+
+const mockExecFile = execFile as unknown as jest.Mock;
+
+const respondWith = (
+  stdout: string,
+  stderr = '',
+  error: Error | null = null,
+) => {
+  mockExecFile.mockImplementation(
+    (_cmd: string, _args: string[], _opts: unknown, cb: unknown) => {
+      const callback = (typeof _opts === 'function' ? _opts : cb) as (
+        e: Error | null,
+        o: string,
+        s: string,
+      ) => void;
+      callback(error, stdout, stderr);
+      return undefined;
+    },
+  );
+};
+
+beforeEach(() => {
+  mockExecFile.mockReset();
+});
+
+describe('escapeAppleScriptString', () => {
+  it('escapes double quotes', () => {
+    expect(escapeAppleScriptString('Sam\'s "Big" Meeting')).toBe(
+      'Sam\'s \\"Big\\" Meeting',
+    );
+  });
+
+  it('escapes backslashes before quotes so the escape cannot be escaped away', () => {
+    expect(escapeAppleScriptString('a\\b"c')).toBe('a\\\\b\\"c');
+  });
+
+  it.each([
+    ['newline', 'a\nb'],
+    ['carriage return', 'a\rb'],
+    ['null byte', 'a\0b'],
+    ['tab', 'a\tb'],
+  ])('rejects %s rather than emitting a broken literal', (_label, value) => {
+    expect(() => escapeAppleScriptString(value)).toThrow(/control character/i);
+  });
+
+  it('leaves ordinary unicode intact', () => {
+    expect(escapeAppleScriptString('MKTG 300 — Class 1 · KSB')).toBe(
+      'MKTG 300 — Class 1 · KSB',
+    );
+  });
+});
+
+describe('buildAttendeeScript — injection resistance', () => {
+  const base = {
+    calendarName: 'Work / Projects',
+    summary: 'Class 1',
+    date: '2026-08-31',
+    attendees: [{ email: 'a@b.com', name: 'A B' }],
+  };
+
+  it('neutralises an attempt to break out of the string and run a command', () => {
+    const script = buildAttendeeScript({
+      ...base,
+      summary: '" & (do shell script "whoami") & "',
+    });
+    expect(script).not.toContain('do shell script "whoami"');
+    expect(script).toContain('\\" & (do shell script \\"whoami\\") & \\"');
+  });
+
+  it('neutralises a quote injected through the calendar name', () => {
+    const script = buildAttendeeScript({
+      ...base,
+      calendarName: 'X" of application "Finder',
+    });
+    expect(script).toContain('X\\" of application \\"Finder');
+  });
+
+  it('neutralises a quote injected through an attendee name', () => {
+    const script = buildAttendeeScript({
+      ...base,
+      attendees: [{ email: 'a@b.com', name: 'Evil" }, {email:"x' }],
+    });
+    expect(script).toContain('Evil\\" }, {email:\\"x');
+  });
+
+  it('rejects an address that is not a plausible email', () => {
+    expect(() =>
+      buildAttendeeScript({ ...base, attendees: [{ email: 'not an email' }] }),
+    ).toThrow(/email/i);
+  });
+
+  it('rejects a malformed date rather than interpolating it', () => {
+    expect(() => buildAttendeeScript({ ...base, date: '31/08/2026' })).toThrow(
+      /date/i,
+    );
+  });
+
+  it('emits one make-new-attendee per address', () => {
+    const script = buildAttendeeScript({
+      ...base,
+      attendees: [{ email: 'a@b.com' }, { email: 'c@d.com' }],
+    });
+    expect(script.match(/make new attendee/g)).toHaveLength(2);
+  });
+
+  it('refuses ambiguity in the script itself rather than picking an event', () => {
+    const script = buildAttendeeScript(base);
+    expect(script).toContain('AMBIGUOUS');
+    expect(script).toContain('NOTFOUND');
+  });
+});
+
+describe('addAttendeesToEvent', () => {
+  const args = {
+    calendarName: 'Calendar',
+    summary: 'Test',
+    date: '2026-10-02',
+    attendees: [{ email: 'a@b.com' }],
+  };
+
+  it('invokes osascript with argv, never a shell string', async () => {
+    respondWith('OK:1');
+    await addAttendeesToEvent(args);
+    const [cmd, argv] = mockExecFile.mock.calls[0] as [string, string[]];
+    expect(cmd).toBe('osascript');
+    expect(argv[0]).toBe('-e');
+    expect(argv).toHaveLength(2);
+  });
+
+  it('resolves with the number of events updated', async () => {
+    respondWith('OK:1');
+    await expect(addAttendeesToEvent(args)).resolves.toEqual({ updated: 1 });
+  });
+
+  it('raises EventNotFoundError when nothing matched', async () => {
+    respondWith('NOTFOUND');
+    await expect(addAttendeesToEvent(args)).rejects.toBeInstanceOf(
+      EventNotFoundError,
+    );
+  });
+
+  // AppleScript can only address events by title and date, so more than one
+  // match means we cannot tell which event was meant. Guessing would write to
+  // the wrong event and send a real invitation for it.
+  it('raises AmbiguousEventError rather than guessing when several matched', async () => {
+    respondWith('AMBIGUOUS:3');
+    await expect(addAttendeesToEvent(args)).rejects.toThrow(/3/);
+    await expect(addAttendeesToEvent(args)).rejects.toBeInstanceOf(
+      AmbiguousEventError,
+    );
+  });
+
+  it('surfaces an osascript failure with its stderr', async () => {
+    respondWith(
+      '',
+      'execution error: Not authorized (-1743)',
+      new Error('failed'),
+    );
+    await expect(addAttendeesToEvent(args)).rejects.toThrow(
+      /-1743|not authorized/i,
+    );
+  });
+
+  it('rejects an empty attendee list instead of running a pointless script', async () => {
+    await expect(
+      addAttendeesToEvent({ ...args, attendees: [] }),
+    ).rejects.toThrow(/at least one/i);
+  });
+});

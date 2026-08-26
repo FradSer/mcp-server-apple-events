@@ -338,6 +338,10 @@ export interface CalendarToolArgs extends BaseToolArgs {
   location?: string;
   timezone?: string;
   span?: 'this-event' | 'future-events'; // delete only
+  /** Email addresses to invite. Update only; routed via Calendar.app scripting. */
+  attendees?: string[];
+  /** Start of the specific occurrence to except. Delete only; routed via CalDAV. */
+  occurrenceDate?: string;
   targetCalendar?: string; // create only
 }
 
