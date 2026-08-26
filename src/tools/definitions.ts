@@ -42,7 +42,7 @@ export const TOOLS: Tool[] = [
         dueDate: {
           type: 'string',
           description:
-            "Due date. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time without timezone, e.g., '2025-11-04 18:00:00'). Also supports: 'YYYY-MM-DD', 'YYYY-MM-DDTHH:mm:ss', or ISO 8601 with timezone (e.g., '2025-10-30T04:00:00Z'). When no timezone is specified, the time is interpreted as local time.",
+            "Due date. Use 'YYYY-MM-DD' (no time) for an all-day reminder, which Reminders.app shows as a day without a time. For a specific time use 'YYYY-MM-DD HH:mm:ss' (local time without timezone, e.g., '2025-11-04 18:00:00'). Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone (e.g., '2025-10-30T04:00:00Z'). When no timezone is specified, the time is interpreted as local time.",
         },
         note: {
           type: 'string',
@@ -92,7 +92,7 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Start date. When action='update': sets the reminder's start date (the CLI cannot set it at create time) — format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601. When action='read': start of the due-date window, passed to the CLI as `--start` (start day inclusive). For read, only the date part is used — any time/zone component is truncated to the date prefix, so a window is resolved at day granularity. If only one of startDate/endDate is supplied for read, the other is filled in as a 14-day window.",
+            "Start date. When action='update': sets the reminder's start date (the CLI cannot set it at create time) — 'YYYY-MM-DD' (no time) keeps it all-day, 'YYYY-MM-DD HH:mm:ss' or ISO 8601 set a time. When action='read': start of the due-date window, passed to the CLI as `--start` (start day inclusive). For read, only the date part is used — any time/zone component is truncated to the date prefix, so a window is resolved at day granularity. If only one of startDate/endDate is supplied for read, the other is filled in as a 14-day window.",
         },
         endDate: {
           type: 'string',
