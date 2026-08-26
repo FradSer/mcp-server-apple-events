@@ -237,7 +237,14 @@ export const exceptOccurrence = (
   lines.forEach((line, index) => {
     if (doomed.some((b) => index >= b.start && index <= b.end)) return;
     const inMaster = index >= master.start && index <= master.end;
-    if (index === master.end && !alreadyExcepted) out.push(exdate);
+    if (index === master.end) {
+      if (!alreadyExcepted) out.push(exdate);
+      // Emitted here rather than spliced afterwards: an index into `lines` does
+      // not survive into `out` once doomed blocks are dropped, and searching
+      // `out` for the first END:VEVENT would land in whichever block happens to
+      // come first — nothing in this function requires that to be the master.
+      if (sequenceLine === undefined) out.push('SEQUENCE:1');
+    }
     if (inMaster && propName(line) === 'SEQUENCE') {
       out.push(`SEQUENCE:${Number.isNaN(sequence) ? 1 : sequence + 1}`);
     } else if (inMaster && propName(line) === 'DTSTAMP') {
@@ -247,8 +254,5 @@ export const exceptOccurrence = (
     }
   });
 
-  if (sequenceLine === undefined) {
-    out.splice(out.indexOf('END:VEVENT'), 0, 'SEQUENCE:1');
-  }
   return out;
 };

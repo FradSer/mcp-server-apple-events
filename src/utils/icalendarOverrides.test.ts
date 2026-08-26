@@ -115,3 +115,66 @@ describe('exceptOccurrence — series that already has overrides', () => {
     );
   });
 });
+
+/**
+ * Regression: the SEQUENCE fallback used to splice at the first END:VEVENT in
+ * the output. Everything else here is order-agnostic, so nothing guarantees the
+ * master is the first block — and SEQUENCE is optional in RFC 5545, so a
+ * resource written by another client may omit it. Together those put the bump
+ * inside an unrelated override and leave the master unbumped, which a server
+ * may then treat as an unchanged revision: the exact non-application this
+ * function exists to prevent.
+ */
+describe('exceptOccurrence — master that is neither first nor SEQUENCE-bearing', () => {
+  const overrideFirst = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    // override precedes the master, and is NOT the instant being excepted
+    'BEGIN:VEVENT',
+    'UID:abc',
+    'RECURRENCE-ID;TZID=America/Los_Angeles:20260914T090000',
+    'DTSTART;TZID=America/Los_Angeles:20260914T110000',
+    'SUMMARY:moved one',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'UID:abc',
+    'DTSTAMP:20260823T000000Z',
+    'DTSTART;TZID=America/Los_Angeles:20260907T090000',
+    'RRULE:FREQ=WEEKLY;COUNT=6',
+    'SUMMARY:the master',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+
+  const blockOf = (lines: string[], summary: string) => {
+    const at = lines.indexOf(`SUMMARY:${summary}`);
+    const start = lines.lastIndexOf('BEGIN:VEVENT', at);
+    const end = lines.indexOf('END:VEVENT', at);
+    return lines.slice(start, end + 1);
+  };
+
+  it('puts the SEQUENCE bump in the master, not the preceding override', () => {
+    const out = exceptOccurrence(overrideFirst, '20260921T090000');
+    expect(blockOf(out, 'the master')).toContain('SEQUENCE:1');
+    expect(blockOf(out, 'moved one')).not.toContain('SEQUENCE:1');
+  });
+
+  it('puts the EXDATE in the master too', () => {
+    const out = exceptOccurrence(overrideFirst, '20260921T090000');
+    expect(blockOf(out, 'the master')).toContain(
+      'EXDATE;TZID=America/Los_Angeles:20260921T090000',
+    );
+  });
+
+  it('leaves the preceding override otherwise untouched', () => {
+    const out = exceptOccurrence(overrideFirst, '20260921T090000');
+    expect(blockOf(out, 'moved one')).toEqual(
+      blockOf(overrideFirst, 'moved one'),
+    );
+  });
+
+  it('adds exactly one SEQUENCE line across the whole resource', () => {
+    const out = exceptOccurrence(overrideFirst, '20260921T090000');
+    expect(out.filter((l) => propName(l) === 'SEQUENCE')).toHaveLength(1);
+  });
+});
