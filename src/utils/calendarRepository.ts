@@ -18,7 +18,13 @@ import type {
 import { addAttendeesToEvent } from './appleScriptAttendees.js';
 import { resolveCalDavCredentials } from './caldavCredentials.js';
 import { exceptOccurrenceViaCalDav } from './caldavOccurrence.js';
-import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
+import {
+  formatDateOnly,
+  shiftDays,
+  toDateOnly,
+  toWindowEnd,
+  toWindowStart,
+} from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import { addOptionalArg, nullToUndefined } from './helpers.js';
@@ -67,15 +73,17 @@ const resolveReadDateRange = (filters: {
 
   if (filters.startDate && filters.endDate) {
     return {
-      startDate: toDateOnly(filters.startDate),
-      endDate: toDateOnly(filters.endDate),
+      startDate: toWindowStart(filters.startDate),
+      endDate: toWindowEnd(filters.endDate),
     };
   }
 
   if (!filters.startDate && !filters.endDate) {
     return {
       startDate: formatDateOnly(today),
-      endDate: formatDateOnly(shiftDays(today, DEFAULT_READ_WINDOW_DAYS)),
+      endDate: toWindowEnd(
+        formatDateOnly(shiftDays(today, DEFAULT_READ_WINDOW_DAYS)),
+      ),
     };
   }
 
@@ -85,9 +93,9 @@ const resolveReadDateRange = (filters: {
     // native `Date` constructor silently coerces to March 2.
     const start = parseReminderDueDate(filters.startDate);
     return {
-      startDate: toDateOnly(filters.startDate),
-      endDate: formatDateOnly(
-        shiftDays(start ?? today, DEFAULT_READ_WINDOW_DAYS),
+      startDate: toWindowStart(filters.startDate),
+      endDate: toWindowEnd(
+        formatDateOnly(shiftDays(start ?? today, DEFAULT_READ_WINDOW_DAYS)),
       ),
     };
   }
@@ -99,7 +107,7 @@ const resolveReadDateRange = (filters: {
     startDate: formatDateOnly(
       shiftDays(end ?? today, -DEFAULT_READ_WINDOW_DAYS),
     ),
-    endDate: toDateOnly(endStr),
+    endDate: toWindowEnd(endStr),
   };
 };
 

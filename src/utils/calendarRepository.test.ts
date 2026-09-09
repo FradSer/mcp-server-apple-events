@@ -133,7 +133,10 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[args.indexOf('--calendar') + 1]).toBe('Work');
     });
 
-    it('strips the time component from caller-supplied dates so `event` accepts them', async () => {
+    it('passes a caller-supplied time component through to `event`', async () => {
+      // `event` validates `yyyy-MM-dd HH:mm:ss` and ISO 8601 as well as bare
+      // dates, so a window bound keeps its time instead of being truncated.
+      // Truncating it made a bound like `... 23:59:59` collapse to midnight.
       mockJson.mockResolvedValueOnce([]);
 
       await calendarRepository.findEvents({
@@ -142,8 +145,23 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
+      expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04 09:00:00');
+      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05T12:34:56Z');
+    });
+
+    it('returns events on the end date when the window is a single day', async () => {
+      // Regression: both bounds parsed to midnight, so `predicateForEvents`
+      // received a zero-width interval and matched nothing.
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({
+        startDate: '2026-09-10',
+        endDate: '2026-09-10',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2026-09-10');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-09-10 23:59:59');
     });
 
     it('applies TS-side search filter against title, notes, and location', async () => {
@@ -233,7 +251,9 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       const args = mockJson.mock.calls[0]![0];
       expect(args[args.indexOf('--start') + 1]).toBe('2026-05-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-05-11');
+      // The end bound covers the whole day it names, so the caller's last day
+      // is included rather than silently dropped.
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-05-11 23:59:59');
       expect(result).toEqual([
         { id: 'Personal', title: 'Personal', eventCount: 1 },
         { id: 'Work', title: 'Work', eventCount: 2 },

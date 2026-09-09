@@ -99,11 +99,46 @@ export function shiftDays(date: Date, days: number): Date {
 }
 
 /**
- * Trims a caller-supplied date to a bare `yyyy-MM-dd` bound. The `event` CLI
- * only accepts date-only window bounds, so any time component is dropped
- * rather than passed through.
+ * Trims a caller-supplied date to a bare `yyyy-MM-dd` bound.
+ *
+ * Use this for values that are genuinely date-only (an all-day event's date,
+ * for instance). For read-window bounds prefer `toWindowStart`/`toWindowEnd`:
+ * the `event` CLI validates `yyyy-MM-dd HH:mm:ss` and ISO 8601 as well, so a
+ * window bound does not need its time component removed.
  */
 export function toDateOnly(value: string): string {
   const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
   return match?.[1] ?? value;
+}
+
+/** Matches a caller-supplied bound that already carries a time component. */
+const BOUND_HAS_TIME = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2})/;
+
+/**
+ * Resolves the start of a calendar read window.
+ *
+ * Midnight is already the right reading of a date-only bound, so this only
+ * preserves a time the caller supplied rather than discarding it.
+ */
+export function toWindowStart(value: string): string {
+  return BOUND_HAS_TIME.test(value) ? value : toDateOnly(value);
+}
+
+/**
+ * Resolves the end of a calendar read window.
+ *
+ * `EKEventStore.predicateForEvents(withStart:end:)` matches events overlapping
+ * the interval between the two instants, so a date-only end bound parses to
+ * midnight and excludes the entire day it names. Asking for a single day
+ * (start and end on the same date) then collapses to a zero-width window that
+ * matches nothing at all, and the caller gets a confident empty result rather
+ * than an error.
+ *
+ * Expand a date-only bound to the final second of that day, and pass a bound
+ * that already carries a time straight through.
+ */
+export function toWindowEnd(value: string): string {
+  if (BOUND_HAS_TIME.test(value)) return value;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? `${match[1]} 23:59:59` : value;
 }

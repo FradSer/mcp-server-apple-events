@@ -8,6 +8,8 @@ import {
   getWeekStart,
   shiftDays,
   toDateOnly,
+  toWindowEnd,
+  toWindowStart,
 } from './dateUtils.js';
 
 describe('getWeekStart', () => {
@@ -81,5 +83,40 @@ describe('getWeekStart', () => {
     it('leaves non-matching input untouched (caller validation surfaces the error)', () => {
       expect(toDateOnly('not-a-date')).toBe('not-a-date');
     });
+  });
+});
+
+describe('toWindowStart', () => {
+  it('keeps a time component the caller supplied', () => {
+    expect(toWindowStart('2026-09-10 08:15:00')).toBe('2026-09-10 08:15:00');
+    expect(toWindowStart('2026-09-10T08:15:00Z')).toBe('2026-09-10T08:15:00Z');
+  });
+
+  it('leaves a date-only bound at midnight', () => {
+    expect(toWindowStart('2026-09-10')).toBe('2026-09-10');
+  });
+});
+
+describe('toWindowEnd', () => {
+  it('expands a date-only bound to the end of that day', () => {
+    expect(toWindowEnd('2026-09-10')).toBe('2026-09-10 23:59:59');
+  });
+
+  it('keeps a time component the caller supplied', () => {
+    expect(toWindowEnd('2026-09-10 23:59:59')).toBe('2026-09-10 23:59:59');
+    expect(toWindowEnd('2026-09-10T23:59:59Z')).toBe('2026-09-10T23:59:59Z');
+  });
+
+  it('passes an unparseable value through untouched', () => {
+    expect(toWindowEnd('not-a-date')).toBe('not-a-date');
+  });
+
+  it('gives a single-day window a non-zero width', () => {
+    // Regression: start and end on the same date both parsed to midnight,
+    // producing an empty interval that matched no events.
+    const start = toWindowStart('2026-09-10');
+    const end = toWindowEnd('2026-09-10');
+    expect(start).not.toBe(end);
+    expect(new Date(end).getTime()).toBeGreaterThan(new Date(start).getTime());
   });
 });
