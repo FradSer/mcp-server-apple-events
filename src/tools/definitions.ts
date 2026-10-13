@@ -202,12 +202,12 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Start date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time, e.g., '2025-11-04 09:00:00'). Use 'YYYY-MM-DD' (no time) for all-day events. Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone. For action='read': if omitted and endDate is omitted, defaults to today; if only endDate is provided, startDate defaults to endDate - 14 days.",
+            "Start date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time, e.g., '2025-11-04 09:00:00'). Use 'YYYY-MM-DD' (no time) for all-day events. Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone. For action='read', the CLI uses date-only bounds, so any time or timezone is truncated to the date prefix. If omitted and endDate is omitted, defaults to today; if only endDate is provided, startDate defaults to a 14-day window ending at that bound.",
         },
         endDate: {
           type: 'string',
           description:
-            "End date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time). Use 'YYYY-MM-DD' (no time) for all-day events. Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone. For action='read': if omitted and startDate is omitted, defaults to today + 14 days; if only startDate is provided, endDate defaults to startDate + 14 days.",
+            "End date and time. RECOMMENDED format: 'YYYY-MM-DD HH:mm:ss' (local time). Use 'YYYY-MM-DD' (no time) for all-day events. Also supports 'YYYY-MM-DDTHH:mm:ss' or ISO 8601 with timezone. For action='read', the CLI uses date-only bounds: a date-only or non-midnight end includes its named day, while a midnight end is an exclusive boundary. If omitted and startDate is omitted, defaults to today + 14 days; if only startDate is provided, endDate defaults to startDate + 14 days.",
         },
         note: {
           type: 'string',
@@ -283,12 +283,12 @@ export const TOOLS: Tool[] = [
         startDate: {
           type: 'string',
           description:
-            "Optional range start for scoped calendar discovery. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601. If only one of startDate/endDate is supplied, the other is filled in as a 14-day window from the bound that was given.",
+            "Optional range start for scoped calendar discovery. Format: 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601. The CLI uses date-only bounds, so any time or timezone is truncated to the date prefix. If only one of startDate/endDate is supplied, the other is filled in to make a 14-day window.",
         },
         endDate: {
           type: 'string',
           description:
-            'Optional range end for scoped calendar discovery. When used with startDate, only calendars with at least one event in the range are returned, each annotated with the in-range event count (recurring events count as one per instance). endDate must be on or after startDate.',
+            'Optional range end for scoped calendar discovery. A date-only or non-midnight value includes its named day; a midnight value is an exclusive boundary. When used with startDate, only calendars with at least one event in the range are returned, each annotated with the in-range event count (recurring events count as one per instance). endDate must be on or after startDate.',
         },
       },
       required: ['action'],

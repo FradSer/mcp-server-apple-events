@@ -22,7 +22,11 @@ import {
   applyReminderFilters,
   prefilterReminderJsons,
 } from './dateFiltering.js';
-import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
+import {
+  formatDateOnlyOrFallback,
+  shiftDays,
+  toDateOnly,
+} from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import {
@@ -110,10 +114,12 @@ const resolveReadDateWindow = (filters: {
     // date-prefix so a DST-gap time (e.g. 2026-03-08 02:30:00 in a spring-forward
     // zone) still anchors the fill to the supplied date instead of today.
     const start = parseReminderDueDate(toDateOnly(filters.startDate));
+    const startDate = toDateOnly(filters.startDate);
     return {
-      startDate: toDateOnly(filters.startDate),
-      endDate: formatDateOnly(
+      startDate,
+      endDate: formatDateOnlyOrFallback(
         shiftDays(start ?? new Date(), DEFAULT_READ_WINDOW_DAYS),
+        startDate,
       ),
     };
   }
@@ -122,8 +128,9 @@ const resolveReadDateWindow = (filters: {
   const endStr = filters.endDate as string;
   const end = parseReminderDueDate(toDateOnly(endStr));
   return {
-    startDate: formatDateOnly(
+    startDate: formatDateOnlyOrFallback(
       shiftDays(end ?? new Date(), -DEFAULT_READ_WINDOW_DAYS),
+      toDateOnly(endStr),
     ),
     endDate: toDateOnly(endStr),
   };

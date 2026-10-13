@@ -82,10 +82,26 @@ export function getDateStart(date: Date): Date {
  * accepts for `calendar list` / `reminders list` window bounds.
  */
 export function formatDateOnly(date: Date): string {
-  const year = date.getFullYear();
+  const numericYear = date.getFullYear();
+  if (!Number.isInteger(numericYear) || numericYear < 0 || numericYear > 9999) {
+    throw new RangeError(
+      `Date year must be between 0000 and 9999 to format as yyyy-MM-dd, got: ${numericYear}`,
+    );
+  }
+
+  const year = String(numericYear).padStart(4, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Formats a date-only bound when its year fits yyyy; otherwise preserves a
+ * caller-supplied bound that already has the required four-digit shape.
+ */
+export function formatDateOnlyOrFallback(date: Date, fallback: string): string {
+  const year = date.getFullYear();
+  return year < 0 || year > 9999 ? fallback : formatDateOnly(date);
 }
 
 /**
