@@ -214,6 +214,27 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(startDate).not.toBe('2026-08-24');
     });
 
+    it('keeps an inferred end within four digits for the maximum start date', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await reminderRepository.findReminders({ startDate: '9999-12-31' });
+
+      const call = mockJson.mock.calls[0]?.[0] as string[];
+      expect(call[call.indexOf('--end') + 1]).toBe('9999-12-31');
+      expect(call[call.indexOf('--end') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('keeps an inferred start within four digits for a year-zero end', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await reminderRepository.findReminders({ endDate: '0000-01-01' });
+
+      const call = mockJson.mock.calls[0]?.[0] as string[];
+      expect(call[call.indexOf('--start') + 1]).toBe('0000-01-01');
+      expect(call[call.indexOf('--start') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(call[call.indexOf('--end') + 1]).toBe('0000-01-01');
+    });
+
     it('falls back to today when an unparseable bound is used to size the window', async () => {
       mockJson.mockResolvedValueOnce([]);
 

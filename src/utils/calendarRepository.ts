@@ -18,7 +18,12 @@ import type {
 import { addAttendeesToEvent } from './appleScriptAttendees.js';
 import { resolveCalDavCredentials } from './caldavCredentials.js';
 import { exceptOccurrenceViaCalDav } from './caldavOccurrence.js';
-import { formatDateOnly, shiftDays, toDateOnly } from './dateUtils.js';
+import {
+  formatDateOnly,
+  formatDateOnlyOrFallback,
+  shiftDays,
+  toDateOnly,
+} from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import { addOptionalArg, nullToUndefined } from './helpers.js';
@@ -58,11 +63,6 @@ const icalUidFor = (event: CalendarEvent): string | undefined => {
  * roughly that to stay within Apple's limits.
  */
 const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
-
-const formatDateOnlyOrFallback = (date: Date, fallback: string): string => {
-  const year = date.getFullYear();
-  return year < 0 || year > 9999 ? fallback : formatDateOnly(date);
-};
 
 /**
  * `calendar list` accepts date-only bounds and treats its end as exclusive.

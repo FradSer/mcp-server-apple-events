@@ -96,6 +96,15 @@ export function formatDateOnly(date: Date): string {
 }
 
 /**
+ * Formats a date-only bound when its year fits yyyy; otherwise preserves a
+ * caller-supplied bound that already has the required four-digit shape.
+ */
+export function formatDateOnlyOrFallback(date: Date, fallback: string): string {
+  const year = date.getFullYear();
+  return year < 0 || year > 9999 ? fallback : formatDateOnly(date);
+}
+
+/**
  * Returns a new Date shifted by `days` (negative for the past), leaving the
  * argument untouched.
  */
