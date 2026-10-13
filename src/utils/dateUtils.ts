@@ -82,7 +82,14 @@ export function getDateStart(date: Date): Date {
  * accepts for `calendar list` / `reminders list` window bounds.
  */
 export function formatDateOnly(date: Date): string {
-  const year = String(date.getFullYear()).padStart(4, '0');
+  const numericYear = date.getFullYear();
+  if (!Number.isInteger(numericYear) || numericYear < 0 || numericYear > 9999) {
+    throw new RangeError(
+      `Date year must be between 0000 and 9999 to format as yyyy-MM-dd, got: ${numericYear}`,
+    );
+  }
+
+  const year = String(numericYear).padStart(4, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;

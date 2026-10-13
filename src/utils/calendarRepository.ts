@@ -59,6 +59,11 @@ const icalUidFor = (event: CalendarEvent): string | undefined => {
  */
 const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
 
+const formatDateOnlyOrFallback = (date: Date, fallback: string): string => {
+  const year = date.getFullYear();
+  return year < 0 || year > 9999 ? fallback : formatDateOnly(date);
+};
+
 /**
  * `calendar list` accepts date-only bounds and treats its end as exclusive.
  * Caller-supplied date-only and non-midnight end values name a day to include,
@@ -80,9 +85,7 @@ const toCalendarReadEnd = (value: string): string => {
   if (!parsedEndDate) return endDate;
 
   const exclusiveEndDate = shiftDays(parsedEndDate, 1);
-  return exclusiveEndDate.getFullYear() > 9999
-    ? endDate
-    : formatDateOnly(exclusiveEndDate);
+  return formatDateOnlyOrFallback(exclusiveEndDate, endDate);
 };
 
 const resolveReadDateRange = (filters: {
@@ -110,10 +113,12 @@ const resolveReadDateRange = (filters: {
     // pipeline; it rejects auto-corrected dates like `2025-02-30` that the
     // native `Date` constructor silently coerces to March 2.
     const start = parseReminderDueDate(toDateOnly(filters.startDate));
+    const startDate = toDateOnly(filters.startDate);
     return {
-      startDate: toDateOnly(filters.startDate),
-      endDate: formatDateOnly(
+      startDate,
+      endDate: formatDateOnlyOrFallback(
         shiftDays(start ?? today, DEFAULT_READ_WINDOW_DAYS),
+        startDate,
       ),
     };
   }
@@ -123,8 +128,9 @@ const resolveReadDateRange = (filters: {
   const endDate = toCalendarReadEnd(endStr);
   const end = parseReminderDueDate(endDate);
   return {
-    startDate: formatDateOnly(
+    startDate: formatDateOnlyOrFallback(
       shiftDays(end ?? today, -DEFAULT_READ_WINDOW_DAYS),
+      toDateOnly(endStr),
     ),
     endDate,
   };

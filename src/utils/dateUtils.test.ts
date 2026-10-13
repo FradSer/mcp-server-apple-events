@@ -57,6 +57,15 @@ describe('getWeekStart', () => {
 
       expect(formatDateOnly(date)).toBe('0005-06-02');
     });
+
+    it('rejects years that cannot be represented as yyyy', () => {
+      const date = new Date(2026, 5, 2);
+      date.setFullYear(-1);
+      expect(() => formatDateOnly(date)).toThrow(RangeError);
+
+      date.setFullYear(10000);
+      expect(() => formatDateOnly(date)).toThrow(RangeError);
+    });
   });
 
   describe('shiftDays', () => {

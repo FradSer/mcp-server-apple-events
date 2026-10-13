@@ -200,6 +200,27 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[args.indexOf('--end') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
+    it('keeps an inferred end within four digits for the maximum start date', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({ startDate: '9999-12-31' });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--end') + 1]).toBe('9999-12-31');
+      expect(args[args.indexOf('--end') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('keeps an inferred start within four digits for a year-zero end', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({ endDate: '0000-01-01' });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--start') + 1]).toBe('0000-01-01');
+      expect(args[args.indexOf('--start') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(args[args.indexOf('--end') + 1]).toBe('0000-01-02');
+    });
+
     it('extends a supplied date-only end when it fills the missing start', async () => {
       mockJson.mockResolvedValueOnce([]);
 
