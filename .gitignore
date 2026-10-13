@@ -234,6 +234,7 @@ dist
 
 ### custom rules ###
 # Based on https://raw.githubusercontent.com/github/gitignore/main/Node.gitignore
+.agents/worktrees/
 
 # Logs
 

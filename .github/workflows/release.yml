@@ -64,12 +64,12 @@ jobs:
 
           curl --fail --location --silent --show-error \
             --output "$work_dir/event-darwin-amd64.tar.gz" \
-            https://github.com/FradSer/event/releases/download/v0.6.0/event-darwin-amd64.tar.gz
+            https://github.com/FradSer/event/releases/download/v0.7.0/event-darwin-amd64.tar.gz
           curl --fail --location --silent --show-error \
             --output "$work_dir/event-darwin-arm64.tar.gz" \
-            https://github.com/FradSer/event/releases/download/v0.6.0/event-darwin-arm64.tar.gz
-          echo "0b08719dcc8a035f5219bb4867fa82dbd31da12121cbcacc046b5d7ee1756c26  $work_dir/event-darwin-amd64.tar.gz" | shasum -a 256 -c -
-          echo "a03eea57f162c237c9627907bb21da9db8474e9a1e04d5795e181751d87ab74f  $work_dir/event-darwin-arm64.tar.gz" | shasum -a 256 -c -
+            https://github.com/FradSer/event/releases/download/v0.7.0/event-darwin-arm64.tar.gz
+          echo "f76fd84fe029fc04ee3c9282e64d1c61638631c59107a7bd94da63e76ba459f1  $work_dir/event-darwin-amd64.tar.gz" | shasum -a 256 -c -
+          echo "e2c36e758143c06a1d4c1c11367aa8857196a96b71122dc3fe17a36bd82324f4  $work_dir/event-darwin-arm64.tar.gz" | shasum -a 256 -c -
           tar -xzf "$work_dir/event-darwin-amd64.tar.gz" -C "$work_dir/amd64"
           tar -xzf "$work_dir/event-darwin-arm64.tar.gz" -C "$work_dir/arm64"
 
@@ -101,6 +101,10 @@ jobs:
           echo "=== Architecture ==="
           lipo -info bin/event | tee /tmp/lipo.out
           grep -q "are: x86_64 arm64\|are: arm64 x86_64" /tmp/lipo.out
+          echo "=== Reminder date-window options ==="
+          bin/event reminders list --help > /tmp/reminders-list-help.out 2>&1
+          grep -q -- '--start' /tmp/reminders-list-help.out
+          grep -q -- '--end' /tmp/reminders-list-help.out
           echo "=== Code signature ==="
           codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
           ! grep -q "Authority=" /tmp/codesign.out

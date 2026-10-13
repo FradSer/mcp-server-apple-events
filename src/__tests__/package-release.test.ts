@@ -42,14 +42,23 @@ describe('release package contents', () => {
     expect(releaseWorkflow).not.toMatch(/bin\/EventKitCLI/);
   });
 
-  it('downloads and packages the upstream event release assets', () => {
+  it('packages the event release with reminder date-window support', () => {
     expect(releaseWorkflow).toMatch(
-      /FradSer\/event\/releases\/download\/v0\.6\.0\/event-darwin-amd64\.tar\.gz/,
+      /FradSer\/event\/releases\/download\/v0\.7\.0\/event-darwin-amd64\.tar\.gz/,
     );
     expect(releaseWorkflow).toMatch(
-      /FradSer\/event\/releases\/download\/v0\.6\.0\/event-darwin-arm64\.tar\.gz/,
+      /FradSer\/event\/releases\/download\/v0\.7\.0\/event-darwin-arm64\.tar\.gz/,
+    );
+    expect(releaseWorkflow).toMatch(
+      /f76fd84fe029fc04ee3c9282e64d1c61638631c59107a7bd94da63e76ba459f1\s+\$work_dir\/event-darwin-amd64\.tar\.gz/,
+    );
+    expect(releaseWorkflow).toMatch(
+      /e2c36e758143c06a1d4c1c11367aa8857196a96b71122dc3fe17a36bd82324f4\s+\$work_dir\/event-darwin-arm64\.tar\.gz/,
     );
     expect(releaseWorkflow).toMatch(/lipo -create/);
+    expect(releaseWorkflow).toMatch(/bin\/event reminders list --help/);
+    expect(releaseWorkflow).toMatch(/grep -q -- '--start'/);
+    expect(releaseWorkflow).toMatch(/grep -q -- '--end'/);
     expect(releaseWorkflow).toMatch(/scripts\/disclaim\.c/);
     expect(releaseWorkflow).toMatch(/scripts\/event-Info\.plist/);
     expect(releaseWorkflow).toMatch(/scripts\/event\.entitlements/);

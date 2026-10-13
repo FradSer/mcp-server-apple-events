@@ -62,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reminder date-window reads in npm releases**
+  ([#131](https://github.com/FradSer/mcp-server-apple-events/issues/131)) —
+  package the `event` CLI version that accepts the `--start` and `--end`
+  arguments used by `reminders_tasks` when `startDate` or `endDate` is
+  provided.
+
 - **EventKit permission prompts now appear from any desktop MCP client**
   (Codex Desktop, Claude Desktop, Cursor, …) — fixes
   [#93](https://github.com/FradSer/mcp-server-apple-events/issues/93).

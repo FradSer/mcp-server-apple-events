@@ -8,10 +8,13 @@ Feature: Publish the documented package version to npm
     Then the workflow does not declare a conflicting pnpm version
     And pnpm action setup can use the package manager declaration
 
-  Scenario: Package the upstream event release assets
-    Given the FradSer/event v0.6.0 release provides Darwin arm64 and amd64 archives
+  Scenario: Package the event CLI with reminder date-window support
+    Given the FradSer/event v0.7.0 release provides Darwin arm64 and amd64 archives
+    And its reminders list command accepts --start and --end
     When the release workflow prepares the npm package
     Then it downloads event-darwin-arm64.tar.gz and event-darwin-amd64.tar.gz
+    And it verifies the archive checksums
+    And the packaged event reminders list command accepts --start and --end
     And it combines both binaries with lipo into bin/event
     And it compiles only scripts/disclaim.c for bin/event-disclaim
     And it ad-hoc signs bin/event with scripts/event-Info.plist and scripts/event.entitlements
