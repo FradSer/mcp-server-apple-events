@@ -161,7 +161,11 @@ describe('Tools Definitions', () => {
       )?.description;
 
       expect(startDateDescription).toContain('defaults to today');
+      expect(startDateDescription).toContain('truncated to the date prefix');
       expect(endDateDescription).toContain('defaults to today + 14 days');
+      expect(endDateDescription).toContain(
+        'a midnight end is an exclusive boundary',
+      );
     });
 
     it('should expose optional date range filters for calendar collections', () => {

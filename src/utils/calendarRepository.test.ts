@@ -111,7 +111,7 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('findEvents', () => {
-    it('issues `calendar list --start <today> --end <+14d> --json` when no filters provided', async () => {
+    it('keeps the default read window at 14 days when no filters are provided', async () => {
       mockJson.mockResolvedValueOnce([]);
 
       await calendarRepository.findEvents();
@@ -121,6 +121,9 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[2]).toBe('--start');
       expect(args[4]).toBe('--end');
       expect(args[args.length - 1]).toBe('--json');
+      const start = args[args.indexOf('--start') + 1] as string;
+      const end = args[args.indexOf('--end') + 1] as string;
+      expect((Date.parse(end) - Date.parse(start)) / 86_400_000).toBe(14);
     });
 
     it('passes --calendar when filtered by name', async () => {
@@ -133,7 +136,7 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[args.indexOf('--calendar') + 1]).toBe('Work');
     });
 
-    it('strips the time component from caller-supplied dates so `event` accepts them', async () => {
+    it('includes the named end day when a caller supplies a non-midnight time', async () => {
       mockJson.mockResolvedValueOnce([]);
 
       await calendarRepository.findEvents({
@@ -143,7 +146,55 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       const args = mockJson.mock.calls[0]![0];
       expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
+      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-06');
+    });
+
+    it('turns a same-day date-only read into a non-empty calendar-day window', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({
+        startDate: '2026-10-05',
+        endDate: '2026-10-05',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2026-10-05');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-06');
+    });
+
+    it('keeps a caller-supplied next-day midnight as the exclusive end', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({
+        startDate: '2026-10-05',
+        endDate: '2026-10-06 00:00:00',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2026-10-05');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-06');
+    });
+
+    it('extends a supplied date-only end when it fills the missing start', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({ endDate: '2026-10-05' });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2026-09-22');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-06');
+    });
+
+    it('uses the supplied start date prefix for the inferred window', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({
+        startDate: '2026-10-05T23:30:00-08:00',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--start') + 1]).toBe('2026-10-05');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-19');
     });
 
     it('applies TS-side search filter against title, notes, and location', async () => {
@@ -233,7 +284,7 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       const args = mockJson.mock.calls[0]![0];
       expect(args[args.indexOf('--start') + 1]).toBe('2026-05-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-05-11');
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-05-12');
       expect(result).toEqual([
         { id: 'Personal', title: 'Personal', eventCount: 1 },
         { id: 'Work', title: 'Work', eventCount: 2 },

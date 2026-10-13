@@ -59,6 +59,27 @@ const icalUidFor = (event: CalendarEvent): string | undefined => {
  */
 const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
 
+/**
+ * `calendar list` accepts date-only bounds and treats its end as exclusive.
+ * Caller-supplied date-only and non-midnight end values name a day to include,
+ * so advance those bounds to the following day. A midnight date-time already
+ * represents an exclusive boundary and must remain unchanged.
+ */
+const toCalendarReadEnd = (value: string): string => {
+  const endDate = toDateOnly(value);
+  const time = value.match(/[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?/);
+  const isMidnight =
+    time?.[1] === '00' &&
+    time[2] === '00' &&
+    (!time[3] || time[3] === '00') &&
+    (!time[4] || /^0+$/.test(time[4]));
+
+  if (isMidnight) return endDate;
+
+  const parsedEndDate = parseReminderDueDate(endDate);
+  return parsedEndDate ? formatDateOnly(shiftDays(parsedEndDate, 1)) : endDate;
+};
+
 const resolveReadDateRange = (filters: {
   startDate?: string;
   endDate?: string;
@@ -68,7 +89,7 @@ const resolveReadDateRange = (filters: {
   if (filters.startDate && filters.endDate) {
     return {
       startDate: toDateOnly(filters.startDate),
-      endDate: toDateOnly(filters.endDate),
+      endDate: toCalendarReadEnd(filters.endDate),
     };
   }
 
@@ -83,7 +104,7 @@ const resolveReadDateRange = (filters: {
     // `parseReminderDueDate` is the strict parser shared with the reminder
     // pipeline; it rejects auto-corrected dates like `2025-02-30` that the
     // native `Date` constructor silently coerces to March 2.
-    const start = parseReminderDueDate(filters.startDate);
+    const start = parseReminderDueDate(toDateOnly(filters.startDate));
     return {
       startDate: toDateOnly(filters.startDate),
       endDate: formatDateOnly(
@@ -94,12 +115,13 @@ const resolveReadDateRange = (filters: {
 
   // !filters.startDate && filters.endDate
   const endStr = filters.endDate as string;
-  const end = parseReminderDueDate(endStr);
+  const endDate = toCalendarReadEnd(endStr);
+  const end = parseReminderDueDate(endDate);
   return {
     startDate: formatDateOnly(
       shiftDays(end ?? today, -DEFAULT_READ_WINDOW_DAYS),
     ),
-    endDate: toDateOnly(endStr),
+    endDate,
   };
 };
 
