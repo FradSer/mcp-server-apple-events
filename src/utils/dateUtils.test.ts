@@ -50,6 +50,13 @@ describe('getWeekStart', () => {
       expect(formatDateOnly(new Date(2026, 7, 4))).toBe('2026-08-04');
       expect(formatDateOnly(new Date(2026, 0, 9))).toBe('2026-01-09');
     });
+
+    it('pads years below 1000 to four digits', () => {
+      const date = new Date(2026, 5, 2);
+      date.setFullYear(5);
+
+      expect(formatDateOnly(date)).toBe('0005-06-02');
+    });
   });
 
   describe('shiftDays', () => {

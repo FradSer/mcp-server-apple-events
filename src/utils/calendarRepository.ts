@@ -77,7 +77,12 @@ const toCalendarReadEnd = (value: string): string => {
   if (isMidnight) return endDate;
 
   const parsedEndDate = parseReminderDueDate(endDate);
-  return parsedEndDate ? formatDateOnly(shiftDays(parsedEndDate, 1)) : endDate;
+  if (!parsedEndDate) return endDate;
+
+  const exclusiveEndDate = shiftDays(parsedEndDate, 1);
+  return exclusiveEndDate.getFullYear() > 9999
+    ? endDate
+    : formatDateOnly(exclusiveEndDate);
 };
 
 const resolveReadDateRange = (filters: {
