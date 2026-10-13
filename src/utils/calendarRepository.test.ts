@@ -149,6 +149,18 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(args[args.indexOf('--end') + 1]).toBe('2025-11-06');
     });
 
+    it('includes events in the final fractional second of the named end day', async () => {
+      mockJson.mockResolvedValueOnce([]);
+
+      await calendarRepository.findEvents({
+        startDate: '2026-09-10',
+        endDate: '2026-09-10T23:59:59.500',
+      });
+
+      const args = mockJson.mock.calls[0]![0];
+      expect(args[args.indexOf('--end') + 1]).toBe('2026-09-11');
+    });
+
     it('turns a same-day date-only read into a non-empty calendar-day window', async () => {
       mockJson.mockResolvedValueOnce([]);
 
