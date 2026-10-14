@@ -28,6 +28,17 @@ Feature: Publish the documented package version to npm
     And the job uses Node.js 24 and npm 11.5.1 or newer
     And npm publish does not use a long-lived npm token
 
+  Scenario: Execute immutable release actions
+    Given the release job can request an OIDC token for npm publishing
+    When the release workflow selects executable GitHub actions
+    Then every action reference uses a full 40-character commit SHA
+    And the release tests reject mutable tags and branches
+
+  Scenario: Review updates to pinned release actions
+    Given release actions are pinned to immutable commits
+    When Dependabot checks GitHub Actions dependencies weekly
+    Then it proposes action updates through pull requests
+
   Scenario: Recover the existing v1.5.0 tag
     Given the v1.5.0 tag exists but was created before this workflow merged
     When the release workflow is dispatched manually
