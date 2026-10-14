@@ -4,12 +4,11 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { Subtask, SubtasksToolArgs } from '../../types/index.js';
+import type { SubtasksToolArgs } from '../../types/index.js';
 import { handleAsyncOperation } from '../../utils/errorHandling.js';
 import { reminderRepository } from '../../utils/reminderRepository.js';
 import {
   addSubtask,
-  getSubtaskProgress,
   parseSubtasks,
   removeSubtask,
   reorderSubtasks,
@@ -25,51 +24,9 @@ import {
   UpdateSubtaskSchema,
 } from '../../validation/schemas.js';
 import {
+  createStructuredToolResult,
   extractAndValidateArgs,
-  formatDeleteMessage,
-  formatSuccessMessage,
-  UNTRUSTED_DATA_NOTICE,
 } from './shared.js';
-
-/**
- * Formats a single subtask for display
- */
-const formatSubtaskMarkdown = (subtask: Subtask, index: number): string => {
-  const checkbox = subtask.isCompleted ? '[x]' : '[ ]';
-  return `${index + 1}. ${checkbox} ${subtask.title} (ID: ${subtask.id})`;
-};
-
-/**
- * Formats subtasks list with progress
- */
-const formatSubtasksListMarkdown = (
-  reminderTitle: string,
-  subtasks: Subtask[],
-): string => {
-  const lines: string[] = [];
-  const progress = getSubtaskProgress(subtasks);
-
-  lines.push(`### Subtasks for "${reminderTitle}"`);
-  lines.push('');
-  lines.push(
-    `**Progress:** ${progress.completed}/${progress.total} (${progress.percentage}%)`,
-  );
-  lines.push('');
-
-  if (subtasks.length === 0) {
-    lines.push('No subtasks found.');
-  } else {
-    // Subtask titles come from the same untrusted notes field as reminder/
-    // calendar item text, so they need the same prompt-injection notice the
-    // shared list formatter emits.
-    lines.push(UNTRUSTED_DATA_NOTICE, '');
-    subtasks.forEach((subtask, index) => {
-      lines.push(formatSubtaskMarkdown(subtask, index));
-    });
-  }
-
-  return lines.join('\n');
-};
 
 export const handleReadSubtasks = async (
   args: SubtasksToolArgs,
@@ -82,7 +39,9 @@ export const handleReadSubtasks = async (
     );
     const subtasks = parseSubtasks(reminder.notes);
 
-    return formatSubtasksListMarkdown(reminder.title, subtasks);
+    return createStructuredToolResult('Read reminder subtasks.', [
+      { parentTitle: reminder.title, subtasks },
+    ]);
   }, 'read subtasks');
 };
 
@@ -106,12 +65,7 @@ export const handleCreateSubtask = async (
       notes: updatedNotes,
     });
 
-    return formatSuccessMessage(
-      'created',
-      'subtask',
-      subtask.title,
-      subtask.id,
-    );
+    return createStructuredToolResult('Created subtask.', [subtask]);
   }, 'create subtask');
 };
 
@@ -139,11 +93,11 @@ export const handleUpdateSubtask = async (
       notes: updatedNotes,
     });
 
-    return formatSuccessMessage(
-      'updated',
-      'subtask',
-      validatedArgs.title ?? 'subtask',
-      validatedArgs.subtaskId,
+    return createStructuredToolResult(
+      'Updated subtask.',
+      parseSubtasks(updatedNotes).filter(
+        (subtask) => subtask.id === validatedArgs.subtaskId,
+      ),
     );
   }, 'update subtask');
 };
@@ -165,7 +119,12 @@ export const handleDeleteSubtask = async (
       notes: updatedNotes,
     });
 
-    return formatDeleteMessage('subtask', validatedArgs.subtaskId);
+    return createStructuredToolResult('Deleted subtask.', [
+      {
+        reminderId: validatedArgs.reminderId,
+        subtaskId: validatedArgs.subtaskId,
+      },
+    ]);
   }, 'delete subtask');
 };
 
@@ -189,8 +148,7 @@ export const handleToggleSubtask = async (
       notes: updatedNotes,
     });
 
-    const status = subtask.isCompleted ? 'completed' : 'uncompleted';
-    return `Successfully marked subtask "${subtask.title}" as ${status}.\n- ID: ${validatedArgs.subtaskId}`;
+    return createStructuredToolResult('Updated subtask completion.', [subtask]);
   }, 'toggle subtask');
 };
 
@@ -211,6 +169,11 @@ export const handleReorderSubtasks = async (
       notes: updatedNotes,
     });
 
-    return `Successfully reordered ${validatedArgs.order.length} subtasks.\n- Reminder ID: ${validatedArgs.reminderId}`;
+    return createStructuredToolResult('Reordered subtasks.', [
+      {
+        reminderId: validatedArgs.reminderId,
+        order: validatedArgs.order,
+      },
+    ]);
   }, 'reorder subtasks');
 };

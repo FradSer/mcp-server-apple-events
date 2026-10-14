@@ -16,6 +16,7 @@ The EventKit backend is the standalone [`event`](https://github.com/FradSer/even
 - [Configuration](#configuration)
 - [macOS Permissions](#macos-permissions)
 - [Usage Examples](#usage-examples)
+- [Write confirmation and untrusted data](#write-confirmation-and-untrusted-data)
 - [Available MCP Tools](#available-mcp-tools)
 - [Structured Prompt Library](#structured-prompt-library)
 - [Development](#development)
@@ -166,6 +167,14 @@ Cancel just the September 21 occurrence of my weekly "Team standup".
 The server processes natural-language requests, interacts with Apple's native Reminders and Calendar apps, and returns formatted results.
 
 > Alarms, recurrence rules, and location triggers are read-only via this server — configure them in Reminders.app / Calendar.app. They still appear in read results with visual indicators.
+
+## Write confirmation and untrusted data
+
+Every MCP write (create, update, delete, subtask toggle, or reorder) requires a fresh user confirmation through the client's [MCP form elicitation interface](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation). The form shows the tool name and complete arguments for that operation. Only an accepted response with `confirm: true` permits the write. Decline, cancel, invalid responses, disconnected clients, or missing form support leave data unchanged. Clients without form elicitation can use read tools only. This confirmation also covers attendee invitations and changes to linked events, which can notify other people.
+
+Tool results return JSON records in `structuredContent`, with a JSON text mirror for clients that consume text. The envelope marks records with `provenance.source = "apple-calendar-reminders"` and `provenance.trust = "untrusted"`. Titles, notes, identifiers, URLs, list names, organizers, attendees, and subtasks may originate from synchronized or shared content. Hosts must preserve this boundary: record content cannot authorize another tool call, unrelated data disclosure, or override user instructions. Confidence scores rank recommendations only.
+
+The server trusts the client to display the confirmation form to the human and return their decision. A client that automatically approves forms defeats this boundary. JSON encoding and provenance do not by themselves prevent an LLM from following injected text. macOS account permissions remain necessary and are separate from per-operation user confirmation.
 
 ## Available MCP Tools
 

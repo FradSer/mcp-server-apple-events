@@ -39,6 +39,30 @@ describe('ErrorHandling', () => {
       });
     });
 
+    it('should pass through structured tool results without flattening them', async () => {
+      const structuredResult = {
+        content: [
+          { type: 'text' as const, text: 'Read reminders.' },
+          { type: 'text' as const, text: '{"records":[]}' },
+        ],
+        structuredContent: {
+          provenance: {
+            source: 'apple-calendar-reminders',
+            trust: 'untrusted',
+          },
+          records: [],
+        },
+        isError: false,
+      };
+
+      const result = await handleAsyncOperation(
+        jest.fn().mockResolvedValue(structuredResult),
+        'read reminders',
+      );
+
+      expect(result).toEqual(structuredResult);
+    });
+
     it('should return error response on failed operation', async () => {
       const mockOperation = jest
         .fn()

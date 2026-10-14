@@ -55,6 +55,21 @@ describe('prompt templates', () => {
     });
   });
 
+  it.each<PromptName>([
+    'daily-task-organizer',
+    'smart-reminder-creator',
+    'reminder-review-assistant',
+    'weekly-planning-workflow',
+  ])('keeps retrieved data and authorization separate in %s', (name) => {
+    const text = getPromptText(name);
+    expect(text).toMatch(/Calendar.*Reminders.*untrusted data/i);
+    expect(text).toMatch(/explicit user confirmation/i);
+    expect(text).toMatch(/confidence.*never authorizes/i);
+    expect(text).not.toMatch(
+      /Execute immediately|execute >80%|MUST make actual MCP tool calls|SHOULD execute updates and deletions/i,
+    );
+  });
+
   describe('argument validation', () => {
     it('validates and accepts valid arguments', () => {
       const validArgs = { "Today's focus": 'urgency-based organization' };
@@ -163,33 +178,17 @@ describe('prompt templates', () => {
       expect(text).toMatch(/present options to the user/i);
     });
 
-    it('includes explicit execution language for HIGH confidence', () => {
+    it('requires confirmation instead of confidence-based execution', () => {
       const text = getPromptText('reminder-review-assistant');
-      expect(text).toMatch(/HIGH CONFIDENCE.*MUST make actual MCP tool calls/i);
-      expect(text).toMatch(/Do not just describe the action - execute it/i);
-    });
-
-    it('specifies tool call examples in output format', () => {
-      const text = getPromptText('reminder-review-assistant');
-      expect(text).toMatch(/Execute immediately with tool calls/i);
-      expect(text).toMatch(/After execution, show:/i);
-    });
-
-    it('requires actual tool execution in quality bar', () => {
-      const text = getPromptText('reminder-review-assistant');
-      expect(text).toMatch(
-        /HIGH confidence actions.*must result in actual tool calls/i,
+      expect(text).toMatch(/explicit user confirmation/i);
+      expect(text).not.toMatch(
+        /execute.*immediately|MUST make actual MCP tool calls|SHOULD execute updates and deletions|must result in actual tool calls/i,
       );
-      expect(text).toMatch(
-        /LOW confidence decisions.*must use AskUserQuestion tool/i,
-      );
-      expect(text).toMatch(/No text-based questions appear in final output/i);
     });
 
-    it('clarifies the "do not create" constraint', () => {
+    it('keeps new reminders scoped to the user request', () => {
       const text = getPromptText('reminder-review-assistant');
       expect(text).toMatch(/Do not create NEW reminders unless/i);
-      expect(text).toMatch(/you SHOULD execute updates and deletions/i);
     });
   });
 

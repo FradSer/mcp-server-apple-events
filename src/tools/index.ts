@@ -42,7 +42,12 @@ type ToolArgs =
   | CalendarToolArgs
   | CalendarsToolArgs;
 
-type ToolRouter = (args?: ToolArgs) => Promise<CallToolResult>;
+export type ConfirmWrite = (name: string, args: ToolArgs) => Promise<boolean>;
+
+type ToolRouter = (
+  args?: ToolArgs,
+  confirmWrite?: ConfirmWrite,
+) => Promise<CallToolResult>;
 
 type ActionHandler<TArgs extends { action: string }> = (
   args: TArgs,
@@ -58,22 +63,40 @@ type ToolName = RoutedToolName | 'calendar_calendars';
 /**
  * Creates an action router for tools with multiple actions
  */
-const createActionRouter = <TArgs extends { action: string }>(
+const createActionRouter = <TArgs extends ToolArgs>(
   toolName: RoutedToolName,
   handlerMap: Record<TArgs['action'], ActionHandler<TArgs>>,
 ): ToolRouter => {
-  return async (args?: ToolArgs) => {
+  return async (args?: ToolArgs, confirmWrite?: ConfirmWrite) => {
     if (!args) {
       return createErrorResponse('No arguments provided');
     }
 
-    const typedArgs = args as TArgs;
+    // Bind approval to a snapshot so caller changes during confirmation cannot
+    // change the operation that the user reviewed.
+    const typedArgs = structuredClone(args) as TArgs;
     const action = typedArgs.action;
 
     if (!(action in handlerMap)) {
       return createErrorResponse(
         MESSAGES.ERROR.UNKNOWN_ACTION(toolName, String(action)),
       );
+    }
+
+    if (action !== 'read') {
+      let confirmed = false;
+      try {
+        confirmed = (await confirmWrite?.(toolName, typedArgs)) === true;
+      } catch {
+        return createErrorResponse(
+          'User confirmation is unavailable. No changes were made. Use a host that supports MCP form elicitation and try again.',
+        );
+      }
+      if (!confirmed) {
+        return createErrorResponse(
+          'Explicit user confirmation is required for this write. No changes were made.',
+        );
+      }
     }
 
     const handler = handlerMap[action as keyof typeof handlerMap];
@@ -141,13 +164,14 @@ function createErrorResponse(message: string): CallToolResult {
 export async function handleToolCall(
   name: string,
   args?: ToolArgs,
+  confirmWrite?: ConfirmWrite,
 ): Promise<CallToolResult> {
   if (!isManagedToolName(name)) {
     return createErrorResponse(MESSAGES.ERROR.UNKNOWN_TOOL(name));
   }
 
   const router = TOOL_ROUTER_MAP[name];
-  return router(args);
+  return router(args, confirmWrite);
 }
 
 export { TOOLS };
