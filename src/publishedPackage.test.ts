@@ -105,9 +105,7 @@ describe('published npm tarball', () => {
       'scripts/build-event.mjs',
       'scripts/event-Info.plist',
       'scripts/event.entitlements',
-      'scripts/disclaim.c',
       'bin/event',
-      'bin/event-disclaim',
     ];
 
     it.each(required)('ships %s', (file) => {
@@ -120,6 +118,8 @@ describe('published npm tarball', () => {
     // being there. Keep this list in sync with anything maintainer-only that
     // ends up at the repo root or in vendor/.
     const forbidden = [
+      'bin/event-disclaim',
+      'scripts/disclaim.c',
       'CLAUDE.md',
       'AGENTS.md',
       'GEMINI.md',

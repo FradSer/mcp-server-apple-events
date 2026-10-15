@@ -11,19 +11,16 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const binDir = path.join(projectRoot, 'bin');
 const outputFile = path.join(binDir, 'event');
-const disclaimFile = path.join(binDir, 'event-disclaim');
 const stagingDir = path.join(binDir, '.notarize-staging');
 const zipFile = path.join(binDir, 'event.zip');
 
 async function main() {
-  for (const file of [outputFile, disclaimFile]) {
-    try {
-      await fs.access(file, fs.constants.F_OK);
-    } catch {
-      console.error(`Error: Binary not found at ${file}`);
-      console.error('Run `pnpm run build:event` first.');
-      process.exit(1);
-    }
+  try {
+    await fs.access(outputFile, fs.constants.F_OK);
+  } catch {
+    console.error(`Error: Binary not found at ${outputFile}`);
+    console.error('Run `pnpm run build:event` first.');
+    process.exit(1);
   }
 
   const appleId = process.env.APPLE_ID;
@@ -55,13 +52,10 @@ async function main() {
   }
 
   console.log('Creating zip archive for notarization...');
-  // Stage both binaries into a scratch directory so a single notarytool
-  // submission covers `event` and the `event-disclaim` shim, without
-  // sweeping up any stray files that may be sitting in bin/.
+  // Stage only event so unrelated files in bin/ cannot enter the submission.
   await fs.rm(stagingDir, { recursive: true, force: true });
   await fs.mkdir(stagingDir, { recursive: true });
   await fs.copyFile(outputFile, path.join(stagingDir, 'event'));
-  await fs.copyFile(disclaimFile, path.join(stagingDir, 'event-disclaim'));
   await execFileAsync('ditto', ['-c', '-k', stagingDir, zipFile]);
 
   console.log(

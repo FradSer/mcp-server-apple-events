@@ -17,6 +17,11 @@ describe('release package contents', () => {
     expect(packageJson.files).toContain('scripts/build-event.mjs');
   });
 
+  it('does not distribute the responsibility-disclaim helper or its source', () => {
+    expect(packageJson.files).not.toContain('bin/event-disclaim');
+    expect(packageJson.files).not.toContain('scripts/disclaim.c');
+  });
+
   it('does not ship stale EventKitCLI paths', () => {
     for (const stale of [
       'bin/EventKitCLI',
@@ -59,7 +64,7 @@ describe('release package contents', () => {
     expect(releaseWorkflow).toMatch(/bin\/event reminders list --help/);
     expect(releaseWorkflow).toMatch(/grep -q -- '--start'/);
     expect(releaseWorkflow).toMatch(/grep -q -- '--end'/);
-    expect(releaseWorkflow).toMatch(/scripts\/disclaim\.c/);
+    expect(releaseWorkflow).not.toMatch(/disclaim/i);
     expect(releaseWorkflow).toMatch(/scripts\/event-Info\.plist/);
     expect(releaseWorkflow).toMatch(/scripts\/event\.entitlements/);
     expect(releaseWorkflow).toMatch(/codesign .*--sign -/);

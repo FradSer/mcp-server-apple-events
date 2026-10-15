@@ -28,18 +28,11 @@ async function main() {
     process.exit(0);
   }
 
-  // If the pre-built binaries are already present (npm install from published
-  // package), skip the source build entirely — the npm tarball does not
-  // include the vendor/event submodule sources, so there is nothing to
-  // build against anyway. Both `event` and the `event-disclaim` TCC shim
-  // must exist; a clone with a stale pre-shim build rebuilds to pick up the
-  // shim (issue #93).
+  // Published packages include event but no vendored source to rebuild.
   const binPath = path.join(projectRoot, 'bin', 'event');
-  const disclaimPath = path.join(projectRoot, 'bin', 'event-disclaim');
   try {
     await fs.access(binPath, fs.constants.X_OK);
-    await fs.access(disclaimPath, fs.constants.X_OK);
-    console.log('Pre-built `event` binaries found, skipping source build.');
+    console.log('Pre-built `event` binary found, skipping source build.');
     process.exit(0);
   } catch {
     // Binaries not present or not executable — proceed to build from source

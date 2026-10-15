@@ -109,9 +109,8 @@ function looksLikeFoundationModuleMismatch(stderr) {
  *   2. First "Developer ID Application:" cert found in the login keychain
  *   3. Ad-hoc ("-") with a warning
  *
- * A Developer ID signature makes `event` the TCC-responsible process
- * regardless of which parent process spawned it, fixing Calendar permission
- * dialogs on OCLP Sequoia and macOS 26+.
+ * Code signing preserves binary integrity and supports notarization; access
+ * remains subject to macOS attribution of the calling application.
  */
 async function resolveSigningIdentity() {
   if (process.env.APPLE_SIGNING_IDENTITY) {
@@ -151,10 +150,10 @@ async function resolveSigningIdentity() {
     'No Apple code-signing certificate found. Using ad-hoc signing (-).',
   );
   console.warn(
-    'Calendar TCC permission dialogs may be suppressed on OCLP Sequoia and macOS 26+.',
+    'EventKit access remains subject to the calling application permissions.',
   );
   console.warn(
-    'To fix this, set APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)".',
+    'For notarized distribution, set APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)".',
   );
   return '-';
 }
@@ -207,8 +206,6 @@ async function main() {
   const scriptsDir = path.join(projectRoot, 'scripts');
   const infoPlistFile = path.join(scriptsDir, 'event-Info.plist');
   const entitlementsFile = path.join(scriptsDir, 'event.entitlements');
-  const disclaimSourceFile = path.join(scriptsDir, 'disclaim.c');
-  const disclaimOutputFile = path.join(binDir, 'event-disclaim');
 
   // Run the independent pre-flight checks (toolchain probe, manifest access,
   // bin dir creation) concurrently so `pnpm install`'s postinstall hook
@@ -323,12 +320,7 @@ async function main() {
             s.scratchPath,
             '--triple',
             s.triple,
-            // Embed the Info.plist (bundle id + EventKit usage strings) into
-            // the executable so TCC can prompt for `event` itself when the
-            // binary is spawned disclaimed (see scripts/disclaim.c). A bare
-            // Mach-O has no bundle, so the plist rides in the __info_plist
-            // section of __TEXT — the documented location TCC reads for
-            // command-line tools.
+            // Embed the binary identity and EventKit usage descriptions.
             '-Xlinker',
             '-sectcreate',
             '-Xlinker',
@@ -371,35 +363,6 @@ async function main() {
   await fs.chmod(outputFile, '755');
   console.log('Binary is now executable.');
 
-  // Compile the disclaim shim (scripts/disclaim.c). It posix_spawns `event`
-  // with TCC responsibility disclaimed, so the Reminders/Calendar permission
-  // prompt is attributed to `event` itself (which ships the usage strings
-  // above) instead of the desktop MCP client that launched the server —
-  // clients like Codex Desktop declare no EventKit usage strings, and TCC
-  // refuses the request outright when they are the responsible process
-  // (issue #93). clang emits a universal Mach-O directly from repeated
-  // -arch flags; the deployment target matches `event`'s macosx14.0 triples.
-  try {
-    await run('xcrun', [
-      'clang',
-      '-O2',
-      '-mmacosx-version-min=14.0',
-      '-arch',
-      'arm64',
-      '-arch',
-      'x86_64',
-      '-o',
-      disclaimOutputFile,
-      disclaimSourceFile,
-    ]);
-    await fs.chmod(disclaimOutputFile, '755');
-    console.log(`Disclaim shim saved to ${disclaimOutputFile}`);
-  } catch (error) {
-    console.error('Disclaim shim compilation failed!');
-    console.error(error);
-    process.exit(1);
-  }
-
   const signingIdentity = await resolveSigningIdentity();
   const isAdHoc = signingIdentity === '-';
 
@@ -416,7 +379,7 @@ async function main() {
   // --entitlements (event only): hardened-runtime binaries must hold the
   //   com.apple.security.personal-information.{calendars,reminders}
   //   entitlements to be allowed to request EventKit access when they are
-  //   the TCC-responsible process (which they are when spawned disclaimed).
+  //   the TCC-responsible process.
   // --identifier (event only): pinned to the CFBundleIdentifier in
   //   scripts/event-Info.plist so the TCC grant is recorded under a stable,
   //   deterministic identity across rebuilds.
@@ -450,11 +413,10 @@ async function main() {
       '--entitlements',
       entitlementsFile,
     ]);
-    await signBinary(disclaimOutputFile, []);
     console.log(
       isAdHoc
-        ? 'Binaries signed (ad-hoc) with hardened runtime.'
-        : 'Binaries signed with Developer ID and hardened runtime.',
+        ? 'Binary signed (ad-hoc) with hardened runtime.'
+        : 'Binary signed with Developer ID and hardened runtime.',
     );
   } catch (error) {
     console.error('codesign failed!');

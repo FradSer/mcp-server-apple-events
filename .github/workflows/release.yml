@@ -87,14 +87,6 @@ jobs:
             --entitlements scripts/event.entitlements \
             bin/event
 
-      - name: Compile event TCC responsibility shim
-        run: |
-          set -euo pipefail
-          clang -O2 -mmacosx-version-min=14.0 \
-            -arch arm64 -arch x86_64 \
-            -o bin/event-disclaim scripts/disclaim.c
-          chmod 755 bin/event-disclaim
-
       - name: Verify universal ad-hoc event binary
         run: |
           set -euo pipefail
@@ -119,7 +111,6 @@ jobs:
             const files = new Set(pack.files.map((file) => file.path));
             const requiredFiles = [
               "bin/event",
-              "bin/event-disclaim",
               "dist/index.js",
               "scripts/postinstall.mjs",
               "scripts/build-event.mjs",

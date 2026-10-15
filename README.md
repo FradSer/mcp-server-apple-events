@@ -108,28 +108,19 @@ See the [official MCP docs](https://modelcontextprotocol.io/docs/develop/connect
 
 ## macOS Permissions
 
-The vendored `event` CLI embeds its own Info.plist (bundle id `me.frad.event`) declaring all Reminders and Calendar privacy strings, and is spawned through the bundled `bin/event-disclaim` shim, which disclaims TCC responsibility at spawn time. macOS therefore attributes the permission request to **`event`** itself, not the app that launched the MCP server — so the first EventKit call prompts for "event", the grant appears under `System Settings > Privacy & Security > Reminders / Calendars` as `event`, and one grant covers every MCP client on the machine (Claude Desktop, Codex Desktop, Cursor, terminal clients, …). See [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93) for background.
+The server launches the vendored `event` CLI directly. macOS retains its normal attribution to the application that launched the server, so authorize that host under `System Settings > Privacy & Security > Reminders / Calendars`. Each host needs its own approval; a grant made from a terminal does not authorize a separate desktop MCP client.
 
-When `event` detects a `notDetermined` status it calls `requestFullAccessToReminders` / `requestFullAccessToEvents`, which surfaces the system prompt. If the OS ever loses track of permissions, rerun `./check-permissions.sh` to re-open the dialogs.
+The host must support EventKit permission requests and declare the required usage descriptions. If it does not, macOS may deny access without showing a prompt. Use a host that supports these permissions. The server does not bypass this restriction by making a public helper self-responsible: doing so would let unrelated local processes reuse that helper's Calendar and Reminders grant.
 
-### Calendar read errors
+When `event` detects a `notDetermined` status it calls `requestFullAccessToReminders` / `requestFullAccessToEvents`. Run `./check-permissions.sh` from the same host context to diagnose access; running it in a terminal checks that terminal's permissions only. Usage descriptions are required for protected resources; see [Apple's app distribution guidance](https://help.apple.com/xcode/mac/current/en.lproj/dev91fe7130a.html).
 
-If you see `Failed to read calendar events`, set Calendar to **Full Calendar Access** under `System Settings > Privacy & Security > Calendars`, or rerun `./check-permissions.sh` (it checks both Reminders and Calendars).
+### Calendar read errors or missing prompts
 
-### Recovering a stuck TCC state (no prompt ever appears)
+For `Failed to read calendar events`, enable **Full Calendar Access** for the calling application under `System Settings > Privacy & Security > Calendars`. If no prompt appears, check that the host supports EventKit permissions and declares the usage descriptions, then restart it and retry. AppleScript Automation approval is separate from EventKit Calendar and Reminders approval.
 
-If the permission dialog never appears and `event` is missing from `System Settings → Privacy & Security → Reminders / Calendars`, your machine is in a stale/misattributed TCC state. The server-side disclaim fix prevents this on a clean machine but cannot clear already-corrupted entries. Recovery:
+### Upgrading from the responsibility-disclaim helper
 
-1. Reset Calendar and Reminders TCC entries globally (per-app reset frequently does **not** work — the bare form clears all entries, which is what clears the bad state):
-
-   ```bash
-   tccutil reset Calendar
-   tccutil reset Reminders
-   ```
-
-   > This clears Calendar/Reminders access for **every** app; other apps re-prompt next time.
-
-2. Re-trigger the permission from inside a Claude conversation (Claude Desktop or Claude Code) by asking, e.g., *"Use AppleScript to check my Calendar and Reminders."* Grant access and the server should work normally. See [issue #83](https://github.com/FradSer/mcp-server-apple-events/issues/83).
+Reinstall the package to remove the old `bin/event-disclaim` artifact. For a source checkout, remove that generated file before rebuilding. Revoke the old `event` grant in `System Settings > Privacy & Security > Reminders / Calendars`, then authorize each host you intend to use. Updating the server cannot revoke existing macOS grants or remove older copies installed elsewhere.
 
 ### Headless / launchd runs hang instead of failing
 

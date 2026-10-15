@@ -16,7 +16,7 @@ Feature: Publish the documented package version to npm
     And it verifies the archive checksums
     And the packaged event reminders list command accepts --start and --end
     And it combines both binaries with lipo into bin/event
-    And it compiles only scripts/disclaim.c for bin/event-disclaim
+    And it packages no responsibility-disclaim helper
     And it ad-hoc signs bin/event with scripts/event-Info.plist and scripts/event.entitlements
     And it does not build, notarize, or invoke Swift for event locally
     And dependency installation ignores lifecycle scripts

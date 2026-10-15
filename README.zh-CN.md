@@ -107,28 +107,19 @@ Settings → Tools → "+"，然后：
 
 ## macOS 权限
 
-vendored 的 `event` CLI 内嵌自己的 Info.plist（bundle id `me.frad.event`），声明了全部 Reminders 与 Calendar 隐私键，并通过随附的 `bin/event-disclaim` shim 启动，在 spawn 时主动放弃（disclaim）TCC 责任归属。macOS 因此把权限请求归到 **`event`** 自己，而不是启动 MCP 服务的宿主应用——首次调用 EventKit 时弹出的对话框显示的是 "event"，授权记录以 `event` 的名义出现在 `系统设置 > 隐私与安全性 > 提醒事项 / 日历` 中，授权一次即覆盖本机所有 MCP 客户端（Claude Desktop、Codex Desktop、Cursor、终端客户端等）。背景见 [issue #93](https://github.com/FradSer/mcp-server-apple-events/issues/93)。
+服务器直接启动随附的 `event` CLI，保留 macOS 对启动服务器的宿主应用的权限归属。请在 `系统设置 > 隐私与安全性 > 提醒事项 / 日历` 中授权该宿主。每个宿主都需要单独授权；在终端授予的权限不会授权另一个桌面 MCP 客户端。
 
-当 `event` 检测到 `notDetermined` 状态时，会调用 `requestFullAccessToReminders` / `requestFullAccessToEvents` 触发系统对话框。如果系统遗失权限记录，运行 `./check-permissions.sh` 重新触发请求。
+宿主必须支持 EventKit 权限请求，并声明所需的隐私用途说明。否则 macOS 可能直接拒绝访问而不显示弹窗。请使用支持这些权限的宿主。服务器不再通过独立承担 TCC 责任的公共辅助程序绕过限制，因为这种方式允许无关的本地进程复用辅助程序的日历和提醒事项授权。
 
-### 日历读取报错
+当 `event` 检测到 `notDetermined` 状态时，会调用 `requestFullAccessToReminders` / `requestFullAccessToEvents`。从同一宿主环境运行 `./check-permissions.sh` 可诊断权限；在终端运行只检查该终端的权限。隐私用途说明的要求见 [Apple 应用分发指南](https://help.apple.com/xcode/mac/current/en.lproj/dev91fe7130a.html)。
 
-如果看到 `Failed to read calendar events`，在 `系统设置 > 隐私与安全性 > 日历` 中将权限切换为 **Full Calendar Access**，或重新运行 `./check-permissions.sh`（脚本同时检查 Reminders 与 Calendars 权限）。
+### 日历读取报错或权限弹窗不出现
 
-### 恢复卡死的 TCC 状态（权限弹窗始终不出现）
+若出现 `Failed to read calendar events`，在 `系统设置 > 隐私与安全性 > 日历` 中为调用方开启 **Full Calendar Access**。若没有弹窗，请确认宿主支持 EventKit 权限并声明用途说明，然后重启宿主再试。AppleScript 自动化授权与 EventKit 日历、提醒事项授权相互独立。
 
-如果权限对话框始终不弹出，且 `系统设置 → 隐私与安全性 → 提醒事项 / 日历` 里找不到 `event`，说明你的机器已处于 stale/misattributed 的 TCC 状态。服务端 disclaim 修复只能防止干净机器进入此状态，无法清除已损坏的条目。恢复方法：
+### 从责任转移辅助程序升级
 
-1. 全局重置 Calendar 与 Reminders 的 TCC 条目（按 app 重置常常**无效**——裸用形式会清除所有条目，才能真正清掉坏状态）：
-
-   ```bash
-   tccutil reset Calendar
-   tccutil reset Reminders
-   ```
-
-   > 这会清除**所有**应用的 Calendar/Reminders 权限；其他应用下次需要访问时会重新弹窗。
-
-2. 在 Claude 对话中（Claude Desktop 或 Claude Code）重新触发权限，例如输入「使用 AppleScript 查看我的 Calendar 和 Reminders」。授权后服务即可正常使用。见 [issue #83](https://github.com/FradSer/mcp-server-apple-events/issues/83)。
+重新安装软件包以移除旧的 `bin/event-disclaim` 文件。对于源码检出，请先删除这个生成文件再重新构建。在 `系统设置 > 隐私与安全性 > 提醒事项 / 日历` 中撤销旧的 `event` 授权，然后为需要的各个宿主单独授权。更新服务器无法撤销现有 macOS 授权，也无法移除其他位置安装的旧副本。
 
 ### macOS 26 (Tahoe) 上 `could not build module 'Foundation'`
 
