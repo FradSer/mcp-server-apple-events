@@ -184,6 +184,36 @@ describe('eventCli', () => {
         executeEventCliJson(['reminders', 'create', '--json']),
       ).rejects.toThrow(/Invalid CLI output/);
     });
+
+    it('recovers a note before a large document without re-parsing every object', async () => {
+      // A bottom-up scan tried every nested object line before the array's
+      // own line, so a legacy note on a multi-megabyte listing re-parsed the
+      // whole suffix per line and blocked the event loop for seconds.
+      const events = Array.from({ length: 4000 }, (_, index) => ({
+        id: `evt-${index}`,
+        title: `Event ${index}`,
+        calendar: 'Work',
+        notes: `note for event ${index}`,
+      }));
+      respondWith({
+        stdout: `Note: AdvancedReminderEdit shortcut not found.\n${JSON.stringify(
+          events,
+          null,
+          2,
+        )}`,
+      });
+
+      const startedAt = performance.now();
+      const result = await executeEventCliJson<unknown[]>([
+        'calendar',
+        'list',
+        '--json',
+      ]);
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(result).toHaveLength(4000);
+      expect(elapsedMs).toBeLessThan(500);
+    });
   });
 
   describe('executeEventCliPlain — success', () => {

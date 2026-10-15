@@ -199,6 +199,10 @@ class CalendarRepository implements ICalendarRepository {
    * The previous ±4-year `calendar list` scan transferred the whole window to
    * filter one row in TS, and EventKit could leave the event out of that
    * window even though a direct lookup found it.
+   *
+   * For a recurring series, `event(withIdentifier:)` resolves to the series
+   * master, so `startDate` and `endDate` carry the series' original DTSTART
+   * rather than an occurrence from the current window.
    */
   async findEventById(id: string): Promise<CalendarEvent> {
     const args: string[] = ['calendar', 'get'];
@@ -341,7 +345,9 @@ class CalendarRepository implements ICalendarRepository {
    * `attendees` read-only, so the CLI has no flag that could carry them. The
    * event is resolved here first so the caller addresses it the same way as any
    * other update — by id — while Calendar.app is driven by title and date,
-   * which is the only handle its scripting interface offers.
+   * which is the only handle its scripting interface offers. For a recurring
+   * series, `event.startDate` is the master DTSTART; Calendar.app finds the
+   * series at that anchor.
    */
   async addAttendees(
     id: string,

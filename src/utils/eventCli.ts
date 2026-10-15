@@ -352,7 +352,7 @@ Then use the local path in your Claude Desktop config:
  * lines before the document, and `--no-shortcuts` did not take effect. A
  * caller that only tried `JSON.parse(stdout)` then reported a failure for a
  * reminder that had been saved, and a client that retries on error creates a
- * duplicate. Try the whole payload first, then the last line that starts a
+ * duplicate. Try the whole payload first, then the first line that starts a
  * JSON document, so a leading note cannot turn a successful write into an
  * error.
  */
@@ -360,7 +360,7 @@ function parseCliJson<T>(stdout: string): T {
   try {
     return JSON.parse(stdout.trim()) as T;
   } catch (error) {
-    const recovered = findTrailingJsonDocument(stdout);
+    const recovered = findJsonDocument(stdout);
     if (recovered) return recovered.value as T;
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`event execution failed: Invalid CLI output - ${detail}`);
@@ -368,22 +368,35 @@ function parseCliJson<T>(stdout: string): T {
 }
 
 /**
- * Returns the value of the last JSON document in `text`, or undefined when no
- * line starts one. `JSONEncoder` emits one value per invocation and escapes
- * newlines inside strings, so only the document's own lines start with `{` or
- * `[`; a nested object line carries its key first and is skipped.
+ * Candidate document starts the recovery path parses before it gives up.
+ *
+ * Notes precede the document, so the first line that starts a JSON value is
+ * almost always the document itself; the cap only bounds the work a
+ * pathological payload can cause.
  */
-function findTrailingJsonDocument(
-  text: string,
-): { value: unknown } | undefined {
+const MAX_JSON_RECOVERY_ATTEMPTS = 4;
+
+/**
+ * Returns the value of the first JSON document in `text`, or undefined when no
+ * line starts one.
+ *
+ * Scans from the top so the document is parsed once: a pretty-printed array
+ * puts a nested object on every following line, and trying those first (as a
+ * bottom-up scan does) re-parses the whole suffix per line, which turns a
+ * multi-megabyte listing into seconds of blocked event loop.
+ */
+function findJsonDocument(text: string): { value: unknown } | undefined {
   const lines = text.split('\n');
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
+  let attempts = 0;
+  for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]?.trimStart() ?? '';
     if (!line.startsWith('{') && !line.startsWith('[')) continue;
+    attempts += 1;
+    if (attempts > MAX_JSON_RECOVERY_ATTEMPTS) return undefined;
     try {
       return { value: JSON.parse(lines.slice(index).join('\n').trim()) };
     } catch {
-      // Not the document start; keep looking earlier.
+      // Not the document start; try the next candidate line.
     }
   }
   return undefined;
