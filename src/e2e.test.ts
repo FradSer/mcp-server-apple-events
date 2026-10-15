@@ -19,6 +19,12 @@ async function createClient(): Promise<Client> {
     args: ['dist/index.js'],
     stderr: 'pipe',
     cwd: process.cwd(),
+    // The SDK inherits only a small environment allowlist. Bound native reads
+    // explicitly so unavailable account access settles before Jest's deadline.
+    env: {
+      EVENTKIT_CLI_TIMEOUT_MS: '5000',
+      EVENT_PERMISSION_TIMEOUT_MS: '1000',
+    },
   });
 
   const client = new Client({

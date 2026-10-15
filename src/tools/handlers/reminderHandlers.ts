@@ -4,16 +4,11 @@
  */
 
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import {
-  PRIORITY_LABELS,
-  type Reminder,
-  type RemindersToolArgs,
-} from '../../types/index.js';
+import type { RemindersToolArgs } from '../../types/index.js';
 import {
   CliUserError,
   handleAsyncOperation,
 } from '../../utils/errorHandling.js';
-import { formatMultilineNotes } from '../../utils/helpers.js';
 import { reminderRepository } from '../../utils/reminderRepository.js';
 import {
   combineSubtasksAndNotes,
@@ -35,16 +30,8 @@ import {
   UpdateReminderSchema,
 } from '../../validation/schemas.js';
 import {
-  formatAlarm,
-  formatLocationTrigger,
-  formatRecurrenceRules,
-} from './formatters.js';
-import {
+  createStructuredToolResult,
   extractAndValidateArgs,
-  formatDeleteMessage,
-  formatListMarkdown,
-  formatSuccessMessage,
-  UNTRUSTED_DATA_NOTICE,
 } from './shared.js';
 
 /**
@@ -97,73 +84,6 @@ function rebuildNotesForUpdate(
   return combineSubtasksAndNotes(existingSubtasks, notesWithTags);
 }
 
-const buildReminderIcons = (reminder: Reminder): string => {
-  const icons: string[] = [];
-  if (reminder.recurrenceRules && reminder.recurrenceRules.length > 0)
-    icons.push('🔄');
-  if (reminder.locationTrigger) icons.push('📍');
-  if (reminder.tags && reminder.tags.length > 0) icons.push('🏷️');
-  if (reminder.subtasks && reminder.subtasks.length > 0) icons.push('📋');
-  return icons.length > 0 ? ` ${icons.join('')}` : '';
-};
-
-const formatReminderMarkdown = (reminder: Reminder): string[] => {
-  const lines: string[] = [];
-  const checkbox = reminder.isCompleted ? '[x]' : '[ ]';
-  const icons = buildReminderIcons(reminder);
-  lines.push(`- ${checkbox} ${reminder.title}${icons}`);
-  if (reminder.list) lines.push(`  - List: ${reminder.list}`);
-  if (reminder.id) lines.push(`  - ID: ${reminder.id}`);
-  if (reminder.priority !== undefined) {
-    const priorityLabel = PRIORITY_LABELS[reminder.priority] ?? 'unknown';
-    lines.push(`  - Priority: ${priorityLabel} (${reminder.priority})`);
-  }
-  if (reminder.startDate) lines.push(`  - Start: ${reminder.startDate}`);
-  if (reminder.tags && reminder.tags.length > 0) {
-    lines.push(`  - Tags: ${reminder.tags.map((t) => `#${t}`).join(' ')}`);
-  }
-  if (reminder.recurrenceRules && reminder.recurrenceRules.length > 0) {
-    lines.push(
-      `  - Repeats: ${formatRecurrenceRules(reminder.recurrenceRules)}`,
-    );
-  }
-  if (reminder.locationTrigger) {
-    lines.push(
-      `  - Location: ${formatLocationTrigger(reminder.locationTrigger)}`,
-    );
-  }
-  if (reminder.location) lines.push(`  - Location Text: ${reminder.location}`);
-  if (reminder.alarms && reminder.alarms.length > 0) {
-    lines.push(`  - Alarms: ${reminder.alarms.map(formatAlarm).join('; ')}`);
-  }
-  if (reminder.subtasks && reminder.subtasks.length > 0) {
-    const progress = reminder.subtaskProgress;
-    const progressText = progress
-      ? ` (${progress.completed}/${progress.total})`
-      : '';
-    lines.push(`  - Subtasks${progressText}:`);
-    for (const subtask of reminder.subtasks) {
-      const subtaskCheckbox = subtask.isCompleted ? '[x]' : '[ ]';
-      lines.push(`    - ${subtaskCheckbox} ${subtask.title}`);
-    }
-  }
-  const cleanNotes = stripSubtasks(stripTags(reminder.notes));
-  if (cleanNotes) {
-    lines.push(`  - Notes: ${formatMultilineNotes(cleanNotes)}`);
-  }
-  if (reminder.dueDate) lines.push(`  - Due: ${reminder.dueDate}`);
-  if (reminder.completionDate)
-    lines.push(`  - Completed: ${reminder.completionDate}`);
-  if (reminder.url) lines.push(`  - URL: ${reminder.url}`);
-  if (reminder.externalId)
-    lines.push(`  - External ID: ${reminder.externalId}`);
-  if (reminder.creationDate)
-    lines.push(`  - Created: ${reminder.creationDate}`);
-  if (reminder.lastModifiedDate)
-    lines.push(`  - Modified: ${reminder.lastModifiedDate}`);
-  return lines;
-};
-
 export const handleCreateReminder = async (
   args: RemindersToolArgs,
 ): Promise<CallToolResult> => {
@@ -188,12 +108,7 @@ export const handleCreateReminder = async (
       dueDate: validatedArgs.dueDate,
       priority: validatedArgs.priority,
     });
-    return formatSuccessMessage(
-      'created',
-      'reminder',
-      reminder.title,
-      reminder.id,
-    );
+    return createStructuredToolResult('Created reminder.', [reminder]);
   }, 'create reminder');
 };
 
@@ -247,12 +162,7 @@ export const handleUpdateReminder = async (
       dueDate: validatedArgs.dueDate,
       priority: validatedArgs.priority,
     });
-    return formatSuccessMessage(
-      'updated',
-      'reminder',
-      reminder.title,
-      reminder.id,
-    );
+    return createStructuredToolResult('Updated reminder.', [reminder]);
   }, 'update reminder');
 };
 
@@ -262,11 +172,9 @@ export const handleDeleteReminder = async (
   return handleAsyncOperation(async () => {
     const validatedArgs = extractAndValidateArgs(args, DeleteReminderSchema);
     await reminderRepository.deleteReminder(validatedArgs.id);
-    return formatDeleteMessage('reminder', validatedArgs.id, {
-      useQuotes: false,
-      useIdPrefix: true,
-      usePeriod: false,
-    });
+    return createStructuredToolResult('Deleted reminder.', [
+      { id: validatedArgs.id },
+    ]);
   }, 'delete reminder');
 };
 
@@ -280,14 +188,7 @@ export const handleReadReminders = async (
       const reminder = await reminderRepository.findReminderById(
         validatedArgs.id,
       );
-      const markdownLines: string[] = [
-        '### Reminder',
-        '',
-        UNTRUSTED_DATA_NOTICE,
-        '',
-        ...formatReminderMarkdown(reminder),
-      ];
-      return markdownLines.join('\n');
+      return createStructuredToolResult('Read reminders.', [reminder]);
     }
     const reminders = await reminderRepository.findReminders({
       list: validatedArgs.filterList,
@@ -302,11 +203,6 @@ export const handleReadReminders = async (
       endDate: validatedArgs.endDate,
     });
 
-    return formatListMarkdown(
-      'Reminders',
-      reminders,
-      formatReminderMarkdown,
-      'No reminders found matching the criteria.',
-    );
+    return createStructuredToolResult('Read reminders.', reminders);
   }, 'read reminders');
 };

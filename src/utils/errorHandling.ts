@@ -82,11 +82,14 @@ function createErrorMessage(operation: string, error: unknown): string {
  * Utility for handling async operations with consistent error handling
  */
 export async function handleAsyncOperation(
-  operation: () => Promise<string>,
+  operation: () => Promise<string | CallToolResult>,
   operationName: string,
 ): Promise<CallToolResult> {
   try {
     const result = await operation();
+    if (typeof result !== 'string') {
+      return result;
+    }
     return {
       content: [{ type: 'text', text: result }],
       isError: false,

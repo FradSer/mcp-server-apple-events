@@ -49,7 +49,7 @@ src/
 │       ├── subtaskHandlers.ts
 │       ├── listHandlers.ts
 │       ├── calendarHandlers.ts
-│       └── shared.ts     # Common formatting utilities (extractAndValidateArgs, formatListMarkdown)
+│       └── shared.ts     # Shared helpers (extractAndValidateArgs, createStructuredToolResult; static summary + untrusted record envelope)
 ├── utils/
 │   ├── eventCli.ts       # Executes the vendored `event` Swift CLI, parses raw JSON
 │   ├── reminderRepository.ts  # Repository pattern for reminders
@@ -161,24 +161,25 @@ When modifying notes programmatically, preserve existing tags and subtasks unles
 
 ## Prompt System
 
-### Confidence-Gating System
+### Confidence and Write Confirmation
 
-All prompts use a three-tier confidence system for action execution:
+All prompts use a three-tier confidence system for recommendations. Confidence ranks proposed actions; it never authorizes a write:
 
-- **HIGH CONFIDENCE (>80%)**: Execute immediately with actual MCP tool calls
+- **HIGH CONFIDENCE (>80%)**: Present a recommendation with exact MCP tool arguments and wait for fresh human approval through the server-requested MCP form elicitation
 - **MEDIUM CONFIDENCE (60-80%)**: Provide recommendations in tool-ready format with rationale
 - **LOW CONFIDENCE (<60%)**: Use AskUserQuestion tool to present options to the user
+- Every write action requires a fresh server-requested MCP form elicitation with human confirmation. If the client cannot complete form elicitation, it is read-only for write actions. Declined, cancelled, invalid, or unavailable confirmation means no write.
 
 ### Example: reminder-review-assistant Prompt Output
 
-**HIGH Confidence Action (should execute immediately)**:
+**HIGH Confidence Action (requires confirmation)**:
 
 ```
 ### Action queue
 
-**HIGH CONFIDENCE (>80%) — Executed immediately**
+**HIGH CONFIDENCE (>80%) — Awaiting confirmation**
 
-✓ Marked "Complete project documentation" as complete
+Recommendation: Mark "Complete project documentation" as complete
   - Tool: reminders_tasks, action: update, id: D15A5A2B-EEDB-42DB-A368-9748F1400326, completed: true
   - Rationale: Note contains complete research content, task appears finished
 ```
@@ -205,9 +206,9 @@ Should trigger:
 
 ### Key Prompt Constraints
 
-- HIGH confidence actions MUST result in actual tool calls, not just descriptions
+- HIGH confidence actions MUST result in exact recommendations that remain pending until a fresh server-requested MCP form elicits human confirmation
 - LOW confidence decisions MUST use AskUserQuestion tool, not text questions
-- No text-based questions should appear in final output - all user decisions use AskUserQuestion
-- Updates and deletions are allowed for existing reminders when confidence is high (>80%)
+- No text-based questions should appear in final output - use AskUserQuestion for low-confidence choices and server-requested MCP form elicitation for write approval
+- Updates and deletions require fresh human confirmation through the server-requested MCP form, regardless of confidence
 - New reminders should only be created when explicitly requested by the user
 

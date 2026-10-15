@@ -7,7 +7,12 @@ import type {
   ListsToolArgs,
   RemindersToolArgs,
 } from '../types/index.js';
-import { handleToolCall } from './index.js';
+import { handleToolCall as routeToolCall } from './index.js';
+
+const handleToolCall = (
+  name: string,
+  args?: Parameters<typeof routeToolCall>[1],
+) => routeToolCall(name, args, async () => true);
 
 // Mock all handler functions
 jest.mock('./handlers/index.js', () => ({
@@ -102,6 +107,40 @@ const mockHandleReadCalendars = handleReadCalendars as jest.MockedFunction<
 describe('Tools Index', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('write authorization', () => {
+    it('rejects a direct router call without confirmation', async () => {
+      const result = await routeToolCall('reminders_tasks', {
+        action: 'delete',
+        id: 'private-item',
+      });
+      expect(result.isError).toBe(true);
+      expect(mockHandleDeleteReminder).not.toHaveBeenCalled();
+    });
+
+    it('dispatches the reviewed snapshot when the caller changes arguments', async () => {
+      const args = { action: 'delete' as const, id: 'reviewed-item' };
+      mockHandleDeleteReminder.mockResolvedValue({
+        content: [],
+        isError: false,
+      });
+      const result = await routeToolCall(
+        'reminders_tasks',
+        args,
+        async (name, reviewed) => {
+          expect(name).toBe('reminders_tasks');
+          expect(reviewed).toEqual({ action: 'delete', id: 'reviewed-item' });
+          args.id = 'unreviewed-item';
+          return true;
+        },
+      );
+      expect(result.isError).toBe(false);
+      expect(mockHandleDeleteReminder).toHaveBeenCalledWith({
+        action: 'delete',
+        id: 'reviewed-item',
+      });
+    });
   });
 
   describe('handleToolCall', () => {

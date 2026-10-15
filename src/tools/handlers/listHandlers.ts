@@ -13,33 +13,14 @@ import {
   UpdateReminderListSchema,
 } from '../../validation/schemas.js';
 import {
+  createStructuredToolResult,
   extractAndValidateArgs,
-  formatDeleteMessage,
-  formatListMarkdown,
-  formatSuccessMessage,
 } from './shared.js';
-
-const formatReminderList = (list: {
-  title: string;
-  id: string;
-  color?: string;
-}): string[] => {
-  let display = list.title;
-  if (list.color) {
-    display = `${display} (Color: ${list.color})`;
-  }
-  return [`- ${display} (ID: ${list.id})`];
-};
 
 export const handleReadReminderLists = async (): Promise<CallToolResult> => {
   return handleAsyncOperation(async () => {
     const lists = await reminderRepository.findAllLists();
-    return formatListMarkdown(
-      'Reminder Lists',
-      lists,
-      formatReminderList,
-      'No reminder lists found.',
-    );
+    return createStructuredToolResult('Read reminder lists.', lists);
   }, 'read reminder lists');
 };
 
@@ -54,7 +35,7 @@ export const handleCreateReminderList = async (
     const list = await reminderRepository.createReminderList(
       validatedArgs.name,
     );
-    return formatSuccessMessage('created', 'list', list.title, list.id);
+    return createStructuredToolResult('Created reminder list.', [list]);
   }, 'create reminder list');
 };
 
@@ -70,7 +51,7 @@ export const handleUpdateReminderList = async (
       validatedArgs.name,
       validatedArgs.newName,
     );
-    return formatSuccessMessage('updated', 'list', list.title, list.id);
+    return createStructuredToolResult('Updated reminder list.', [list]);
   }, 'update reminder list');
 };
 
@@ -83,10 +64,8 @@ export const handleDeleteReminderList = async (
       DeleteReminderListSchema,
     );
     await reminderRepository.deleteReminderList(validatedArgs.name);
-    return formatDeleteMessage('list', validatedArgs.name, {
-      useQuotes: true,
-      useIdPrefix: false,
-      usePeriod: true,
-    });
+    return createStructuredToolResult('Deleted reminder list.', [
+      { name: validatedArgs.name },
+    ]);
   }, 'delete reminder list');
 };

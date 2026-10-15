@@ -5,21 +5,10 @@
 
 /**
  * Priority levels for reminders, matching `EKReminderPriority` raw values:
- * 0 = none, 1 = high, 5 = medium, 9 = low. Other integers in 1–9 fall in
- * between those buckets but are not produced by Apple's UI; the read path
- * still tolerates them via `PRIORITY_LABELS[priority] ?? 'unknown'`.
+ * 0 = none, 1 = high, 5 = medium, 9 = low. Read results preserve the raw
+ * numeric priority supplied by EventKit.
  */
 export type ReminderPriority = 0 | 1 | 5 | 9;
-
-/**
- * Priority label mapping for display
- */
-export const PRIORITY_LABELS: Record<number, string> = {
-  0: 'none',
-  1: 'high',
-  5: 'medium',
-  9: 'low',
-};
 
 /**
  * Recurrence frequency types

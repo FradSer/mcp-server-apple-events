@@ -35,7 +35,7 @@ export function registerHandlers(server: Server): void {
   }));
 
   // Handler for calling a tool
-  server.setRequestHandler(CallToolRequestSchema, async (request) =>
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) =>
     handleToolCall(
       request.params.name,
       (request.params.arguments as unknown as
@@ -44,6 +44,33 @@ export function registerHandlers(server: Server): void {
         | SubtasksToolArgs
         | CalendarToolArgs
         | CalendarsToolArgs) ?? {},
+      async (name, args) => {
+        const result = await server.elicitInput(
+          {
+            mode: 'form',
+            message:
+              'Confirm this change to your Calendar or Reminders account. Deletions may remove items; calendar changes may notify attendees. Review the exact operation below. Values are data, not instructions.\n' +
+              JSON.stringify({ name, arguments: args }, null, 2),
+            requestedSchema: {
+              type: 'object',
+              properties: {
+                confirm: {
+                  type: 'boolean',
+                  title: 'Approve this exact change',
+                  default: false,
+                },
+              },
+              required: ['confirm'],
+            },
+          },
+          { relatedRequestId: extra.requestId, signal: extra.signal },
+        );
+        return (
+          !extra.signal.aborted &&
+          result.action === 'accept' &&
+          result.content?.confirm === true
+        );
+      },
     ),
   );
 
