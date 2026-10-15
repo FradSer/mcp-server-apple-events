@@ -36,7 +36,7 @@ describe('build-event.mjs code signing', () => {
   });
 });
 
-describe('build-event.mjs TCC self-attribution (issue #93)', () => {
+describe('build-event.mjs EventKit metadata', () => {
   const buildScript = readFileSync(buildScriptPath, 'utf8');
   const infoPlist = readFileSync(
     path.resolve(process.cwd(), 'scripts/event-Info.plist'),
@@ -72,17 +72,8 @@ describe('build-event.mjs TCC self-attribution (issue #93)', () => {
     );
   });
 
-  it('compiles the disclaim shim from scripts/disclaim.c to bin/event-disclaim', () => {
-    expect(buildScript).toMatch(/disclaim\.c/);
-    expect(buildScript).toMatch(/event-disclaim/);
-  });
-
-  it('builds the shim universal (arm64 + x86_64) and signs it', () => {
-    // clang accepts repeated -arch flags and emits a fat Mach-O directly.
-    expect(buildScript).toMatch(/'-arch',\s*'arm64'/);
-    expect(buildScript).toMatch(/'-arch',\s*'x86_64'/);
-    // The shim is signed without entitlements; only event gets them.
-    expect(buildScript).toMatch(/signBinary\(disclaimOutputFile,\s*\[\]\)/);
+  it('does not build or sign a responsibility-disclaim helper', () => {
+    expect(buildScript).not.toMatch(/disclaim/i);
   });
 });
 

@@ -31,41 +31,18 @@ interface BinaryFingerprint {
   size: number;
 }
 
-/**
- * How to launch `event`. When the disclaim shim (`bin/event-disclaim`) is
- * present, `event` is spawned through it so it becomes its own
- * TCC-responsible process — the EventKit permission prompt then appears
- * regardless of whether the host MCP client (Codex Desktop, Claude Desktop,
- * …) declares EventKit usage strings (issue #93). When the shim is absent
- * (e.g. an older prebuilt install), fall back to spawning `event` directly,
- * which preserves the pre-shim host-attribution behavior.
- */
 interface ResolvedLaunch {
   cliPath: string;
-  disclaimPath: string | null;
 }
 
-// A no-shim launch is cached too (`disclaimFingerprint: null`) and stays
-// valid only while the shim's canonical path remains absent — so a shim that
-// appears after a rebuild is picked up on the next call, and the no-shim
-// path doesn't re-run full validation (which hashes the ~50 MB binary when
-// SWIFT_BINARY_HASH is pinned) on every tool call.
 let cachedLaunch: {
   launch: ResolvedLaunch;
-  disclaimCanonicalPath: string;
   cliFingerprint: BinaryFingerprint;
-  disclaimFingerprint: BinaryFingerprint | null;
 } | null = null;
-
-// Emitted once per process so a missing/invalid shim (which silently reverts
-// EventKit prompts to host-app attribution — the issue #93 failure mode) is
-// diagnosable from the host's MCP server logs.
-let warnedShimUnavailable = false;
 
 /** Clears the cached binary path (for testing). */
 export function clearEventBinaryPathCache(): void {
   cachedLaunch = null;
-  warnedShimUnavailable = false;
   warnedInvalidTimeout = false;
 }
 
@@ -93,9 +70,8 @@ const fingerprintMatches = (
  * (default 30 s, overridable via `EVENTKIT_CLI_TIMEOUT_MS`). `execFile`'s
  * default timeout is 0 — "wait forever" — which hangs the MCP request and
  * leaks a child when `event` blocks on an EventKit permission prompt that can
- * never be displayed (headless/launchd context, issue #113). Killed with
- * SIGKILL because the disclaim shim exec-replaces itself into `event`
- * (same PID), so the kill always reaches the real process.
+ * never be displayed (headless/launchd context, issue #113). SIGKILL ensures
+ * the direct child cannot ignore the timeout.
  */
 const DEFAULT_CLI_TIMEOUT_MS = 30_000;
 
@@ -252,13 +228,6 @@ function throwForStderr(stderr: string): never {
   if (!message) {
     throw new Error('event execution failed: unknown error');
   }
-  // The disclaim shim reports its own spawn failures as
-  // `event-disclaim: <detail>` (no "Error: " prefix). Surface them verbatim
-  // as user-actionable errors — otherwise production error formatting
-  // collapses them into a generic "System error occurred".
-  if (message.startsWith('event-disclaim:')) {
-    throw new CliUserError(message);
-  }
   // Only structured "Error: ..." stderr is treated as a user-actionable
   // CliUserError or permission error. Anything else (panics, OS-level
   // failures, etc.) is wrapped so the host surface mentions the `event`
@@ -277,11 +246,8 @@ async function runEventCli(
   launch: ResolvedLaunch,
   args: string[],
 ): Promise<ExecResult> {
-  // Route through the disclaim shim when it exists: `event-disclaim <event>
-  // <args…>` re-execs `event` with TCC responsibility disclaimed.
-  const file = launch.disclaimPath ?? launch.cliPath;
-  const argv = launch.disclaimPath ? [launch.cliPath, ...args] : args;
-  const { result, error } = await execFilePromise(file, argv);
+  // Preserve macOS responsibility attribution to the calling application.
+  const { result, error } = await execFilePromise(launch.cliPath, args);
   const stderr = bufferToString(result.stderr) ?? '';
 
   if (error) {
@@ -331,13 +297,7 @@ function resolveLaunchOrThrow(): ResolvedLaunch {
       cachedLaunch.cliFingerprint,
       fingerprintFor(launch.cliPath),
     );
-    const disclaimOk = launch.disclaimPath
-      ? fingerprintMatches(
-          cachedLaunch.disclaimFingerprint,
-          fingerprintFor(launch.disclaimPath),
-        )
-      : fingerprintFor(cachedLaunch.disclaimCanonicalPath) === null;
-    if (cliOk && disclaimOk) {
+    if (cliOk) {
       return launch;
     }
   }
@@ -377,49 +337,10 @@ Then use the local path in your Claude Desktop config:
     );
   }
 
-  const disclaimCanonicalPath = path.join(
-    projectRoot,
-    'bin',
-    FILE_SYSTEM.DISCLAIM_BINARY_NAME,
-  );
-  const { path: disclaimPath } = findSecureBinaryPath([disclaimCanonicalPath], {
-    ...getEnvironmentBinaryConfig(),
-    // SWIFT_BINARY_HASH pins bin/event, not the shim — carrying it over here
-    // would reject the shim on every strict-mode install and silently revert
-    // to host-attributed prompts. The shim gets its own optional pin.
-    expectedHash: process.env.SWIFT_DISCLAIM_BINARY_HASH,
-    allowedPaths: [disclaimCanonicalPath],
-  });
-
-  if (
-    !disclaimPath &&
-    !warnedShimUnavailable &&
-    process.env.NODE_ENV !== 'test'
-  ) {
-    warnedShimUnavailable = true;
-    console.error(
-      `event-disclaim shim not found or failed validation at ${disclaimCanonicalPath}; ` +
-        'spawning event directly. EventKit permission prompts will be attributed ' +
-        'to the host app instead of event (issue #93). Rebuild with `pnpm build` ' +
-        'to restore the shim.',
-    );
-  }
-
-  const launch: ResolvedLaunch = { cliPath, disclaimPath };
+  const launch: ResolvedLaunch = { cliPath };
   const cliFingerprint = fingerprintFor(cliPath);
-  const disclaimFingerprint = disclaimPath
-    ? fingerprintFor(disclaimPath)
-    : null;
-  // A shim that resolved but vanished before fingerprinting (race) leaves
-  // disclaimFingerprint null with disclaimPath set — don't cache that; the
-  // next call re-resolves.
-  if (cliFingerprint && (disclaimPath === null || disclaimFingerprint)) {
-    cachedLaunch = {
-      launch,
-      disclaimCanonicalPath,
-      cliFingerprint,
-      disclaimFingerprint,
-    };
+  if (cliFingerprint) {
+    cachedLaunch = { launch, cliFingerprint };
   }
   return launch;
 }

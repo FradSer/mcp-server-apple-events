@@ -68,12 +68,10 @@ src/
 The vendored `event` Swift CLI lives at `vendor/event/` (git submodule pinned to
 a specific FradSer/event SHA). `scripts/build-event.mjs` compiles it via
 `swift build -c release` with `scripts/event-Info.plist` linked into the
-`__TEXT,__info_plist` section, copies the result to `bin/event`, compiles the
-TCC disclaim shim `scripts/disclaim.c` to `bin/event-disclaim`, and signs both
-with hardened runtime — `event` additionally with the
+`__TEXT,__info_plist` section, copies the result to `bin/event`, and signs it
+with hardened runtime and the
 `com.apple.security.personal-information.{calendars,reminders}` entitlements
-(`scripts/event.entitlements`) so it can request EventKit access as its own
-TCC-responsible process.
+(`scripts/event.entitlements`) for EventKit access.
 
 ### Data Flow
 
@@ -89,7 +87,7 @@ TCC-responsible process.
 
 The `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied, restricted, or write-only, it emits an `Error: Permission denied: …` line on stderr; `eventCli.ts` maps that into a domain-typed `CliPermissionError` (`'reminders'` or `'calendars'`) which the host surfaces verbatim.
 
-`eventCli.ts` spawns `bin/event` through the `bin/event-disclaim` shim (falling back to a direct spawn when the shim is absent). The shim disclaims TCC responsibility at spawn time (the same private `responsibility_spawnattrs_setdisclaim` API Chromium and LLDB use), so `event` — which embeds its usage strings in an Info.plist section and carries the personal-information entitlements — is its own TCC-responsible process. Permission prompts are therefore attributed to `event` itself and work from any MCP client, including desktop apps that declare no EventKit usage strings (issue #93).
+`eventCli.ts` launches the validated `bin/event` directly and preserves macOS attribution to the calling application. Do not reintroduce responsibility-disclaim helpers: a public self-responsible CLI lets unrelated local processes reuse its prior EventKit grant. Each host must support EventKit permission requests, including the required usage descriptions; hosts that cannot request access fail without bypassing TCC.
 
 ### Swift Bridge
 
@@ -132,7 +130,7 @@ return handleAsyncOperation(async () => {
 - Tests use Jest with ts-jest ESM preset
 - Mock the CLI executor in `src/utils/__mocks__/eventCli.ts` (`jest.mock('./eventCli.js')`)
 - Coverage thresholds live in `jest.config.mjs` (currently 93/78/96/94 statements/branches/functions/lines)
-- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release` with the `__info_plist` sectcreate flags, copies to `bin/event`, compiles `bin/event-disclaim`, signs with `--options runtime`; `event` gets `--entitlements scripts/event.entitlements`, the shim gets none)
+- `src/__tests__/build-event.test.ts` pins the contract of `scripts/build-event.mjs` (calls `swift build -c release` with the `__info_plist` sectcreate flags, copies to `bin/event`, signs with `--options runtime` and `--entitlements scripts/event.entitlements`)
 - `src/utils/projectUtils.ts` is excluded from coverage (import.meta.url incompatible with Jest)
 
 ### Notes Field Conventions

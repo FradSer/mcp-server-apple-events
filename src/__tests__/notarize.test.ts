@@ -20,10 +20,10 @@ describe('notarize.mjs', () => {
     expect(notarizeScript).toMatch(/process\.exit\(1\)/);
   });
 
-  it('stages both binaries and uses ditto to create a zip archive for submission', () => {
+  it('stages only event and uses ditto to create a zip archive for submission', () => {
     expect(notarizeScript).toMatch(/execFileAsync\(\s*'ditto'/);
     expect(notarizeScript).toMatch(/\.notarize-staging/);
-    expect(notarizeScript).toMatch(/event-disclaim/);
+    expect(notarizeScript).not.toMatch(/disclaim/i);
     expect(notarizeScript).toMatch(/event\.zip/);
   });
 

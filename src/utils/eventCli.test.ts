@@ -9,6 +9,9 @@ import type {
   ExecFileOptions,
 } from 'node:child_process';
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   findSecureBinaryPath,
   getEnvironmentBinaryConfig,
@@ -83,8 +86,7 @@ describe('eventCli', () => {
     clearEventBinaryPathCache();
     mockFindProjectRoot.mockReturnValue('/test/project');
     mockGetEnvironmentBinaryConfig.mockReturnValue({});
-    // Default: the `event` binary resolves, the optional disclaim shim does
-    // not — exercising the direct-spawn fallback most tests assert on.
+    // Only the validated event binary is an allowed launch target.
     mockFindSecureBinaryPath.mockImplementation((paths: string[]) =>
       paths[0]?.endsWith('/bin/event') ? { path: paths[0] } : { path: null },
     );
@@ -503,160 +505,77 @@ describe('eventCli', () => {
     });
   });
 
-  describe('TCC disclaim shim routing (issue #93)', () => {
-    // Given the build produced bin/event-disclaim next to bin/event,
-    // when any event command runs, then it is spawned through the shim so
-    // the TCC permission prompt is attributed to `event` itself instead of
-    // the desktop MCP client that launched the server.
-    const resolveBoth = () => {
+  describe('host-attributed EventKit execution', () => {
+    beforeEach(() => {
+      // Resolve every candidate, including a legacy shim if it is requested.
       mockFindSecureBinaryPath.mockImplementation((paths: string[]) => ({
         path: paths[0] ?? null,
       }));
-    };
-
-    it('spawns event through bin/event-disclaim when the shim is present', async () => {
-      resolveBoth();
-      respondWith({ stdout: JSON.stringify({ ok: true }) });
-
-      await executeEventCliJson(['reminders', 'list', '--json']);
-
-      expect(mockExecFile).toHaveBeenCalledWith(
-        '/test/project/bin/event-disclaim',
-        ['/test/project/bin/event', 'reminders', 'list', '--json'],
-        {
-          maxBuffer: 64 * 1024 * 1024,
-          timeout: 30_000,
-          killSignal: 'SIGKILL',
-        },
-        expect.any(Function),
-      );
     });
 
-    it('routes plain-text commands through the shim as well', async () => {
-      resolveBoth();
-      respondWith({ stdout: 'Reminder deleted successfully\n' });
+    it.each([
+      'json',
+      'plain',
+    ])('launches %s commands directly even with a legacy shim available', async (format) => {
+      const args =
+        format === 'json'
+          ? ['reminders', 'list', '--json']
+          : ['reminders', 'delete', '--id', 'abc'];
+      respondWith({ stdout: format === 'json' ? '{"ok":true}' : 'Deleted' });
 
-      const result = await executeEventCliPlain([
-        'reminders',
-        'delete',
-        '--id',
-        'abc',
-      ]);
-
-      expect(result).toBe('Reminder deleted successfully');
-      expect(mockExecFile).toHaveBeenCalledWith(
-        '/test/project/bin/event-disclaim',
-        ['/test/project/bin/event', 'reminders', 'delete', '--id', 'abc'],
-        {
-          maxBuffer: 64 * 1024 * 1024,
-          timeout: 30_000,
-          killSignal: 'SIGKILL',
-        },
-        expect.any(Function),
-      );
-    });
-
-    it('falls back to direct spawn when the shim is absent', async () => {
-      // Default beforeEach mock resolves only bin/event.
-      respondWith({ stdout: JSON.stringify({ ok: true }) });
-
-      await executeEventCliJson(['reminders', 'list', '--json']);
+      if (format === 'json') await executeEventCliJson(args);
+      else await executeEventCliPlain(args);
 
       expect(mockExecFile).toHaveBeenCalledWith(
         '/test/project/bin/event',
-        ['reminders', 'list', '--json'],
-        {
-          maxBuffer: 64 * 1024 * 1024,
-          timeout: 30_000,
-          killSignal: 'SIGKILL',
-        },
+        args,
+        { maxBuffer: 64 * 1024 * 1024, timeout: 30_000, killSignal: 'SIGKILL' },
         expect.any(Function),
       );
+      expect(mockFindSecureBinaryPath).toHaveBeenCalledTimes(1);
+      expect(mockFindSecureBinaryPath.mock.calls[0]?.[0]).toEqual([
+        '/test/project/bin/event',
+      ]);
     });
 
-    it('does not apply the SWIFT_BINARY_HASH pin (meant for event) to the shim', async () => {
-      // If the event hash pin leaked into the shim's validation config, the
-      // shim could never validate on strict-mode installs and the server
-      // would silently fall back to host-attributed spawning.
-      mockGetEnvironmentBinaryConfig.mockReturnValue({
-        expectedHash: 'pin-for-bin-event',
-      });
-      mockFindSecureBinaryPath.mockImplementation((paths: string[]) => ({
-        path: paths[0] ?? null,
-      }));
-      respondWith({ stdout: JSON.stringify({ ok: true }) });
-
-      await executeEventCliJson(['reminders', 'list', '--json']);
-
-      const shimCall = mockFindSecureBinaryPath.mock.calls.find((call) =>
-        (call[0] as string[])[0]?.endsWith('event-disclaim'),
-      );
-      expect(shimCall).toBeDefined();
-      expect(
-        (shimCall?.[1] as { expectedHash?: string }).expectedHash,
-      ).toBeUndefined();
-    });
-
-    it('surfaces shim spawn failures verbatim as user-actionable errors', async () => {
-      resolveBoth();
-      const error = Object.assign(new Error('Command failed'), {
-        code: 127,
-      }) as ExecFileException;
-      respondWith({
-        stdout: '',
-        stderr:
-          'event-disclaim: failed to exec /test/project/bin/event: No such file or directory\n',
-        error,
-      });
-
-      const promise = executeEventCliJson(['reminders', 'list', '--json']);
-
-      await expect(promise).rejects.toThrow(
-        'event-disclaim: failed to exec /test/project/bin/event',
-      );
-      await expect(promise).rejects.toMatchObject({ name: 'CliUserError' });
-    });
-
-    it('warns on stderr once when the shim is unavailable', async () => {
-      const consoleError = jest
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
-      const originalNodeEnv = process.env.NODE_ENV;
-      // The warning is suppressed under NODE_ENV=test to keep suite output
-      // clean; emulate a production resolve to observe it.
-      process.env.NODE_ENV = 'production';
+    it('reuses validation only while the cached event binary is unchanged', async () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'event-cache-'));
+      const binary = path.join(directory, 'bin', 'event');
+      fs.mkdirSync(path.dirname(binary));
+      fs.writeFileSync(binary, 'original executable');
+      mockFindProjectRoot.mockReturnValue(directory);
+      respondWith({ stdout: '{"ok":true}' });
       try {
-        // Default beforeEach mock resolves only bin/event.
-        respondWith({ stdout: JSON.stringify({ ok: true }) });
-
         await executeEventCliJson(['reminders', 'list', '--json']);
         await executeEventCliJson(['reminders', 'list', '--json']);
+        expect(mockFindSecureBinaryPath).toHaveBeenCalledTimes(1);
 
-        const shimWarnings = consoleError.mock.calls.filter((call) =>
-          String(call[0]).includes('event-disclaim shim not found'),
-        );
-        expect(shimWarnings).toHaveLength(1);
+        fs.writeFileSync(binary, 'replacement executable with different size');
+        await executeEventCliJson(['reminders', 'list', '--json']);
+        expect(mockFindSecureBinaryPath).toHaveBeenCalledTimes(2);
+        expect(mockExecFile).toHaveBeenCalledTimes(3);
+        expect(
+          mockExecFile.mock.calls.every((call) => call[0] === binary),
+        ).toBe(true);
       } finally {
-        process.env.NODE_ENV = originalNodeEnv;
-        consoleError.mockRestore();
+        fs.rmSync(directory, { recursive: true, force: true });
       }
     });
 
-    it('maps permission errors identically when spawned through the shim', async () => {
-      resolveBoth();
-      const error = Object.assign(new Error('Command failed'), {
-        code: 1,
-      }) as ExecFileException;
+    it('returns the host permission denial without retrying through a helper', async () => {
       respondWith({
-        stdout: '',
-        stderr:
-          'Error: Permission denied: Reminders access was denied. Please grant access in System Settings > Privacy & Security > Reminders.\n',
-        error,
+        stderr: 'Error: Permission denied: Reminders access was denied.\n',
+        error: Object.assign(new Error('Command failed'), {
+          code: 1,
+          cmd: 'event',
+        }),
       });
 
       await expect(
         executeEventCliJson(['reminders', 'list', '--json']),
       ).rejects.toBeInstanceOf(CliPermissionError);
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+      expect(mockExecFile.mock.calls[0]?.[0]).toBe('/test/project/bin/event');
     });
   });
 

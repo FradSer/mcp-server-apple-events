@@ -45,7 +45,7 @@ The server exposes 5 main tools:
 5.  **`reminders_subtasks`**: Manages subtasks/checklists within reminders (create, read, update, delete, toggle, reorder).
 
 ## Permission Handling
-The vendored `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied / restricted / write-only it emits `Error: Permission denied: …` on stderr; `src/utils/eventCli.ts` maps that into a domain-typed `CliPermissionError` (`reminders` or `calendars`). `bin/event` is spawned through the `bin/event-disclaim` TCC shim (falling back to a direct, host-attributed spawn when the shim is absent), so permission prompts are attributed to `event` itself (it embeds an Info.plist with the EventKit usage strings) rather than to the host MCP client (issue #93).
+The vendored `event` CLI requests EventKit permissions via the native async APIs (`requestFullAccessToReminders` / `requestFullAccessToEvents`). When access is denied / restricted / write-only it emits `Error: Permission denied: …` on stderr; `src/utils/eventCli.ts` maps that into a domain-typed `CliPermissionError` (`reminders` or `calendars`). `eventCli.ts` launches the validated `bin/event` directly and preserves macOS attribution to the calling application. Do not reintroduce responsibility-disclaim helpers: a public self-responsible CLI lets unrelated local processes reuse its prior EventKit grant. Each host must support EventKit permission requests, including the required usage descriptions; hosts that cannot request access fail without bypassing TCC.
 
 ## Critical Constraints
 *   **macOS Only**: Strictly requires macOS with the EventKit framework.
