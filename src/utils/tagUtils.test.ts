@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import {
   addTagsToNotes,
   combineTagsAndNotes,
@@ -9,6 +10,35 @@ import {
 } from './tagUtils.js';
 
 describe('tagUtils', () => {
+  describe('malformed bracket delimiters', () => {
+    it.each([
+      ['extract', extractTags, []],
+      ['strip', stripTags, '[#'.repeat(30_000)],
+    ])('%s handles repeated unterminated prefixes promptly', (_name, parse, expected) => {
+      const notes = '[#'.repeat(30_000);
+      const started = performance.now();
+      const result = parse(notes);
+      const elapsed = performance.now() - started;
+
+      expect(result).toEqual(expected);
+      // A generous budget distinguishes a suffix-retrying regex from a linear scan.
+      expect(elapsed).toBeLessThan(500);
+    });
+
+    it('keeps nested prefixes inside the first nonempty bracket tag', () => {
+      expect(extractTags('[#] [#Outer[#Inner] tail [#next]')).toEqual([
+        'outer[#inner',
+        'next',
+      ]);
+      expect(stripTags('[#] [#Outer[#Inner] tail [#next]')).toBe('[#] tail');
+    });
+
+    it('preserves an unterminated suffix after complete tags', () => {
+      expect(extractTags('[#work] [#unfinished')).toEqual(['work']);
+      expect(stripTags('[#work] [#unfinished')).toBe('[#unfinished');
+    });
+  });
+
   describe('extractTags', () => {
     it('extracts tags in [#tag] bracket format', () => {
       expect(extractTags('[#work] [#urgent] Some notes')).toEqual([

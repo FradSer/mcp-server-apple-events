@@ -21,13 +21,40 @@ import type { Subtask, SubtaskProgress } from '../types/index.js';
 const SUBTASK_START = '---SUBTASKS---';
 const SUBTASK_END = '---END SUBTASKS---';
 
-// Regex to match the subtask section. Both markers are anchored to line
-// boundaries so that user-supplied content that happens to contain the marker
-// text mid-line cannot forge or truncate the structured section. `\r?\n`
-// keeps the matcher tolerant of CRLF line endings that some tools (or a
-// round-trip through AppleScript) can introduce.
-const SUBTASK_SECTION_REGEX =
-  /(?:^|\r?\n)---SUBTASKS---\r?\n([\s\S]*?)\r?\n---END SUBTASKS---(?=\r?\n|$)/;
+// Keep the first standalone start while scanning each line once. Retrying
+// every start marker when no end exists would rescan overlapping suffixes.
+function findSubtaskSection(notes: string) {
+  let start = -1;
+  let contentStart = -1;
+  let lineStart = 0;
+
+  while (lineStart < notes.length) {
+    const lineBreak = notes.indexOf('\n', lineStart);
+    const lineEnd = lineBreak === -1 ? notes.length : lineBreak;
+    const markerEnd =
+      lineBreak !== -1 && notes[lineEnd - 1] === '\r' ? lineEnd - 1 : lineEnd;
+    const line = notes.slice(lineStart, markerEnd);
+
+    if (start === -1 && line === SUBTASK_START && lineBreak !== -1) {
+      start = lineStart === 0 ? 0 : lineStart - 1;
+      if (start > 0 && notes[start - 1] === '\r') start--;
+      contentStart = lineBreak + 1;
+    } else if (
+      start !== -1 &&
+      line === SUBTASK_END &&
+      lineStart > contentStart
+    ) {
+      let contentEnd = lineStart - 1;
+      if (notes[contentEnd - 1] === '\r') contentEnd--;
+      return { start, end: markerEnd, contentStart, contentEnd };
+    }
+
+    if (lineBreak === -1) break;
+    lineStart = lineBreak + 1;
+  }
+
+  return null;
+}
 
 // Regex to match individual subtask lines: [ ] {id} title or [x] {id} title.
 // `\s*` at the end absorbs a trailing `\r` left behind when a CRLF-terminated
@@ -53,12 +80,10 @@ export function generateSubtaskId(): string {
 export function parseSubtasks(notes: string | null | undefined): Subtask[] {
   if (!notes) return [];
 
-  const match = notes.match(SUBTASK_SECTION_REGEX);
-  if (!match) return [];
+  const section = findSubtaskSection(notes);
+  if (!section) return [];
 
-  // Groups 1-3 are mandatory in SUBTASK_SECTION_REGEX / SUBTASK_LINE_REGEX,
-  // so non-null assertions on match indices are safe under noUncheckedIndexedAccess.
-  const subtaskContent = match[1]!;
+  const subtaskContent = notes.slice(section.contentStart, section.contentEnd);
   // Split on either `\n` or `\r\n` so CRLF-terminated input round-trips.
   const lines = subtaskContent.split(/\r?\n/).filter((line) => line.trim());
   const subtasks: Subtask[] = [];
@@ -101,8 +126,12 @@ export function serializeSubtasks(subtasks: Subtask[]): string {
 export function stripSubtasks(notes: string | null | undefined): string {
   if (!notes) return '';
 
-  return notes
-    .replace(SUBTASK_SECTION_REGEX, '')
+  const section = findSubtaskSection(notes);
+  const cleanNotes = section
+    ? notes.slice(0, section.start) + notes.slice(section.end)
+    : notes;
+
+  return cleanNotes
     .replace(/\n{3,}/g, '\n\n') // Collapse multiple newlines
     .trim();
 }

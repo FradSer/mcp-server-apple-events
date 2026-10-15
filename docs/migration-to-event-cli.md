@@ -179,6 +179,11 @@ does **not** call `event reminders create --tags <…>` or `--parentTitle <…>`
 so the optional AdvancedReminderEdit Shortcut is not required and existing
 user reminders with the current notes format keep round-tripping unchanged.
 
+Bracket tags and standalone subtask section markers are scanned with
+forward-only cursors. Repeated opening markers without a closing marker do
+not trigger overlapping suffix searches. Unterminated metadata stays in the
+notes, and subtask sections continue to accept LF and CRLF line endings.
+
 ## Restoring a dropped feature
 
 If a missing field is blocking you, the most direct path is to file an issue

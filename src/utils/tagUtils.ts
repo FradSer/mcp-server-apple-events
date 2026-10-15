@@ -10,8 +10,19 @@
  * Reading parses both formats so native Apple Reminders tags are recognized.
  */
 
-// Regex to match tags in [#tag] bracket format
-const BRACKET_TAG_REGEX = /\[#([^\]]+)\]/g;
+// Advance past each closing bracket, or stop at an unterminated suffix.
+// Retrying a missing closing bracket from every '[#' prefix is quadratic.
+function* bracketTagRanges(notes: string) {
+  let cursor = 0;
+  while (cursor < notes.length) {
+    const start = notes.indexOf('[#', cursor);
+    if (start === -1) return;
+    const closing = notes.indexOf(']', start + 2);
+    if (closing === -1) return;
+    cursor = closing + 1;
+    if (closing > start + 2) yield { start, end: cursor };
+  }
+}
 
 // Regex to match bare #tag format (Apple Reminders native).
 // Must be preceded by start-of-string or whitespace.
@@ -53,9 +64,11 @@ export function extractTags(notes: string | null | undefined): string[] {
 
   const tags = new Set<string>();
 
-  // Extract bracket-format tags: [#tagname] — group 1 is mandatory.
-  for (const match of notes.matchAll(BRACKET_TAG_REGEX)) {
-    const tag = match[1]?.trim().toLowerCase();
+  for (const { start, end } of bracketTagRanges(notes)) {
+    const tag = notes
+      .slice(start + 2, end - 1)
+      .trim()
+      .toLowerCase();
     if (tag) tags.add(tag);
   }
 
@@ -77,8 +90,16 @@ export function extractTags(notes: string | null | undefined): string[] {
 export function stripTags(notes: string | null | undefined): string {
   if (!notes) return '';
 
-  return notes
-    .replace(BRACKET_TAG_REGEX, '')
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { start, end } of bracketTagRanges(notes)) {
+    parts.push(notes.slice(cursor, start));
+    cursor = end;
+  }
+  parts.push(notes.slice(cursor));
+
+  return parts
+    .join('')
     .replace(BARE_TAG_REGEX, '')
     .replace(/[ \t]{2,}/g, ' ') // Collapse multiple spaces
     .replace(/^\s+/, '') // Trim leading whitespace
