@@ -88,8 +88,18 @@ describe('release package contents', () => {
     const pnpmSetup = releaseWorkflow.match(
       /- name: Setup pnpm[\s\S]*?(?=\n\s+- name:)/,
     )?.[0];
-    expect(pnpmSetup).toMatch(/uses: pnpm\/action-setup@v4/);
+    expect(pnpmSetup).toMatch(/uses: pnpm\/action-setup@[a-f0-9]{40}\b/);
     expect(pnpmSetup).not.toMatch(/version:/);
+  });
+
+  it('pins every executable release action to a full commit SHA', () => {
+    const actionReferences = [
+      ...releaseWorkflow.matchAll(/^\s*(?:-\s*)?uses:\s*["']?([^\s"'#]+)/gm),
+    ].map((match) => match[1]);
+    expect(actionReferences.length).toBeGreaterThan(0);
+    for (const reference of actionReferences) {
+      expect(reference).toMatch(/^[\w./-]+@[a-f0-9]{40}$/);
+    }
   });
 
   it('uses npm trusted publishing requirements', () => {
