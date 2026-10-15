@@ -178,3 +178,103 @@ describe('exceptOccurrence — master that is neither first nor SEQUENCE-bearing
     expect(out.filter((l) => propName(l) === 'SEQUENCE')).toHaveLength(1);
   });
 });
+
+describe('bounded occurrence rewriting', () => {
+  const master = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'UID:abc',
+    'DTSTART:20260907T090000Z',
+    'RRULE:FREQ=WEEKLY',
+    'END:VEVENT',
+  ];
+  const override = [
+    'BEGIN:VEVENT',
+    'UID:abc',
+    'RECURRENCE-ID:20260914T090000Z',
+    'DTSTART:20260914T110000Z',
+    'END:VEVENT',
+  ];
+
+  it('rejects excessive nesting before rewriting', () => {
+    const lines = [
+      ...master.slice(0, -1),
+      ...Array(15).fill('BEGIN:VALARM'),
+      ...Array(15).fill('END:VALARM'),
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ];
+    expect(() => exceptOccurrence(lines, '20260914T090000Z')).toThrow(
+      /nesting limit/i,
+    );
+  });
+
+  it('rejects more than 2000 VEVENT components', () => {
+    const lines = [
+      ...master,
+      ...Array.from({ length: 2000 }, () => [
+        'BEGIN:VEVENT',
+        'UID:abc',
+        'END:VEVENT',
+      ]).flat(),
+      'END:VCALENDAR',
+    ];
+    expect(() => exceptOccurrence(lines, '20260914T090000Z')).toThrow(
+      /event count limit/i,
+    );
+  });
+
+  it('rejects more than 1000 recurrence IDs', () => {
+    const lines = [
+      ...master,
+      ...Array.from({ length: 1001 }, () => override).flat(),
+      'END:VCALENDAR',
+    ];
+    expect(() => exceptOccurrence(lines, '20260914T090000Z')).toThrow(
+      /override count limit/i,
+    );
+  });
+
+  it('bounds arrays passed directly to the editor', () => {
+    expect(() =>
+      exceptOccurrence(
+        [...master, 'X:'.repeat(40000), 'END:VCALENDAR'],
+        '20260914T090000Z',
+      ),
+    ).toThrow(/line length limit/i);
+  });
+
+  it('rejects nested VEVENT ranges that cannot be removed independently', () => {
+    expect(() =>
+      exceptOccurrence(
+        [...master.slice(0, -1), ...override, 'END:VEVENT', 'END:VCALENDAR'],
+        '20260914T090000Z',
+      ),
+    ).toThrow(/nested VEVENT/i);
+  });
+
+  it('removes 1000 matching overrides without a range search for every line', () => {
+    const lines = [
+      ...master,
+      ...Array.from({ length: 1000 }, () => override).flat(),
+      'BEGIN:VTIMEZONE',
+      'TZID:UTC',
+      'END:VTIMEZONE',
+      'END:VCALENDAR',
+    ];
+    const some = jest.spyOn(Array.prototype, 'some');
+    let out: string[];
+    let searches: number;
+    try {
+      out = exceptOccurrence(lines, '20260914T090000Z');
+      searches = some.mock.calls.length;
+    } finally {
+      some.mockRestore();
+    }
+    expect(searches).toBeLessThanOrEqual(1);
+    expect(out.filter((line) => line === 'BEGIN:VEVENT')).toHaveLength(1);
+    expect(out).toContain('EXDATE:20260914T090000Z');
+    expect(out).toContain('SEQUENCE:1');
+    expect(out).toContain('TZID:UTC');
+  });
+});

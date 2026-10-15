@@ -16,10 +16,14 @@
  */
 
 import type { EventJSON } from '../types/repository.js';
+import { request } from './caldavClient.js';
+import { resolveCalDavCredentials } from './caldavCredentials.js';
 import { calendarRepository } from './calendarRepository.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 
 jest.mock('./eventCli.js');
+jest.mock('./caldavClient.js');
+jest.mock('./caldavCredentials.js');
 
 const mockJson = executeEventCliJson as jest.MockedFunction<
   typeof executeEventCliJson
@@ -508,5 +512,81 @@ describe('CalendarRepository (event CLI backend)', () => {
         'evt-3',
       ]);
     });
+  });
+});
+
+describe('CalendarRepository occurrence processing limits', () => {
+  const mockRequest = jest.mocked(request);
+  const mockCredentials = jest.mocked(resolveCalDavCredentials);
+  const series = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'UID:ABC',
+    'DTSTART:20260907T090000Z',
+    'RRULE:FREQ=WEEKLY',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+  const reply = (body: string) => ({
+    status: 200,
+    headers: new Headers(),
+    body,
+  });
+  const wire = (body: string) => {
+    mockJson.mockResolvedValue([eventFixture({ id: 'store:ABC' })]);
+    mockRequest
+      .mockResolvedValueOnce(
+        reply(
+          '<d:current-user-principal><d:href>/principal/</d:href></d:current-user-principal>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        reply(
+          '<c:calendar-home-set><d:href>/home/</d:href></c:calendar-home-set>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        reply(
+          '<d:response><d:href>/calendar/</d:href><d:displayname>Work</d:displayname></d:response>',
+        ),
+      )
+      .mockResolvedValueOnce(reply(body));
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRequest.mockReset();
+    mockCredentials.mockResolvedValue({
+      appleId: 'test@example.com',
+      password: 'test-only-password',
+    });
+  });
+
+  it('propagates a resource limit error without replacing or deleting the event', async () => {
+    wire(
+      series.replace('UID:ABC', `UID:ABC\r\nDESCRIPTION:${'x'.repeat(65536)}`),
+    );
+    await expect(
+      calendarRepository.exceptOccurrence('store:ABC', '2026-09-14T09:00:00Z'),
+    ).rejects.toThrow(/line length limit/i);
+    expect(mockRequest.mock.calls.some(([method]) => method === 'PUT')).toBe(
+      false,
+    );
+    expect(mockPlain).not.toHaveBeenCalled();
+  });
+
+  it('edits a bounded calendar resource and returns the excepted occurrence', async () => {
+    wire(series);
+    mockRequest.mockResolvedValueOnce(reply(''));
+    const result = await calendarRepository.exceptOccurrence(
+      'store:ABC',
+      '2026-09-14T09:00:00Z',
+    );
+    expect(result.event.id).toBe('store:ABC');
+    expect(result.excepted).toBe('20260914T090000');
+    const put = mockRequest.mock.calls.find(([method]) => method === 'PUT');
+    expect(put?.[1]).toBe('https://caldav.icloud.com/calendar/ABC.ics');
+    expect(put?.[3]?.body).toContain('EXDATE:20260914T090000Z');
+    expect(mockPlain).not.toHaveBeenCalled();
   });
 });
