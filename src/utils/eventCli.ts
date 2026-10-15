@@ -78,13 +78,12 @@ const DEFAULT_CLI_TIMEOUT_MS = 30_000;
 /**
  * Ceiling on a single `event` invocation's stdout.
  *
- * `findEventById` has no way to ask EventKit for one event, so it lists the
- * full ±4-year window across every calendar and filters in TS. On a busy
- * account that JSON is already past 10 MB, which silently turned every
- * id-addressed operation — update, attendee invite, occurrence exception —
- * into a generic failure. Sized well above the observed worst case rather
- * than trimmed to it, because overflowing costs a whole spawn and the buffer
- * is transient.
+ * Some reads still transfer a whole collection: `findReminders` lists every
+ * reminder, and `findEvents` lists every event in the caller's window. On a
+ * busy account that JSON is already past 10 MB, which silently turned the
+ * call into a generic failure. Sized well above the observed worst case
+ * rather than trimmed to it, because overflowing costs a whole spawn and the
+ * buffer is transient.
  */
 const MAX_CLI_STDOUT_BYTES = 64 * 1024 * 1024;
 

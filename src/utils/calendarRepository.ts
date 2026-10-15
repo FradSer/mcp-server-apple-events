@@ -269,11 +269,12 @@ class CalendarRepository implements ICalendarRepository {
   }
 
   /**
-   * When a date range is supplied, scope the listing to that window instead
-   * of the default wide window and annotate each calendar with how many
-   * events it contributed — this is the only per-calendar signal `event`
-   * exposes (it has no EventKit account/identifier info to filter or key
-   * on), so counts are grouped by calendar title rather than a stable id.
+   * When a date range is supplied, scope the listing to that window and
+   * annotate each calendar with how many events it contributed — this is the
+   * only per-calendar signal `event` exposes for a window (it has no
+   * per-calendar count), so counts are grouped by calendar title rather than
+   * a stable id. Without a range, delegate to `findAllCalendars`, which reads
+   * the EventKit catalog.
    */
   async findCalendars(
     filters: { startDate?: string; endDate?: string } = {},
