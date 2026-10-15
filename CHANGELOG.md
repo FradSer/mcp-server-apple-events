@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-15
+
+### Changed (BREAKING)
+
+- **Write actions now require user confirmation** — every action except
+  `read` of `reminders_tasks`, `reminders_lists`, `reminders_subtasks` and
+  `calendar_events` asks the client for approval through MCP form elicitation
+  before the handler runs. The approval binds to one snapshot of the tool
+  arguments and authorizes that one operation; the next write asks again. A
+  client that cannot elicit form input is read-only: the call returns an error
+  and the write handler never runs. Synchronized records are untrusted data,
+  so item content and model confidence no longer authorize a write —
+  confidence ranks recommendations only.
+
+- **EventKit permission requests are no longer disclaimed** — fixes
+  [#143](https://github.com/FradSer/mcp-server-apple-events/issues/143).
+  The previous release launched `bin/event` through a `bin/event-disclaim`
+  helper that disclaimed TCC responsibility at spawn time. That helper is
+  removed: it shipped a public, self-responsible executable, so an unrelated
+  local process could reuse its prior EventKit grant and read Reminders and
+  Calendar without a prompt. The server now launches the validated `bin/event`
+  directly, and macOS attributes the request to the application that launched
+  the server. Each host needs its own grant, and a host that cannot request
+  access fails instead of bypassing TCC. `bin/event-disclaim` and
+  `scripts/disclaim.c` are gone; `bin/event` keeps the usage strings of
+  `scripts/event-Info.plist` and the
+  `com.apple.security.personal-information.{calendars,reminders}`
+  entitlements of `scripts/event.entitlements`.
+
+  **Upgrade note:** reinstall the package to remove the old
+  `bin/event-disclaim` artifact, then revoke the old `event` entry under
+  `System Settings > Privacy & Security > Reminders / Calendars`. Authorize
+  each host you use: a grant made from a terminal does not authorize a
+  separate desktop MCP client.
+
 ### Added
 
 - **`calendar_calendars` reports the EventKit calendar catalog**
@@ -88,6 +123,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every hop, and `If-Schedule-Tag-Match` is preferred over `If-Match` so an
   inbound RSVP cannot cause a spurious 412.
 
+- **Tool results carry structured, explicitly untrusted records** — each read
+  and write result returns a `structuredContent` envelope whose provenance is
+  `source: "apple-calendar-reminders"` and `trust: "untrusted"`, and the text
+  content is a JSON mirror of that envelope. Synchronized fields are no longer
+  flattened into Markdown, and a trusted summary keeps only a static
+  description of the operation. A record that holds quotes, newlines,
+  header-like lines or forged approval instructions therefore stays data, and
+  a client that keeps the provenance cannot read it as an instruction or as
+  authorization for another call.
+
+### Changed
+
+- `@modelcontextprotocol/sdk` is now 1.31.0, and the release workflow pins
+  every action reference to a full commit SHA, so a tag push cannot execute a
+  moved action tag.
+
 ### Fixed
 
 - **Values that start with `-` no longer fail as missing options**
@@ -114,27 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arguments used by `reminders_tasks` when `startDate` or `endDate` is
   provided.
 
-- **EventKit permission prompts now appear from any desktop MCP client**
-  (Codex Desktop, Claude Desktop, Cursor, …) — fixes
-  [#93](https://github.com/FradSer/mcp-server-apple-events/issues/93).
-  Previously macOS TCC attributed the Reminders/Calendar request to the
-  desktop app that launched the server; when that app lacked the EventKit
-  usage strings (Codex Desktop ships none), TCC refused the request before
-  EventKit was reached and no prompt ever appeared. The server now spawns
-  `bin/event` through a new `bin/event-disclaim` shim (compiled from
-  `scripts/disclaim.c`) that disclaims TCC responsibility at spawn time —
-  the same mechanism Chromium and LLDB use — making `event` its own
-  responsible process. `event` now embeds an Info.plist
-  (`scripts/event-Info.plist`, bundle id `me.frad.event`) with all six
-  Reminders/Calendar usage strings and is signed with the
-  `com.apple.security.personal-information.{calendars,reminders}`
-  entitlements (`scripts/event.entitlements`).
-
-  **Upgrade note:** the permission prompt and the entry in
-  `System Settings > Privacy & Security` now belong to `event`, not to the
-  host app — approve the new prompt once. Grants previously given to
-  Terminal / Claude Desktop no longer cover the MCP server.
-
 - **`event` CLI calls are now bounded by a timeout** — fixes
   [#113](https://github.com/FradSer/mcp-server-apple-events/issues/113).
   Previously a call that blocked on an EventKit permission prompt which could
@@ -150,6 +180,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Permission denied` error — so the host shows a permission-specific
   message before the server's kill fires. A killed write may have completed
   despite the error; verify before retrying.
+
+- **Reminder note parsing is now linear**
+  ([#141](https://github.com/FradSer/mcp-server-apple-events/issues/141)) —
+  tag extraction and subtask parsing advanced a cursor and retried
+  overlapping suffixes, so a note that repeats an unterminated `[#` marker
+  consumed quadratic time and stalled the server. Each pass now advances one
+  cursor per match and finishes in bounded time; the tests hold a note with
+  30000 unterminated prefixes under 500 ms.
+
+- **Remote and local calendar resources are bounded**
+  ([#142](https://github.com/FradSer/mcp-server-apple-events/issues/142)) —
+  the CalDAV client caps a decompressed response at 2 MiB, refuses a declared
+  `Content-Length` above that cap before it reads a body, and applies one 30 s
+  deadline across the whole redirect chain; a rejected response cancels its
+  body and raises a typed error without response content. The iCalendar reader
+  caps a resource at 2 MiB, 20000 lines, 64 KiB per line, a component depth of
+  16, 2000 events and 1000 overrides, and refuses an oversized resource
+  instead of serializing it.
+
+- **A calendar read includes the named end day**
+  ([#129](https://github.com/FradSer/mcp-server-apple-events/issues/129),
+  [#130](https://github.com/FradSer/mcp-server-apple-events/issues/130)) —
+  `event calendar list` treats its end bound as exclusive, and the previous
+  code passed a caller's `endDate` verbatim, so a range that ended at
+  `23:59:59` dropped every event of that day and a same-day read returned
+  nothing. A date-only or non-midnight `endDate` now advances by one day
+  (`2026-09-11` and `2026-09-11 23:59:59` both read through `2026-09-12`),
+  while a midnight date-time keeps its exclusive meaning. A date-only bound
+  with a year below 1000 is padded to four digits, and an inferred window
+  keeps the caller's bound when the shifted bound would leave the `0000`–`9999`
+  range.
 
 ## [1.5.0] - 2026-05-14
 
@@ -672,7 +733,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic Apple Reminders integration
 - Foundation for macOS native reminder management
 
-[unreleased]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.4.0...HEAD
+[unreleased]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.1.0...v1.2.0
