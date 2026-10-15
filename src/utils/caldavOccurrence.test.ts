@@ -169,4 +169,28 @@ describe('exceptOccurrenceViaCalDav', () => {
     const put = mockRequest.mock.calls.find((c) => c[0] === 'PUT');
     expect(put?.[3]?.scheduleTag).toBe('"s1"');
   });
+
+  it('does not PUT a resource rejected by calendar complexity limits', async () => {
+    mockRequest
+      .mockResolvedValueOnce(reply(principalReply))
+      .mockResolvedValueOnce(reply(homeReply))
+      .mockResolvedValueOnce(
+        reply(multistatus([{ href: '/123/calendars/bbb/', name: 'Cal' }])),
+      )
+      .mockResolvedValueOnce(
+        reply(SERIES.replace('SUMMARY:Weekly', `SUMMARY:${'x'.repeat(65536)}`)),
+      );
+
+    await expect(
+      exceptOccurrenceViaCalDav({
+        credentials: CREDS,
+        calendarName: 'Cal',
+        uid: 'ABC',
+        occurrenceDate: '2026-09-21T09:00:00',
+      }),
+    ).rejects.toThrow(/line length limit/i);
+    expect(mockRequest.mock.calls.some((call) => call[0] === 'PUT')).toBe(
+      false,
+    );
+  });
 });

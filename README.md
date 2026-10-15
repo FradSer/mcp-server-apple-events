@@ -246,6 +246,7 @@ These two `calendar_events` parameters are the only writes that do not go throug
 
   Use an [app-specific password](https://support.apple.com/en-us/102654), never your account password. Credentials are read from the environment first, then the Keychain, never from MCP client config, and are never logged.
 - Only iCloud-synced events qualify — an event with no external identifier has no CalDAV resource to locate.
+- CalDAV requests have a 30-second deadline across redirects and response reads, and a 2 MiB response limit. Calendar editing also limits resources to 20000 physical/content lines, 64 KiB per unfolded UTF-8 line, 16 nested components, 2000 events, and 1000 recurrence IDs. Oversized or overly complex resources fail with an actionable error before a calendar write; serialized output must fit the same size and line-count limits.
 
 ### Read response shape
 

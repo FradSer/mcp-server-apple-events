@@ -18,14 +18,52 @@
 import { CliUserError } from './errorHandling.js';
 
 const MAX_OCTETS = 75;
+const MAX_CALENDAR_BYTES = 2 * 1024 * 1024;
+const MAX_LINES = 20_000;
+const MAX_LINE_BYTES = 64 * 1024;
+const MAX_COMPONENT_DEPTH = 16;
+const MAX_EVENTS = 2000;
+const MAX_OVERRIDES = 1000;
+
+const checkLimit = (value: number, limit: number, name: string): void => {
+  if (value > limit) {
+    throw new CliUserError(
+      `Calendar ${name} limit exceeded (${limit}). Reduce the calendar resource before retrying.`,
+    );
+  }
+};
+
+const checkLines = (lines: string[]): void => {
+  checkLimit(lines.length, MAX_LINES, 'line count');
+  let bytes = 0;
+  for (const line of lines) {
+    const size = Buffer.byteLength(line, 'utf8');
+    checkLimit(size, MAX_LINE_BYTES, 'line length');
+    bytes += size + 2;
+    checkLimit(bytes, MAX_CALENDAR_BYTES, 'size');
+  }
+};
 
 /** RFC 5545 §3.1 line unfolding. */
 export const unfold = (text: string): string[] => {
+  checkLimit(Buffer.byteLength(text, 'utf8'), MAX_CALENDAR_BYTES, 'size');
+  let physicalLines = 1;
+  // Count before splitting so a body of empty lines cannot allocate a large
+  // array before the structural limit is enforced.
+  for (const ch of text) {
+    if (ch === '\n') checkLimit(++physicalLines, MAX_LINES, 'line count');
+  }
   const out: string[] = [];
+  let logicalBytes = 0;
   for (const raw of text.replace(/\r\n/g, '\n').split('\n')) {
+    const size = Buffer.byteLength(raw, 'utf8');
+    checkLimit(size, MAX_LINE_BYTES, 'line length');
     if ((raw.startsWith(' ') || raw.startsWith('\t')) && out.length > 0) {
+      logicalBytes += size - 1;
+      checkLimit(logicalBytes, MAX_LINE_BYTES, 'line length');
       out[out.length - 1] += raw.slice(1);
     } else if (raw !== '') {
+      logicalBytes = size;
       out.push(raw);
     }
   }
@@ -37,6 +75,7 @@ export const unfold = (text: string): string[] => {
  * multi-byte character is never split across the boundary.
  */
 export const fold = (lines: string[]): string[] => {
+  checkLines(lines);
   const out: string[] = [];
   for (const line of lines) {
     if (Buffer.byteLength(line, 'utf8') <= MAX_OCTETS) {
@@ -66,8 +105,12 @@ export const fold = (lines: string[]): string[] => {
   return out;
 };
 
-export const serialize = (lines: string[]): string =>
-  `${fold(lines).join('\r\n')}\r\n`;
+export const serialize = (lines: string[]): string => {
+  const folded = fold(lines);
+  checkLimit(folded.length + 1, MAX_LINES, 'line count');
+  checkLines(folded);
+  return `${folded.join('\r\n')}\r\n`;
+};
 
 /** Property name of a content line, upper-cased, parameters stripped. */
 export const propName = (line: string): string => {
@@ -85,14 +128,28 @@ export const propName = (line: string): string => {
  */
 const componentOf = (lines: string[]): string[] => {
   const stack: string[] = [];
+  let events = 0;
+  let overrides = 0;
   return lines.map((line) => {
     const name = propName(line);
     const value = line.slice(line.indexOf(':') + 1).toUpperCase();
     if (name === 'BEGIN') {
+      checkLimit(stack.length + 1, MAX_COMPONENT_DEPTH, 'nesting');
+      if (value === 'VEVENT') {
+        if (stack.includes('VEVENT')) {
+          throw new CliUserError(
+            'Calendar contains a nested VEVENT; cannot safely edit it.',
+          );
+        }
+        checkLimit(++events, MAX_EVENTS, 'event count');
+      }
       stack.push(value);
       return value;
     }
     const current = stack[stack.length - 1] ?? '';
+    if (name === 'RECURRENCE-ID') {
+      checkLimit(++overrides, MAX_OVERRIDES, 'override count');
+    }
     if (name === 'END') stack.pop();
     return current;
   });
@@ -155,6 +212,7 @@ export const exceptOccurrence = (
   lines: string[],
   occurrenceStart: string,
 ): string[] => {
+  checkLines(lines);
   if (!ICAL_STAMP.test(occurrenceStart)) {
     throw new CliUserError(
       `Invalid occurrence format: expected an iCalendar date-time ` +
@@ -234,8 +292,16 @@ export const exceptOccurrence = (
   const now = utcStamp();
 
   const out: string[] = [];
+  // Blocks are disjoint and ordered by position, so advance through each
+  // removal interval once instead of searching every interval for every line.
+  let doomedIndex = 0;
   lines.forEach((line, index) => {
-    if (doomed.some((b) => index >= b.start && index <= b.end)) return;
+    let removed = doomed[doomedIndex];
+    while (removed && index > removed.end) {
+      doomedIndex += 1;
+      removed = doomed[doomedIndex];
+    }
+    if (removed && index >= removed.start) return;
     const inMaster = index >= master.start && index <= master.end;
     if (index === master.end) {
       if (!alreadyExcepted) out.push(exdate);

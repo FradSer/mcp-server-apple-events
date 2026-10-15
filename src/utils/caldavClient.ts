@@ -20,6 +20,8 @@ import { CliUserError } from './errorHandling.js';
 
 const ALLOWED_HOST = /^(caldav\.icloud\.com|p\d+-caldav\.icloud\.com)$/;
 const MAX_REDIRECTS = 5;
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export interface CalDavCredentials {
   appleId: string;
@@ -112,6 +114,91 @@ const buildHeaders = (
   return headers;
 };
 
+const timeoutError = (): CalDavError =>
+  new CalDavError(
+    'CalDAV request timed out after 30 seconds. Retry the request.',
+  );
+
+const responseLimitError = (): CalDavError =>
+  new CalDavError(
+    'CalDAV response exceeds the 2 MiB limit. Ask the server to return a smaller response.',
+  );
+
+/**
+ * Releases a response body without letting a cleanup failure replace the
+ * authentication, conflict, redirect, or size error being reported.
+ */
+const disposeResponseBody = (response: Response): void => {
+  if (!response.body) return;
+  try {
+    void Promise.resolve(response.body.cancel()).catch(() => undefined);
+  } catch {
+    // A response body can already be disturbed or locked; the original error
+    // remains the actionable failure in either case.
+  }
+};
+
+const readResponseBody = async (
+  response: Response,
+  signal: AbortSignal,
+  timedOut: () => boolean,
+  abortRequest: () => void,
+): Promise<string> => {
+  if (!response.body) return '';
+  if (signal.aborted) {
+    disposeResponseBody(response);
+    throw timeoutError();
+  }
+
+  const reader = response.body.getReader();
+  let cancelled = false;
+  const cancelReader = (): void => {
+    if (cancelled) return;
+    cancelled = true;
+    try {
+      void Promise.resolve(reader.cancel()).catch(() => undefined);
+    } catch {
+      // The reader may have completed or errored while the abort was handled.
+    }
+  };
+  const onAbort = (): void => cancelReader();
+  signal.addEventListener('abort', onAbort, { once: true });
+
+  let byteCount = 0;
+  let body = '';
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (timedOut()) throw timeoutError();
+      if (result.done) break;
+
+      const chunk = result.value;
+      byteCount += chunk.byteLength;
+      if (byteCount > MAX_RESPONSE_BYTES) {
+        cancelReader();
+        const error = responseLimitError();
+        abortRequest();
+        throw error;
+      }
+      body += decoder.decode(chunk, { stream: true });
+    }
+    if (timedOut()) throw timeoutError();
+    body += decoder.decode();
+    return body;
+  } catch (error) {
+    cancelReader();
+    if (error instanceof CalDavError) throw error;
+    if (timedOut()) throw timeoutError();
+    throw new CalDavError(
+      'Unable to read CalDAV response body. Retry the request.',
+    );
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    reader.releaseLock();
+  }
+};
+
 export const request = async (
   method: string,
   url: string,
@@ -119,42 +206,92 @@ export const request = async (
   options: RequestOptions = {},
 ): Promise<CalDavResponse> => {
   let target = assertAllowedCalDavUrl(url);
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    const response = await fetch(target.toString(), {
-      method,
-      headers: buildHeaders(credentials, method, options),
-      body: options.body,
-      redirect: 'manual',
-    });
+  try {
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+      if (controller.signal.aborted) throw timeoutError();
+      let response: Response;
+      try {
+        response = await fetch(target.toString(), {
+          method,
+          headers: buildHeaders(credentials, method, options),
+          body: options.body,
+          redirect: 'manual',
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (timedOut) throw timeoutError();
+        throw error;
+      }
+      if (timedOut) {
+        disposeResponseBody(response);
+        throw timeoutError();
+      }
 
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get('location');
-      if (!location) break;
-      // Resolve relative Locations against the current target before checking,
-      // so a relative hop is validated rather than rejected as unparseable.
-      target = assertAllowedCalDavUrl(new URL(location, target).toString());
-      continue;
-    }
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        disposeResponseBody(response);
+        const location = response.headers.get('location');
+        if (!location) break;
+        // Resolve relative Locations against the current target before checking,
+        // so a relative hop is validated rather than rejected as unparseable.
+        target = assertAllowedCalDavUrl(new URL(location, target).toString());
+        continue;
+      }
 
-    const body = await response.text();
-    if (response.status === 401 || response.status === 403) {
-      throw new CalDavAuthError(
-        `CalDAV authentication failed (HTTP ${response.status}). ` +
-          'Check the app-specific password, not the server capability.',
+      if (response.status === 401 || response.status === 403) {
+        disposeResponseBody(response);
+        throw new CalDavAuthError(
+          `CalDAV authentication failed (HTTP ${response.status}). ` +
+            'Check the app-specific password, not the server capability.',
+        );
+      }
+      if (response.status === 412) {
+        disposeResponseBody(response);
+        throw new CalDavConflictError(
+          'CalDAV resource changed since it was read (HTTP 412). Re-read and retry.',
+        );
+      }
+      if (response.status >= 400) {
+        disposeResponseBody(response);
+        throw new CalDavError(
+          `CalDAV ${method} failed with HTTP ${response.status}.`,
+        );
+      }
+
+      const contentLength = response.headers.get('content-length');
+      const declaredLength =
+        contentLength === null ? Number.NaN : Number(contentLength);
+      if (
+        Number.isFinite(declaredLength) &&
+        declaredLength > MAX_RESPONSE_BYTES
+      ) {
+        disposeResponseBody(response);
+        controller.abort();
+        throw responseLimitError();
+      }
+
+      const body = await readResponseBody(
+        response,
+        controller.signal,
+        () => timedOut,
+        () => controller.abort(),
       );
+      return { status: response.status, headers: response.headers, body };
     }
-    if (response.status === 412) {
-      throw new CalDavConflictError(
-        'CalDAV resource changed since it was read (HTTP 412). Re-read and retry.',
-      );
-    }
-    if (response.status >= 400) {
-      throw new CalDavError(
-        `CalDAV ${method} failed with HTTP ${response.status}.`,
-      );
-    }
-    return { status: response.status, headers: response.headers, body };
+    throw new CalDavError(
+      `Too many CalDAV redirects (limit ${MAX_REDIRECTS}).`,
+    );
+  } catch (error) {
+    if (error instanceof CalDavError) throw error;
+    if (timedOut) throw timeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  throw new CalDavError(`Too many CalDAV redirects (limit ${MAX_REDIRECTS}).`);
 };

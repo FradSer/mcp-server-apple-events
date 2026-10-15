@@ -131,3 +131,43 @@ describe('propName', () => {
     expect(propName(line)).toBe(expected);
   });
 });
+
+describe('calendar resource limits', () => {
+  it('rejects UTF-8 bodies over 2 MiB before splitting', () => {
+    expect(() => unfold('é'.repeat(1024 * 1024 + 1))).toThrow(/size limit/i);
+  });
+
+  it('rejects more than 20000 physical lines, including blanks', () => {
+    expect(() => unfold('\n'.repeat(20000))).toThrow(/line count limit/i);
+  });
+
+  it('rejects overlong physical and unfolded UTF-8 lines', () => {
+    expect(() => unfold(`SUMMARY:${'é'.repeat(32768)}`)).toThrow(
+      /line length limit/i,
+    );
+    expect(() =>
+      unfold(`SUMMARY:${'a'.repeat(40000)}\r\n ${'b'.repeat(30000)}`),
+    ).toThrow(/line length limit/i);
+  });
+
+  it('accepts a line exactly at the byte limit, including continuations', () => {
+    expect(
+      unfold(`${'a'.repeat(32768)}\r\n ${'é'.repeat(16384)}`)[0],
+    ).toHaveLength(49152);
+  });
+
+  it('bounds direct serialization input as well as remote text', () => {
+    expect(() => serialize(['x'.repeat(65537)])).toThrow(/line length limit/i);
+    expect(() => serialize(Array.from({ length: 20001 }, () => 'X:1'))).toThrow(
+      /line count limit/i,
+    );
+    expect(() =>
+      serialize(Array.from({ length: 40 }, () => 'x'.repeat(65536))),
+    ).toThrow(/size limit/i);
+  });
+
+  it('rejects folding expansion that exceeds the serialized resource limit', () => {
+    const lines = Array.from({ length: 32 }, () => 'x'.repeat(65000));
+    expect(() => serialize(lines)).toThrow(/size limit|line count limit/i);
+  });
+});
