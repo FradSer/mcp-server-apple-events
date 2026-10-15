@@ -165,22 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arguments used by `reminders_tasks` when `startDate` or `endDate` is
   provided.
 
-- **`event` CLI calls are now bounded by a timeout** — fixes
-  [#113](https://github.com/FradSer/mcp-server-apple-events/issues/113).
-  Previously a call that blocked on an EventKit permission prompt which could
-  never be displayed (headless/launchd context) hung the MCP request forever
-  and leaked a child process per call while every health signal stayed green.
-  Each spawn now uses a 30 s timeout with `SIGKILL` (tunable via the
-  `EVENTKIT_CLI_TIMEOUT_MS` env var, milliseconds; invalid/zero values fall
-  back to the default) and surfaces a readable, actionable error instead.
-  The vendored `event` CLI (pinned to
-  [FradSer/event#15](https://github.com/FradSer/event/pull/15)) matches —
-  fail fast when no GUI session exists, give up on an unanswerable prompt
-  after 15 s (`EVENT_PERMISSION_TIMEOUT_MS`) with a domain-typed
-  `Permission denied` error — so the host shows a permission-specific
-  message before the server's kill fires. A killed write may have completed
-  despite the error; verify before retrying.
-
 - **Reminder note parsing is now linear**
   ([#141](https://github.com/FradSer/mcp-server-apple-events/issues/141)) —
   tag extraction and subtask parsing advanced a cursor and retried
@@ -212,7 +196,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps the caller's bound when the shifted bound would leave the `0000`–`9999`
   range.
 
-## [1.5.0] - 2026-05-14
+## [1.5.0] - 2026-08-12
 
 ### Changed (BREAKING)
 
@@ -258,18 +242,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CliPermissionError`, and maps other `Error: …` stderr to `CliUserError`.
 - `docs/migration-to-event-cli.md` — migration notes for downstream users,
   including the dropped-field table.
-
-### Removed
-
-- `src/swift/` (all of it): `EventKitCLI.swift`, `Info.plist`,
-  `EventKitCLI.entitlements`, plus their tests.
-- `scripts/build-swift.mjs` and its corresponding test.
-- `src/utils/cliExecutor.ts` and its test, replaced by `eventCli.ts`.
-
-## [1.5.0] - 2026-08-12
-
-### Added
-
 - Date-range filtering for reminders.
 - Timezone-aware calendar events.
 - Per-event timezone support.
@@ -279,16 +251,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Migrated to the vendored `event` CLI with hardened runtime and TCC permission handling.
 - Hardened validation, subprocess execution, path handling, and untrusted-data output.
 - Improved date parsing, timezone handling, recurrence support, and cross-list reminder moves.
 - Upgraded dependencies and build tooling.
 
 ### Fixed
 
+- **EventKit permission prompts now appear from any desktop MCP client**
+  (Codex Desktop, Claude Desktop, Cursor, …) — fixes
+  [#93](https://github.com/FradSer/mcp-server-apple-events/issues/93).
+  Previously macOS TCC attributed the Reminders/Calendar request to the
+  desktop app that launched the server; when that app lacked the EventKit
+  usage strings (Codex Desktop ships none), TCC refused the request before
+  EventKit was reached and no prompt ever appeared. The server now spawns
+  `bin/event` through a new `bin/event-disclaim` shim (compiled from
+  `scripts/disclaim.c`) that disclaims TCC responsibility at spawn time —
+  the same mechanism Chromium and LLDB use — making `event` its own
+  responsible process. `event` now embeds an Info.plist
+  (`scripts/event-Info.plist`, bundle id `me.frad.event`) with all six
+  Reminders/Calendar usage strings and is signed with the
+  `com.apple.security.personal-information.{calendars,reminders}`
+  entitlements (`scripts/event.entitlements`).
+
+  **Upgrade note:** the permission prompt and the entry in
+  `System Settings > Privacy & Security` now belong to `event`, not to the
+  host app — approve the new prompt once. Grants previously given to
+  Terminal / Claude Desktop no longer cover the MCP server.
+
+- **`event` CLI calls are now bounded by a timeout** — fixes
+  [#113](https://github.com/FradSer/mcp-server-apple-events/issues/113).
+  Previously a call that blocked on an EventKit permission prompt which could
+  never be displayed (headless/launchd context) hung the MCP request forever
+  and leaked a child process per call while every health signal stayed green.
+  Each spawn now uses a 30 s timeout with `SIGKILL` (tunable via the
+  `EVENTKIT_CLI_TIMEOUT_MS` env var, milliseconds; invalid/zero values fall
+  back to the default) and surfaces a readable, actionable error instead.
+  The vendored `event` CLI (pinned to
+  [FradSer/event#15](https://github.com/FradSer/event/pull/15)) matches —
+  fail fast when no GUI session exists, give up on an unanswerable prompt
+  after 15 s (`EVENT_PERMISSION_TIMEOUT_MS`) with a domain-typed
+  `Permission denied` error — so the host shows a permission-specific
+  message before the server's kill fires. A killed write may have completed
+  despite the error; verify before retrying.
+
 - Local date-window boundaries and historical date parsing.
-- macOS permission prompts and TCC errors across desktop MCP clients.
 - Unicode tags, malformed dates, calendar event grouping, and reminder completion updates.
+
+### Removed
+
+- `src/swift/` (all of it): `EventKitCLI.swift`, `Info.plist`,
+  `EventKitCLI.entitlements`, plus their tests.
+- `scripts/build-swift.mjs` and its corresponding test.
+- `src/utils/cliExecutor.ts` and its test, replaced by `eventCli.ts`.
 
 ## [1.4.0] - 2026-03-10
 
