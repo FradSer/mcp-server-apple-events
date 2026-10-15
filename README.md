@@ -177,7 +177,7 @@ Service-scoped tools mirror Apple Reminders and Calendar domains. All take an `a
 | `reminders_subtasks` | `read`, `create`, `update`, `delete`, `toggle`, `reorder` | Stored in the notes field (human-readable in Reminders.app). |
 | `reminders_lists` | `read`, `create`, `update`, `delete` | Rename via `name` → `newName`. |
 | `calendar_events` | `read`, `create`, `update`, `delete` | All-day inferred from date format. Cross-calendar moves unsupported. `span` scopes recurring deletes. `attendees` (update) invites addresses; `occurrenceDate` (delete) excepts one occurrence of a series — both need extra setup, see [Attendees and single occurrences](#attendees-and-single-occurrences). |
-| `calendar_calendars` | `read` | Calendars holding ≥1 event in the (optional) `startDate`/`endDate` window. |
+| `calendar_calendars` | `read` | Without a date range, every calendar EventKit reports, with its `source` and write permission. With `startDate`/`endDate`, calendars holding ≥1 event in the window, annotated with an event count. |
 
 Example calls:
 
