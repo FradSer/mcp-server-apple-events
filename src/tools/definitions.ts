@@ -50,7 +50,8 @@ export const TOOLS: Tool[] = [
         },
         url: {
           type: 'string',
-          description: 'A URL to associate with the reminder.',
+          description:
+            'A URL to associate with the reminder. This sets the EventKit URL field, which Reminders.app does not show in the note; it is visible to EventKit clients and to the Shortcut the CLI can invoke.',
           format: 'uri',
         },
         completed: {
@@ -191,7 +192,7 @@ export const TOOLS: Tool[] = [
         id: {
           type: 'string',
           description:
-            'The unique identifier of the event (REQUIRED for update, delete; optional for read to get single event).',
+            'The unique identifier of the event (REQUIRED for update, delete; optional for read to get single event). A read by id resolves the event directly through EventKit and needs no date range.',
         },
         // Creation/Update properties
         title: {
@@ -271,7 +272,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'calendar_calendars',
     description:
-      'Reads calendar collections. Use to inspect available calendars before creating or updating events. Optional date range filters return only calendars with events in that range.',
+      'Reads calendar collections. Use to inspect available calendars before creating or updating events. Without a date range, returns every calendar EventKit reports, each with its source (so two same-named calendars stay apart) and whether it allows content modifications. Optional date range filters return only calendars with events in that range.',
     inputSchema: {
       type: 'object',
       properties: {

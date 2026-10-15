@@ -30,6 +30,7 @@ import {
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import {
+  addArg,
   addOptionalArg,
   addOptionalNumberArg,
   nullToUndefined,
@@ -247,17 +248,17 @@ class ReminderRepository implements IReminderRepository {
   }
 
   async findReminders(filters: ReminderFilters = {}): Promise<Reminder[]> {
-    const args = ['reminders', 'list'];
+    const args: string[] = ['reminders', 'list'];
     addOptionalArg(args, '--list', filters.list);
     if (filters.showCompleted) {
       args.push('--completed');
     }
     const window = resolveReadDateWindow(filters);
     if (window.startDate) {
-      args.push('--start', window.startDate);
+      addArg(args, '--start', window.startDate);
     }
     if (window.endDate) {
-      args.push('--end', window.endDate);
+      addArg(args, '--end', window.endDate);
     }
     args.push('--json');
 
@@ -294,7 +295,8 @@ class ReminderRepository implements IReminderRepository {
   }
 
   async createReminder(data: CreateReminderData): Promise<ReminderJSON> {
-    const args = ['reminders', 'create', '--title', data.title];
+    const args: string[] = ['reminders', 'create'];
+    addArg(args, '--title', data.title);
     addOptionalArg(args, '--list', data.list);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--url', data.url);
@@ -309,7 +311,8 @@ class ReminderRepository implements IReminderRepository {
   async updateReminder(data: UpdateReminderData): Promise<ReminderJSON> {
     // Cross-list moves are rejected by the handler, which shares its
     // `findReminderById` fetch with the notes-rebuild path.
-    const args = ['reminders', 'update', '--id', data.id];
+    const args: string[] = ['reminders', 'update'];
+    addArg(args, '--id', data.id);
     addOptionalArg(args, '--title', data.newTitle);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--url', data.url);
@@ -317,7 +320,7 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--start', data.startDate);
     addOptionalNumberArg(args, '--priority', data.priority);
     if (data.isCompleted !== undefined) {
-      args.push('--completed', data.isCompleted ? 'true' : 'false');
+      addArg(args, '--completed', data.isCompleted ? 'true' : 'false');
     }
     args.push('--no-shortcuts', '--json');
     return executeEventCliJson<ReminderJSON>(args);
@@ -327,19 +330,16 @@ class ReminderRepository implements IReminderRepository {
     // `event reminders delete` prints a status line ("Reminder deleted
     // successfully") instead of JSON. Use the plain-text executor so we don't
     // attempt to JSON.parse the success message.
-    await executeEventCliPlain(['reminders', 'delete', '--id', id]);
+    const args: string[] = ['reminders', 'delete'];
+    addArg(args, '--id', id);
+    await executeEventCliPlain(args);
   }
 
   async createReminderList(name: string): Promise<ReminderList> {
-    const listJson = await executeEventCliJson<ListJSON>([
-      'reminders',
-      'lists',
-      'create',
-      '--name',
-      name,
-      '--json',
-    ]);
-    return mapList(listJson);
+    const args: string[] = ['reminders', 'lists', 'create'];
+    addArg(args, '--name', name);
+    args.push('--json');
+    return mapList(await executeEventCliJson<ListJSON>(args));
   }
 
   /**
@@ -366,22 +366,18 @@ class ReminderRepository implements IReminderRepository {
     newName: string,
   ): Promise<ReminderList> {
     const id = await this.resolveListIdByName(currentName);
-    const listJson = await executeEventCliJson<ListJSON>([
-      'reminders',
-      'lists',
-      'update',
-      '--id',
-      id,
-      '--name',
-      newName,
-      '--json',
-    ]);
-    return mapList(listJson);
+    const args: string[] = ['reminders', 'lists', 'update'];
+    addArg(args, '--id', id);
+    addArg(args, '--name', newName);
+    args.push('--json');
+    return mapList(await executeEventCliJson<ListJSON>(args));
   }
 
   async deleteReminderList(name: string): Promise<void> {
     const id = await this.resolveListIdByName(name);
-    await executeEventCliPlain(['reminders', 'lists', 'delete', '--id', id]);
+    const args: string[] = ['reminders', 'lists', 'delete'];
+    addArg(args, '--id', id);
+    await executeEventCliPlain(args);
   }
 }
 

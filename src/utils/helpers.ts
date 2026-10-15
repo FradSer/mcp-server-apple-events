@@ -8,6 +8,24 @@
  */
 
 /**
+ * Appends one option and its value to an argv array.
+ *
+ * The attached form (`--title=value`) keeps ArgumentParser from reading a
+ * value that starts with `-` as the next option. `--title "- buy milk"` fails
+ * with "Missing value for '--title'", while `--title=- buy milk` delivers the
+ * text, so dictated titles and notes that start with a Markdown rule or list
+ * survive. An empty value keeps the separated form: ArgumentParser reads
+ * `--title=` as a missing value but accepts `--title ""`.
+ */
+export function addArg(args: string[], flag: string, value: string): void {
+  if (value === '') {
+    args.push(flag, value);
+    return;
+  }
+  args.push(`${flag}=${value}`);
+}
+
+/**
  * Adds an optional string argument to the args array if the value is defined
  */
 export function addOptionalArg(
@@ -16,7 +34,7 @@ export function addOptionalArg(
   value: string | undefined,
 ): void {
   if (value !== undefined) {
-    args.push(flag, value);
+    addArg(args, flag, value);
   }
 }
 
@@ -29,7 +47,7 @@ export function addOptionalNumberArg(
   value: number | undefined,
 ): void {
   if (value !== undefined) {
-    args.push(flag, String(value));
+    addArg(args, flag, String(value));
   }
 }
 

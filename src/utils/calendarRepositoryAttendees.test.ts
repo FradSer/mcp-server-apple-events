@@ -36,11 +36,17 @@ beforeEach(() => {
 
 describe('calendarRepository.addAttendees', () => {
   it('resolves the event by id, then addresses Calendar.app by title and date', async () => {
-    mockCli.mockResolvedValue([EVENT] as never);
+    mockCli.mockResolvedValue(EVENT as never);
     mockApple.mockResolvedValue({ updated: 1 });
 
     await calendarRepository.addAttendees('CAL:EVT', ['a@b.com']);
 
+    expect(mockCli).toHaveBeenCalledWith([
+      'calendar',
+      'get',
+      '--id=CAL:EVT',
+      '--json',
+    ]);
     expect(mockApple).toHaveBeenCalledWith({
       calendarName: 'Work / Projects',
       summary: 'MKTG 300 — Class 1',
@@ -50,14 +56,14 @@ describe('calendarRepository.addAttendees', () => {
   });
 
   it('passes the date as a bare day, not the full timestamp', async () => {
-    mockCli.mockResolvedValue([EVENT] as never);
+    mockCli.mockResolvedValue(EVENT as never);
     mockApple.mockResolvedValue({ updated: 1 });
     await calendarRepository.addAttendees('CAL:EVT', ['a@b.com']);
     expect(mockApple.mock.calls[0]?.[0].date).toBe('2026-08-31');
   });
 
   it('forwards every address', async () => {
-    mockCli.mockResolvedValue([EVENT] as never);
+    mockCli.mockResolvedValue(EVENT as never);
     mockApple.mockResolvedValue({ updated: 1 });
     await calendarRepository.addAttendees('CAL:EVT', ['a@b.com', 'c@d.com']);
     expect(mockApple.mock.calls[0]?.[0].attendees).toEqual([
@@ -67,7 +73,7 @@ describe('calendarRepository.addAttendees', () => {
   });
 
   it('returns the resolved event alongside the count', async () => {
-    mockCli.mockResolvedValue([EVENT] as never);
+    mockCli.mockResolvedValue(EVENT as never);
     mockApple.mockResolvedValue({ updated: 1 });
     const result = await calendarRepository.addAttendees('CAL:EVT', [
       'a@b.com',
@@ -77,7 +83,7 @@ describe('calendarRepository.addAttendees', () => {
   });
 
   it('never issues a CLI write for an attendee-only change', async () => {
-    mockCli.mockResolvedValue([EVENT] as never);
+    mockCli.mockResolvedValue(EVENT as never);
     mockApple.mockResolvedValue({ updated: 1 });
     await calendarRepository.addAttendees('CAL:EVT', ['a@b.com']);
     const writes = mockCli.mock.calls.filter(
@@ -87,7 +93,9 @@ describe('calendarRepository.addAttendees', () => {
   });
 
   it('propagates a not-found event rather than inventing a target', async () => {
-    mockCli.mockResolvedValue([] as never);
+    mockCli.mockRejectedValue(
+      new Error("Not found: Event with ID 'CAL:MISSING' not found"),
+    );
     await expect(
       calendarRepository.addAttendees('CAL:MISSING', ['a@b.com']),
     ).rejects.toThrow(/not found/i);

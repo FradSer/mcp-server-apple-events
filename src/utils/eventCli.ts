@@ -78,13 +78,12 @@ const DEFAULT_CLI_TIMEOUT_MS = 30_000;
 /**
  * Ceiling on a single `event` invocation's stdout.
  *
- * `findEventById` has no way to ask EventKit for one event, so it lists the
- * full ±4-year window across every calendar and filters in TS. On a busy
- * account that JSON is already past 10 MB, which silently turned every
- * id-addressed operation — update, attendee invite, occurrence exception —
- * into a generic failure. Sized well above the observed worst case rather
- * than trimmed to it, because overflowing costs a whole spawn and the buffer
- * is transient.
+ * Some reads still transfer a whole collection: `findReminders` lists every
+ * reminder, and `findEvents` lists every event in the caller's window. On a
+ * busy account that JSON is already past 10 MB, which silently turned the
+ * call into a generic failure. Sized well above the observed worst case
+ * rather than trimmed to it, because overflowing costs a whole spawn and the
+ * buffer is transient.
  */
 const MAX_CLI_STDOUT_BYTES = 64 * 1024 * 1024;
 
@@ -346,6 +345,64 @@ Then use the local path in your Claude Desktop config:
 }
 
 /**
+ * Parses the JSON document out of `event`'s stdout.
+ *
+ * `event` 0.8.0 and later keep stdout free of notes, but a note could reach
+ * stdout before that: a missing AdvancedReminderEdit Shortcut printed three
+ * lines before the document, and `--no-shortcuts` did not take effect. A
+ * caller that only tried `JSON.parse(stdout)` then reported a failure for a
+ * reminder that had been saved, and a client that retries on error creates a
+ * duplicate. Try the whole payload first, then the first line that starts a
+ * JSON document, so a leading note cannot turn a successful write into an
+ * error.
+ */
+function parseCliJson<T>(stdout: string): T {
+  try {
+    return JSON.parse(stdout.trim()) as T;
+  } catch (error) {
+    const recovered = findJsonDocument(stdout);
+    if (recovered) return recovered.value as T;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`event execution failed: Invalid CLI output - ${detail}`);
+  }
+}
+
+/**
+ * Candidate document starts the recovery path parses before it gives up.
+ *
+ * Notes precede the document, so the first line that starts a JSON value is
+ * almost always the document itself; the cap only bounds the work a
+ * pathological payload can cause.
+ */
+const MAX_JSON_RECOVERY_ATTEMPTS = 4;
+
+/**
+ * Returns the value of the first JSON document in `text`, or undefined when no
+ * line starts one.
+ *
+ * Scans from the top so the document is parsed once: a pretty-printed array
+ * puts a nested object on every following line, and trying those first (as a
+ * bottom-up scan does) re-parses the whole suffix per line, which turns a
+ * multi-megabyte listing into seconds of blocked event loop.
+ */
+function findJsonDocument(text: string): { value: unknown } | undefined {
+  const lines = text.split('\n');
+  let attempts = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trimStart() ?? '';
+    if (!line.startsWith('{') && !line.startsWith('[')) continue;
+    attempts += 1;
+    if (attempts > MAX_JSON_RECOVERY_ATTEMPTS) return undefined;
+    try {
+      return { value: JSON.parse(lines.slice(index).join('\n').trim()) };
+    } catch {
+      // Not the document start; try the next candidate line.
+    }
+  }
+  return undefined;
+}
+
+/**
  * Executes the `event` binary and parses its stdout as raw JSON.
  *
  * @template T - Expected JSON type emitted by `event`
@@ -369,12 +426,7 @@ export async function executeEventCliJson<T>(args: string[]): Promise<T> {
   if (!normalized) {
     throw new Error('event execution failed: Empty CLI output');
   }
-  try {
-    return JSON.parse(normalized) as T;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`event execution failed: Invalid CLI output - ${detail}`);
-  }
+  return parseCliJson<T>(normalized);
 }
 
 /**

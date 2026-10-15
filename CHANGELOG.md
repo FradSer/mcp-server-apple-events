@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`calendar_calendars` reports the EventKit calendar catalog**
+  ([#147](https://github.com/FradSer/mcp-server-apple-events/issues/147)) —
+  a read without a date range calls `event calendar calendars` and returns
+  every calendar EventKit reports for the `.event` entity, including a
+  calendar with no event in any window. Each entry now carries `source`,
+  `sourceType`, `allowsContentModifications`, `isImmutable`, and `color`, so
+  two same-named calendars stay apart and a caller can tell a read-only
+  calendar before a write fails. The previous listing derived names from a
+  ±4-year `calendar list` scan, which could not see an empty calendar at all
+  and missed calendars whose events EventKit left out of the window. A read
+  with `startDate`/`endDate` keeps the event-derived listing and its
+  per-calendar event count.
+
+- **`calendar_events` reads by id through a direct EventKit lookup**
+  ([#146](https://github.com/FradSer/mcp-server-apple-events/issues/146),
+  [#108](https://github.com/FradSer/mcp-server-apple-events/issues/108)) —
+  a read with `id` calls `event calendar get --id <id>`, which resolves the
+  event with `EKEventStore.event(withIdentifier:)` — the same lookup update
+  and delete use. The previous read scanned a ±4-year window split at today
+  and filtered in TypeScript: it transferred the whole window for one event,
+  and EventKit could leave the event out of that window even though a direct
+  lookup found it, so an existing event read as "not found".
+
+- **Vendored `event` CLI v0.8.0** — adds `calendar get` and
+  `calendar calendars`, honours `--no-shortcuts` on `reminders create` and
+  `reminders update`, and writes every diagnostic note to stderr
+  ([FradSer/event#20](https://github.com/FradSer/event/pull/20)).
+
 - **`attendees` on `calendar_events` update** — invites email addresses to an
   existing event, and the invitation is actually delivered.
   `EKCalendarItem.attendees` is `readonly` in the macOS SDK and EventKit has no
@@ -61,6 +89,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inbound RSVP cannot cause a spurious 412.
 
 ### Fixed
+
+- **Values that start with `-` no longer fail as missing options**
+  ([#144](https://github.com/FradSer/mcp-server-apple-events/issues/144)) —
+  the repositories build argv in the attached form (`--title=- buy milk`),
+  which ArgumentParser reads as a value. A dictated title, a note that starts
+  with a Markdown rule, or a location that starts with a dash reached the CLI
+  as `--title "- buy milk"` and failed with `Missing value for '--title'`.
+  An empty value keeps the separated form, because the CLI reads `--flag=` as
+  a missing value.
+
+- **A note on stdout no longer reports a saved write as a failure**
+  ([#145](https://github.com/FradSer/mcp-server-apple-events/issues/145)) —
+  `create` or `update` with `url` returned `isError: true` with "System error
+  occurred" although the reminder was written with the URL set, so a client
+  that retries on error creates a duplicate. The vendored CLI printed the
+  missing-Shortcut notes to stdout before the JSON document; it now writes
+  them to stderr, and the server parses the last JSON document on stdout so a
+  note from an older binary cannot break the call either.
 
 - **Reminder date-window reads in npm releases**
   ([#131](https://github.com/FradSer/mcp-server-apple-events/issues/131)) —

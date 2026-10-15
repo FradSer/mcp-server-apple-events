@@ -140,35 +140,33 @@ Both are documented for end users in
 
 ### `calendar_calendars`
 
-`event` has no first-class "list calendars" command. The server now derives
-the calendar listing from distinct `calendar` field values inside a wide
-±4-year `calendar list` read window (or a caller-supplied `startDate`/
-`endDate` window, annotated with an in-range event count). This has a few
-implications:
+`event calendar calendars` reports every calendar for the `.event` entity from
+the EventKit catalog, so a calendar that holds no event in a read window still
+appears. Each entry carries the calendar `source` (which tells two same-named
+calendars apart) and `allowsContentModifications` (which tells a caller
+whether a write can succeed before the write is attempted).
 
-- Calendars that are completely empty within the read window won't appear.
-- The synthetic listing surfaces `id` and `title` only; EventKit `account`
-  and `accountType` are no longer reported, so `filterAccount` is dropped.
-  Event counts (when a date range is supplied) are grouped by calendar
-  title rather than a stable EventKit identifier.
-
-A dedicated `event calendar list-calendars` command would let us drop this
-shim; track upstream at <https://github.com/FradSer/event/issues>.
+A caller-supplied `startDate`/`endDate` window keeps the event-derived
+listing, annotated with an in-range event count: counts need events, and
+`event` has no per-calendar count. That path still groups by calendar title
+rather than a stable EventKit identifier, so two same-named calendars collapse
+into one row. The catalog listing maps `id` to the title for the same reason —
+the MCP surface keys calendars by name everywhere (create, update, list
+filtering).
 
 ### Single-item lookup by ID
 
-`event` has no dedicated "get by id" command for reminders or calendar
-events — the prior embedded binary's `read-by-id` action has no equivalent.
-`findReminderById` (`src/utils/reminderRepository.ts`) fetches the full
-reminder set (including completed) and does an in-memory `.find`;
-`findEventById` (`src/utils/calendarRepository.ts`) does the same over a wide
-±4-year `calendar list` window. This means every single-reminder or
-single-event read transfers the whole result set over the CLI pipe. For
-accounts with very large reminder lists or event histories this is slower
-than a direct by-id fetch would be, but there is no narrower `event` query to
-fall back to. A dedicated by-id command in `event` would let both methods
-drop the full scan; track upstream at
-<https://github.com/FradSer/event/issues>.
+`event calendar get --id <id>` resolves a calendar event through
+`EKEventStore.event(withIdentifier:)` — the same lookup `update` and `delete`
+use — so an event that can be written can always be read back, and the read
+transfers one event instead of a whole window. `findEventById`
+(`src/utils/calendarRepository.ts`) calls it.
+
+Reminders still have no by-id command: `findReminderById`
+(`src/utils/reminderRepository.ts`) fetches the full reminder set (including
+completed) and does an in-memory `.find`. Every single-reminder read therefore
+transfers the whole result set over the CLI pipe. Tracked upstream at
+<https://github.com/FradSer/event/issues/11>.
 
 ## Notes-field conventions are unchanged
 

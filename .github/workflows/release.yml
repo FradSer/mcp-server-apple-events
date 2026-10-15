@@ -64,12 +64,12 @@ jobs:
 
           curl --fail --location --silent --show-error \
             --output "$work_dir/event-darwin-amd64.tar.gz" \
-            https://github.com/FradSer/event/releases/download/v0.7.0/event-darwin-amd64.tar.gz
+            https://github.com/FradSer/event/releases/download/v0.8.0/event-darwin-amd64.tar.gz
           curl --fail --location --silent --show-error \
             --output "$work_dir/event-darwin-arm64.tar.gz" \
-            https://github.com/FradSer/event/releases/download/v0.7.0/event-darwin-arm64.tar.gz
-          echo "f76fd84fe029fc04ee3c9282e64d1c61638631c59107a7bd94da63e76ba459f1  $work_dir/event-darwin-amd64.tar.gz" | shasum -a 256 -c -
-          echo "e2c36e758143c06a1d4c1c11367aa8857196a96b71122dc3fe17a36bd82324f4  $work_dir/event-darwin-arm64.tar.gz" | shasum -a 256 -c -
+            https://github.com/FradSer/event/releases/download/v0.8.0/event-darwin-arm64.tar.gz
+          echo "c8a38d001fe2789c25d638def0db35b7ab766e8eed849e53f791f394b92e86b3  $work_dir/event-darwin-amd64.tar.gz" | shasum -a 256 -c -
+          echo "2b8a78368a7db21f75645d679e81acb8add2b48173da21d0fa1716c0122e2826  $work_dir/event-darwin-arm64.tar.gz" | shasum -a 256 -c -
           tar -xzf "$work_dir/event-darwin-amd64.tar.gz" -C "$work_dir/amd64"
           tar -xzf "$work_dir/event-darwin-arm64.tar.gz" -C "$work_dir/arm64"
 
@@ -97,6 +97,11 @@ jobs:
           bin/event reminders list --help > /tmp/reminders-list-help.out 2>&1
           grep -q -- '--start' /tmp/reminders-list-help.out
           grep -q -- '--end' /tmp/reminders-list-help.out
+          echo "=== Calendar by-id lookup and calendar listing ==="
+          bin/event calendar get --help > /tmp/calendar-get-help.out 2>&1
+          grep -q -- '--id' /tmp/calendar-get-help.out
+          bin/event calendar calendars --help > /tmp/calendar-calendars-help.out 2>&1
+          grep -q -- '--json' /tmp/calendar-calendars-help.out
           echo "=== Code signature ==="
           codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
           ! grep -q "Authority=" /tmp/codesign.out

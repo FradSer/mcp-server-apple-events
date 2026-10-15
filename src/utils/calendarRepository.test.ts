@@ -3,22 +3,24 @@
  * Tests for the calendar repository against the vendored `event` CLI.
  *
  * Scenarios are organized by the shapes the repository exposes:
- *   - read by id   → list the backward and forward 4-year windows (EventKit
- *                    caps one predicate at 4 years), then array `.find`
- *   - list events  → `event calendar list --start --end [--calendar] --json`
+ *   - read by id   → `event calendar get --id=<id> --json`, a direct EventKit
+ *                    lookup that needs no date window
+ *   - list events  → `event calendar list --start= --end= [--calendar=] --json`
  *                    with TS-side search/availability filtering
- *   - calendars    → derive distinct calendar names from both wide windows
+ *   - calendars    → `event calendar calendars --json`, mapped to the domain
+ *                    type with source and write-permission fields
  *   - create       → `event calendar create` with the trimmed flag set
  *                    (no url / structuredLocation / isAllDay / availability /
  *                    alarms / recurrenceRules)
  *   - update       → `event calendar update` (no cross-calendar move, no span)
- *   - delete       → `event calendar delete --id [--span this|all]`
+ *   - delete       → `event calendar delete --id= [--span=this|all]`
  */
 
 import type { EventJSON } from '../types/repository.js';
 import { request } from './caldavClient.js';
 import { resolveCalDavCredentials } from './caldavCredentials.js';
 import { calendarRepository } from './calendarRepository.js';
+import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 
 jest.mock('./eventCli.js');
@@ -31,6 +33,20 @@ const mockJson = executeEventCliJson as jest.MockedFunction<
 const mockPlain = executeEventCliPlain as jest.MockedFunction<
   typeof executeEventCliPlain
 >;
+
+/**
+ * Reads one option value from an argv array built by the repository.
+ *
+ * `addArg` attaches values to their flag (`--start=2026-10-05`) so a value
+ * that starts with `-` cannot be read as the next option; an empty value keeps
+ * the separated form.
+ */
+const optionValue = (args: string[], flag: string): string | undefined => {
+  const attached = args.find((arg) => arg.startsWith(`${flag}=`));
+  if (attached !== undefined) return attached.slice(flag.length + 1);
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
 
 const eventFixture = (overrides: Partial<EventJSON> = {}): EventJSON =>
   ({
@@ -52,65 +68,48 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('findEventById', () => {
-    it('lists both wide read windows then finds by id', async () => {
-      // Backward half, then forward half.
-      mockJson.mockResolvedValueOnce([eventFixture()]);
-      mockJson.mockResolvedValueOnce([
-        eventFixture({
-          id: 'evt-2',
-          title: 'Lunch',
-          startDate: '2025-11-04T12:00:00+08:00',
-          endDate: '2025-11-04T13:00:00+08:00',
-        }),
-      ]);
+    it('reads the event through a direct by-id lookup', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({ id: 'evt-2', title: 'Lunch' }),
+      );
 
       const result = await calendarRepository.findEventById('evt-2');
 
-      expect(mockJson).toHaveBeenCalledTimes(2);
-      for (const [args] of mockJson.mock.calls) {
-        expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
-        expect(args).toContain('--start');
-        expect(args).toContain('--end');
-        expect(args).toContain('--json');
-      }
+      expect(mockJson).toHaveBeenCalledTimes(1);
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'get',
+        '--id=evt-2',
+        '--json',
+      ]);
       expect(result.id).toBe('evt-2');
       expect(result.title).toBe('Lunch');
     });
 
-    it("splits at today so neither window exceeds EventKit's 4-year cap", async () => {
-      // A single today±4y predicate is silently truncated to its first four
-      // years, which hid every future event from id lookup.
-      mockJson.mockResolvedValue([]);
+    it('keeps an id that starts with a dash in one argv entry', async () => {
+      // Issue #144: a separate `--id`, `-evt` pair reaches ArgumentParser as
+      // an option, not a value.
+      mockJson.mockResolvedValueOnce(eventFixture({ id: '-evt' }));
 
-      await expect(calendarRepository.findEventById('evt-1')).rejects.toThrow();
+      await calendarRepository.findEventById('-evt');
 
-      const [past, future] = mockJson.mock.calls.map(([args]) => ({
-        start: args[args.indexOf('--start') + 1] as string,
-        end: args[args.indexOf('--end') + 1] as string,
-      }));
-      expect(past!.end).toBe(future!.start);
-      const spanYears = (a: string, b: string) =>
-        (Date.parse(b) - Date.parse(a)) / (365.2425 * 24 * 60 * 60 * 1000);
-      expect(spanYears(past!.start, past!.end)).toBeLessThanOrEqual(4);
-      expect(spanYears(future!.start, future!.end)).toBeLessThanOrEqual(4);
-      expect(spanYears(past!.start, future!.end)).toBeGreaterThan(7);
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'get',
+        '--id=-evt',
+        '--json',
+      ]);
     });
 
-    it('deduplicates an event returned by both windows', async () => {
-      // Today's events sit on the shared boundary date and come back twice.
-      mockJson.mockResolvedValue([eventFixture()]);
-
-      const result = await calendarRepository.findEventById('evt-1');
-
-      expect(result.id).toBe('evt-1');
-    });
-
-    it('throws CliUserError when the id is not present in the listing', async () => {
-      mockJson.mockResolvedValue([eventFixture()]);
+    it('propagates the CLI not-found error instead of scanning again', async () => {
+      mockJson.mockRejectedValueOnce(
+        new CliUserError("Not found: Event with ID 'missing' not found"),
+      );
 
       await expect(calendarRepository.findEventById('missing')).rejects.toThrow(
-        "Event with ID 'missing' not found.",
+        "Not found: Event with ID 'missing' not found",
       );
+      expect(mockJson).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -122,11 +121,11 @@ describe('CalendarRepository (event CLI backend)', () => {
 
       const args = mockJson.mock.calls[0]![0];
       expect(args.slice(0, 2)).toEqual(['calendar', 'list']);
-      expect(args[2]).toBe('--start');
-      expect(args[4]).toBe('--end');
+      expect(args[2]).toMatch(/^--start=/);
+      expect(args[3]).toMatch(/^--end=/);
       expect(args[args.length - 1]).toBe('--json');
-      const start = args[args.indexOf('--start') + 1] as string;
-      const end = args[args.indexOf('--end') + 1] as string;
+      const start = optionValue(args, '--start') as string;
+      const end = optionValue(args, '--end') as string;
       expect((Date.parse(end) - Date.parse(start)) / 86_400_000).toBe(14);
     });
 
@@ -136,8 +135,7 @@ describe('CalendarRepository (event CLI backend)', () => {
       await calendarRepository.findEvents({ calendarName: 'Work' });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args).toContain('--calendar');
-      expect(args[args.indexOf('--calendar') + 1]).toBe('Work');
+      expect(optionValue(args, '--calendar')).toBe('Work');
     });
 
     it('includes the named end day when a caller supplies a non-midnight time', async () => {
@@ -149,8 +147,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-06');
+      expect(optionValue(args, '--start')).toBe('2025-11-04');
+      expect(optionValue(args, '--end')).toBe('2025-11-06');
     });
 
     it('includes events in the final fractional second of the named end day', async () => {
@@ -162,7 +160,7 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-09-11');
+      expect(optionValue(args, '--end')).toBe('2026-09-11');
     });
 
     it('includes timed events for an explicit same-day range ending at 23:59:59', async () => {
@@ -174,8 +172,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2026-09-11');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-09-12');
+      expect(optionValue(args, '--start')).toBe('2026-09-11');
+      expect(optionValue(args, '--end')).toBe('2026-09-12');
     });
 
     it('turns a same-day date-only read into a non-empty calendar-day window', async () => {
@@ -187,8 +185,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2026-10-05');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-06');
+      expect(optionValue(args, '--start')).toBe('2026-10-05');
+      expect(optionValue(args, '--end')).toBe('2026-10-06');
     });
 
     it('keeps a caller-supplied next-day midnight as the exclusive end', async () => {
@@ -200,8 +198,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2026-10-05');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-06');
+      expect(optionValue(args, '--start')).toBe('2026-10-05');
+      expect(optionValue(args, '--end')).toBe('2026-10-06');
     });
 
     it('does not expand the maximum four-digit year into a malformed CLI date', async () => {
@@ -213,8 +211,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--end') + 1]).toBe('9999-12-31');
-      expect(args[args.indexOf('--end') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(optionValue(args, '--end')).toBe('9999-12-31');
+      expect(optionValue(args, '--end')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it('keeps an inferred end within four digits for the maximum start date', async () => {
@@ -223,8 +221,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       await calendarRepository.findEvents({ startDate: '9999-12-31' });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--end') + 1]).toBe('9999-12-31');
-      expect(args[args.indexOf('--end') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(optionValue(args, '--end')).toBe('9999-12-31');
+      expect(optionValue(args, '--end')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it('keeps an inferred start within four digits for a year-zero end', async () => {
@@ -233,9 +231,9 @@ describe('CalendarRepository (event CLI backend)', () => {
       await calendarRepository.findEvents({ endDate: '0000-01-01' });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('0000-01-01');
-      expect(args[args.indexOf('--start') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(args[args.indexOf('--end') + 1]).toBe('0000-01-02');
+      expect(optionValue(args, '--start')).toBe('0000-01-01');
+      expect(optionValue(args, '--start')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(optionValue(args, '--end')).toBe('0000-01-02');
     });
 
     it('extends a supplied date-only end when it fills the missing start', async () => {
@@ -244,8 +242,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       await calendarRepository.findEvents({ endDate: '2026-10-05' });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2026-09-22');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-06');
+      expect(optionValue(args, '--start')).toBe('2026-09-22');
+      expect(optionValue(args, '--end')).toBe('2026-10-06');
     });
 
     it('uses the supplied start date prefix for the inferred window', async () => {
@@ -256,8 +254,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2026-10-05');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-10-19');
+      expect(optionValue(args, '--start')).toBe('2026-10-05');
+      expect(optionValue(args, '--end')).toBe('2026-10-19');
     });
 
     it('applies TS-side search filter against title, notes, and location', async () => {
@@ -292,30 +290,74 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('findAllCalendars', () => {
-    it('derives a distinct calendar listing from both wide read windows', async () => {
+    it('lists every calendar from the EventKit catalog', async () => {
       mockJson.mockResolvedValueOnce([
-        eventFixture({ id: 'a', calendar: 'Work' }),
-        eventFixture({ id: 'b', calendar: 'Personal' }),
-      ]);
-      // A calendar whose only events are in the future must still appear.
-      mockJson.mockResolvedValueOnce([
-        eventFixture({ id: 'c', calendar: 'Work' }),
-        eventFixture({ id: 'd', calendar: 'Family' }),
+        {
+          id: 'CAL-WORK',
+          title: 'Work',
+          source: 'iCloud',
+          sourceType: 'calDAV',
+          allowsContentModifications: true,
+          isImmutable: false,
+          color: '#FFCC00',
+        },
+        {
+          id: 'CAL-BDAY',
+          title: 'Birthdays',
+          source: 'Other',
+          sourceType: 'birthdays',
+          allowsContentModifications: false,
+          isImmutable: true,
+          color: null,
+        },
       ]);
 
       const result = await calendarRepository.findAllCalendars();
 
-      expect(result.map((c) => c.title).sort()).toEqual([
-        'Family',
-        'Personal',
-        'Work',
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'calendars',
+        '--json',
       ]);
-      // Sorted alphabetically; id mirrors the calendar name.
-      expect(result.map((c) => c.id)).toEqual(['Family', 'Personal', 'Work']);
+      // Sorted by title; `id` mirrors the title because the MCP surface keys
+      // calendars by name, and `source` carries the disambiguation.
+      expect(result).toEqual([
+        {
+          id: 'Birthdays',
+          title: 'Birthdays',
+          source: 'Other',
+          sourceType: 'birthdays',
+          allowsContentModifications: false,
+          isImmutable: true,
+        },
+        {
+          id: 'Work',
+          title: 'Work',
+          source: 'iCloud',
+          sourceType: 'calDAV',
+          allowsContentModifications: true,
+          isImmutable: false,
+          color: '#FFCC00',
+        },
+      ]);
     });
 
-    it('returns an empty array when no events exist in the window', async () => {
-      mockJson.mockResolvedValue([]);
+    it('keeps a calendar that holds no event', async () => {
+      // The previous event scan could not see an empty calendar at all, which
+      // is issue #147.
+      mockJson.mockResolvedValueOnce([
+        { id: 'CAL-EMPTY', title: 'Empty calendar' },
+      ]);
+
+      const result = await calendarRepository.findAllCalendars();
+
+      expect(result).toEqual([
+        { id: 'Empty calendar', title: 'Empty calendar' },
+      ]);
+    });
+
+    it('returns an empty array when EventKit reports no calendar', async () => {
+      mockJson.mockResolvedValueOnce([]);
 
       const result = await calendarRepository.findAllCalendars();
       expect(result).toEqual([]);
@@ -324,7 +366,7 @@ describe('CalendarRepository (event CLI backend)', () => {
 
   describe('findCalendars', () => {
     it('delegates to findAllCalendars when no date range is given', async () => {
-      mockJson.mockResolvedValue([eventFixture({ id: 'a', calendar: 'Work' })]);
+      mockJson.mockResolvedValue([{ id: 'CAL-WORK', title: 'Work' }]);
 
       const result = await calendarRepository.findCalendars({});
 
@@ -346,8 +388,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2026-05-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2026-05-12');
+      expect(optionValue(args, '--start')).toBe('2026-05-04');
+      expect(optionValue(args, '--end')).toBe('2026-05-12');
       expect(result).toEqual([
         { id: 'Personal', title: 'Personal', eventCount: 1 },
         { id: 'Work', title: 'Work', eventCount: 2 },
@@ -382,18 +424,12 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'calendar',
         'create',
-        '--title',
-        'New event',
-        '--start',
-        '2025-11-04 09:00:00',
-        '--end',
-        '2025-11-04 10:00:00',
-        '--calendar',
-        'Work',
-        '--notes',
-        'agenda',
-        '--location',
-        'HQ',
+        '--title=New event',
+        '--start=2025-11-04 09:00:00',
+        '--end=2025-11-04 10:00:00',
+        '--calendar=Work',
+        '--notes=agenda',
+        '--location=HQ',
         '--json',
       ]);
     });
@@ -408,8 +444,8 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args[args.indexOf('--start') + 1]).toBe('2025-11-04');
-      expect(args[args.indexOf('--end') + 1]).toBe('2025-11-05');
+      expect(optionValue(args, '--start')).toBe('2025-11-04');
+      expect(optionValue(args, '--end')).toBe('2025-11-05');
     });
 
     it('passes --timezone when provided', async () => {
@@ -423,8 +459,7 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args).toContain('--timezone');
-      expect(args[args.indexOf('--timezone') + 1]).toBe('America/New_York');
+      expect(optionValue(args, '--timezone')).toBe('America/New_York');
     });
   });
 
@@ -444,18 +479,12 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'calendar',
         'update',
-        '--id',
-        'evt-1',
-        '--title',
-        'Renamed',
-        '--start',
-        '2025-11-04 10:00:00',
-        '--end',
-        '2025-11-04 11:00:00',
-        '--location',
-        'Conference room B',
-        '--notes',
-        'rescheduled',
+        '--id=evt-1',
+        '--title=Renamed',
+        '--start=2025-11-04 10:00:00',
+        '--end=2025-11-04 11:00:00',
+        '--location=Conference room B',
+        '--notes=rescheduled',
         '--json',
       ]);
     });
@@ -470,8 +499,7 @@ describe('CalendarRepository (event CLI backend)', () => {
       });
 
       const args = mockJson.mock.calls[0]![0];
-      expect(args).toContain('--timezone');
-      expect(args[args.indexOf('--timezone') + 1]).toBe('Asia/Shanghai');
+      expect(optionValue(args, '--timezone')).toBe('Asia/Shanghai');
     });
   });
 
@@ -483,20 +511,16 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(mockPlain).toHaveBeenLastCalledWith([
         'calendar',
         'delete',
-        '--id',
-        'evt-1',
-        '--span',
-        'this',
+        '--id=evt-1',
+        '--span=this',
       ]);
 
       await calendarRepository.deleteEvent('evt-2', 'future-events');
       expect(mockPlain).toHaveBeenLastCalledWith([
         'calendar',
         'delete',
-        '--id',
-        'evt-2',
-        '--span',
-        'all',
+        '--id=evt-2',
+        '--span=all',
       ]);
     });
 
@@ -508,8 +532,7 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(mockPlain).toHaveBeenCalledWith([
         'calendar',
         'delete',
-        '--id',
-        'evt-3',
+        '--id=evt-3',
       ]);
     });
   });
@@ -533,7 +556,7 @@ describe('CalendarRepository occurrence processing limits', () => {
     body,
   });
   const wire = (body: string) => {
-    mockJson.mockResolvedValue([eventFixture({ id: 'store:ABC' })]);
+    mockJson.mockResolvedValue(eventFixture({ id: 'store:ABC' }));
     mockRequest
       .mockResolvedValueOnce(
         reply(

@@ -10,6 +10,7 @@
 
 import type { Calendar, CalendarEvent } from '../types/index.js';
 import type {
+  CalendarJSON,
   CreateEventData,
   EventJSON,
   ICalendarRepository,
@@ -26,7 +27,7 @@ import {
 } from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
-import { addOptionalArg, nullToUndefined } from './helpers.js';
+import { addArg, addOptionalArg, nullToUndefined } from './helpers.js';
 import { parseReminderDueDate } from './reminderDateParser.js';
 
 const DEFAULT_READ_WINDOW_DAYS = 14;
@@ -54,15 +55,6 @@ const icalUidFor = (event: CalendarEvent): string | undefined => {
   const tail = event.id.split(':').pop();
   return tail && tail !== event.id ? tail : undefined;
 };
-
-/**
- * When looking up a single event by ID, expand the read window aggressively
- * so events scheduled years away (e.g. recurring annual reservations) can
- * still be located without requiring the caller to know the date in advance.
- * EventKit only supports a maximum 4-year predicate window — bound at
- * roughly that to stay within Apple's limits.
- */
-const FIND_BY_ID_WINDOW_DAYS = 365 * 4;
 
 /**
  * `calendar list` accepts date-only bounds and treats its end as exclusive.
@@ -158,6 +150,22 @@ const EVENT_NULLABLE_FIELDS: (keyof EventJSON)[] = [
 const mapEvent = (event: EventJSON): CalendarEvent =>
   nullToUndefined(event, EVENT_NULLABLE_FIELDS) as CalendarEvent;
 
+/**
+ * Maps one `calendar calendars` entry onto the domain type. The CLI reports
+ * the EventKit identifier; the MCP surface keys calendars by title everywhere
+ * else (create, update, list filtering), so `id` mirrors the title and the
+ * source fields carry the disambiguation.
+ */
+const mapCalendar = (calendar: CalendarJSON): Calendar => ({
+  id: calendar.title,
+  title: calendar.title,
+  source: calendar.source ?? undefined,
+  sourceType: calendar.sourceType ?? undefined,
+  allowsContentModifications: calendar.allowsContentModifications ?? undefined,
+  isImmutable: calendar.isImmutable ?? undefined,
+  color: calendar.color ?? undefined,
+});
+
 type EventSpan = 'this-event' | 'future-events';
 
 /**
@@ -176,55 +184,31 @@ class CalendarRepository implements ICalendarRepository {
     endDate: string,
     calendarName?: string,
   ): Promise<EventJSON[]> {
-    const args = ['calendar', 'list', '--start', startDate, '--end', endDate];
+    const args: string[] = ['calendar', 'list'];
+    addArg(args, '--start', startDate);
+    addArg(args, '--end', endDate);
     addOptionalArg(args, '--calendar', calendarName);
     args.push('--json');
     return executeEventCliJson<EventJSON[]>(args);
   }
 
-  // `findEventById` and `findAllCalendars` both need a wide read window
-  // because EventKit can't be queried for a single event by id directly via
-  // `event`, and empty calendars don't appear in narrow windows. Centralize
-  // the bounds here so both paths stay in sync.
-  private async listEventsWideWindow(): Promise<EventJSON[]> {
-    // EventKit clamps `predicateForEvents` to four years measured from the
-    // *start* date and drops the remainder without reporting it, so a single
-    // today±4y query silently returns the backward half only — no future
-    // event is ever visible, which made `findEventById` fail for every event
-    // that had not happened yet. Splitting at today keeps each half inside
-    // the limit. Both halves are inclusive of today, so ids are deduplicated.
-    const today = new Date();
-    const midpoint = formatDateOnly(today);
-    const [past, future] = await Promise.all([
-      this.listEvents(
-        formatDateOnly(shiftDays(today, -FIND_BY_ID_WINDOW_DAYS)),
-        midpoint,
-      ),
-      this.listEvents(
-        midpoint,
-        formatDateOnly(shiftDays(today, FIND_BY_ID_WINDOW_DAYS)),
-      ),
-    ]);
-
-    const seen = new Set<string>();
-    const merged: EventJSON[] = [];
-    for (const event of [...past, ...future]) {
-      if (event.id) {
-        if (seen.has(event.id)) continue;
-        seen.add(event.id);
-      }
-      merged.push(event);
-    }
-    return merged;
-  }
-
+  /**
+   * Reads one event through `event calendar get --id`, which resolves it with
+   * `EKEventStore.event(withIdentifier:)` — the same lookup `update` and
+   * `delete` use, so an event that can be written can always be read back.
+   * The previous ±4-year `calendar list` scan transferred the whole window to
+   * filter one row in TS, and EventKit could leave the event out of that
+   * window even though a direct lookup found it.
+   *
+   * For a recurring series, `event(withIdentifier:)` resolves to the series
+   * master, so `startDate` and `endDate` carry the series' original DTSTART
+   * rather than an occurrence from the current window.
+   */
   async findEventById(id: string): Promise<CalendarEvent> {
-    const events = await this.listEventsWideWindow();
-    const event = events.find((e) => e.id === id);
-    if (!event) {
-      throw new CliUserError(`Event with ID '${id}' not found.`);
-    }
-    return mapEvent(event);
+    const args: string[] = ['calendar', 'get'];
+    addArg(args, '--id', id);
+    args.push('--json');
+    return mapEvent(await executeEventCliJson<EventJSON>(args));
   }
 
   async findEvents(
@@ -269,30 +253,32 @@ class CalendarRepository implements ICalendarRepository {
   }
 
   /**
-   * `event` has no first-class "list calendars" command — calendar names are
-   * surfaced only as the `calendar` field on each event in `calendar list`.
-   * Derive a unique-by-name listing from a wide read window so callers of
-   * `calendar_calendars` see every calendar that contains an event. Calendars
-   * with zero events in the window won't appear; see
-   * `docs/migration-to-event-cli.md` for the workaround.
+   * Lists every calendar the `event` CLI reports for the `.event` entity.
+   *
+   * `calendar list` could only surface a calendar that held an event inside
+   * the queried window, so an empty calendar — or one whose events EventKit
+   * did not return for that window — never appeared. `calendar calendars`
+   * reads the EventKit catalog instead and carries the source, which tells
+   * two same-named calendars apart.
    */
   async findAllCalendars(): Promise<Calendar[]> {
-    const events = await this.listEventsWideWindow();
-    const distinct = new Set<string>();
-    for (const event of events) {
-      if (event.calendar) distinct.add(event.calendar);
-    }
-    return Array.from(distinct)
-      .sort((a, b) => a.localeCompare(b))
-      .map((name) => ({ id: name, title: name }));
+    const calendars = await executeEventCliJson<CalendarJSON[]>([
+      'calendar',
+      'calendars',
+      '--json',
+    ]);
+    return calendars
+      .map(mapCalendar)
+      .sort((a, b) => a.title.localeCompare(b.title));
   }
 
   /**
-   * When a date range is supplied, scope the listing to that window instead
-   * of the default wide window and annotate each calendar with how many
-   * events it contributed — this is the only per-calendar signal `event`
-   * exposes (it has no EventKit account/identifier info to filter or key
-   * on), so counts are grouped by calendar title rather than a stable id.
+   * When a date range is supplied, scope the listing to that window and
+   * annotate each calendar with how many events it contributed — this is the
+   * only per-calendar signal `event` exposes for a window (it has no
+   * per-calendar count), so counts are grouped by calendar title rather than
+   * a stable id. Without a range, delegate to `findAllCalendars`, which reads
+   * the EventKit catalog.
    */
   async findCalendars(
     filters: { startDate?: string; endDate?: string } = {},
@@ -329,16 +315,10 @@ class CalendarRepository implements ICalendarRepository {
   }
 
   async createEvent(data: CreateEventData): Promise<EventJSON> {
-    const args = [
-      'calendar',
-      'create',
-      '--title',
-      data.title,
-      '--start',
-      data.startDate,
-      '--end',
-      data.endDate,
-    ];
+    const args: string[] = ['calendar', 'create'];
+    addArg(args, '--title', data.title);
+    addArg(args, '--start', data.startDate);
+    addArg(args, '--end', data.endDate);
     addOptionalArg(args, '--calendar', data.calendar);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--location', data.location);
@@ -348,7 +328,8 @@ class CalendarRepository implements ICalendarRepository {
   }
 
   async updateEvent(data: UpdateEventData): Promise<EventJSON> {
-    const args = ['calendar', 'update', '--id', data.id];
+    const args: string[] = ['calendar', 'update'];
+    addArg(args, '--id', data.id);
     addOptionalArg(args, '--title', data.title);
     addOptionalArg(args, '--start', data.startDate);
     addOptionalArg(args, '--end', data.endDate);
@@ -364,7 +345,9 @@ class CalendarRepository implements ICalendarRepository {
    * `attendees` read-only, so the CLI has no flag that could carry them. The
    * event is resolved here first so the caller addresses it the same way as any
    * other update — by id — while Calendar.app is driven by title and date,
-   * which is the only handle its scripting interface offers.
+   * which is the only handle its scripting interface offers. For a recurring
+   * series, `event.startDate` is the master DTSTART; Calendar.app finds the
+   * series at that anchor.
    */
   async addAttendees(
     id: string,
@@ -404,7 +387,8 @@ class CalendarRepository implements ICalendarRepository {
   }
 
   async deleteEvent(id: string, span?: EventSpan): Promise<void> {
-    const args = ['calendar', 'delete', '--id', id];
+    const args: string[] = ['calendar', 'delete'];
+    addArg(args, '--id', id);
     addOptionalArg(args, '--span', mapSpanForEvent(span));
     await executeEventCliPlain(args);
   }

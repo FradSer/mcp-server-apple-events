@@ -152,6 +152,68 @@ describe('eventCli', () => {
 
       expect(result).toEqual({ ok: true });
     });
+
+    it('parses the JSON document when a note precedes it on stdout', async () => {
+      // `event` < 0.8.0 printed the missing-Shortcut notes to stdout before
+      // the document, so a create with a url looked like a parse failure
+      // although the reminder was saved (issue #145). A client that retries
+      // on error then creates a duplicate.
+      respondWith({
+        stdout: [
+          'Note: AdvancedReminderEdit shortcut not found.',
+          'Install it at: https://www.icloud.com/shortcuts/b578334075754da9ba6e50b501515808',
+          'Without it, only basic reminder fields (title, notes, dueDate, priority) can be set.',
+          JSON.stringify({ id: 'rem-1', url: 'https://example.com' }, null, 2),
+          '',
+        ].join('\n'),
+      });
+
+      const result = await executeEventCliJson<{ id: string; url: string }>([
+        'reminders',
+        'create',
+        '--json',
+      ]);
+
+      expect(result).toEqual({ id: 'rem-1', url: 'https://example.com' });
+    });
+
+    it('rejects stdout that carries only notes and no JSON document', async () => {
+      respondWith({ stdout: 'Note: AdvancedReminderEdit shortcut not found.' });
+
+      await expect(
+        executeEventCliJson(['reminders', 'create', '--json']),
+      ).rejects.toThrow(/Invalid CLI output/);
+    });
+
+    it('recovers a note before a large document without re-parsing every object', async () => {
+      // A bottom-up scan tried every nested object line before the array's
+      // own line, so a legacy note on a multi-megabyte listing re-parsed the
+      // whole suffix per line and blocked the event loop for seconds.
+      const events = Array.from({ length: 4000 }, (_, index) => ({
+        id: `evt-${index}`,
+        title: `Event ${index}`,
+        calendar: 'Work',
+        notes: `note for event ${index}`,
+      }));
+      respondWith({
+        stdout: `Note: AdvancedReminderEdit shortcut not found.\n${JSON.stringify(
+          events,
+          null,
+          2,
+        )}`,
+      });
+
+      const startedAt = performance.now();
+      const result = await executeEventCliJson<unknown[]>([
+        'calendar',
+        'list',
+        '--json',
+      ]);
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(result).toHaveLength(4000);
+      expect(elapsedMs).toBeLessThan(500);
+    });
   });
 
   describe('executeEventCliPlain — success', () => {
