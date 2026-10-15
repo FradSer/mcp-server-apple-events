@@ -96,6 +96,25 @@ export interface ListJSON {
   color?: string | null;
 }
 
+/**
+ * One entry of `event calendar calendars --json`.
+ *
+ * `id` is the EventKit calendar identifier. The MCP surface keys calendars by
+ * title everywhere else (create, update, list filtering), so the repository
+ * maps `id` to the title and keeps the identifier out of the domain type.
+ * Fields after `title` are absent on the sync backends, which store events
+ * only and cannot describe a calendar catalog.
+ */
+export interface CalendarJSON {
+  id: string;
+  title: string;
+  source?: string | null;
+  sourceType?: string | null;
+  allowsContentModifications?: boolean | null;
+  isImmutable?: boolean | null;
+  color?: string | null;
+}
+
 export interface EventJSON {
   id: string;
   title: string;

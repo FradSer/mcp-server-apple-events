@@ -175,10 +175,17 @@ export interface CalendarEvent {
 export interface Calendar {
   id: string;
   title: string;
-  // The vendored `event` CLI has no concept of EventKit accounts, so
-  // `account` / `accountType` are dropped rather than kept as always-empty
-  // fields. `eventCount` is set only when the caller scoped the listing to a
-  // date range (see `findCalendars` in calendarRepository.ts).
+  // `event calendar calendars` reports the EventKit catalog on macOS:
+  // `source` tells two same-named calendars apart and
+  // `allowsContentModifications` tells a caller whether a write can succeed.
+  // The sync backends store events only, so they leave these fields unset.
+  // `eventCount` is set only when the caller scoped the listing to a date
+  // range (see `findCalendars` in calendarRepository.ts).
+  source?: string;
+  sourceType?: string;
+  allowsContentModifications?: boolean;
+  isImmutable?: boolean;
+  color?: string;
   eventCount?: number;
 }
 
