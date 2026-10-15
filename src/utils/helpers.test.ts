@@ -4,6 +4,7 @@
  */
 
 import {
+  addArg,
   addOptionalArg,
   addOptionalNumberArg,
   bufferToString,
@@ -82,11 +83,42 @@ describe('helpers', () => {
     });
   });
 
+  describe('addArg', () => {
+    it('attaches the value to the flag', () => {
+      const args: string[] = [];
+      addArg(args, '--title', 'Hello');
+      expect(args).toEqual(['--title=Hello']);
+    });
+
+    it('attaches a value that starts with a dash', () => {
+      // Regression for issue #144: `--title "- buy milk"` fails with
+      // "Missing value for '--title'" because ArgumentParser reads the value
+      // as the next option.
+      const args: string[] = [];
+      addArg(args, '--title', '- buy milk');
+      expect(args).toEqual(['--title=- buy milk']);
+    });
+
+    it('keeps the separated form for an empty value', () => {
+      // `--title=` is a missing value to ArgumentParser; `--title ""`
+      // delivers an empty string.
+      const args: string[] = [];
+      addArg(args, '--notes', '');
+      expect(args).toEqual(['--notes', '']);
+    });
+  });
+
   describe('addOptionalArg', () => {
-    it('appends flag and value when value is a string', () => {
+    it('attaches the value to the flag', () => {
       const args: string[] = [];
       addOptionalArg(args, '--title', 'Hello');
-      expect(args).toEqual(['--title', 'Hello']);
+      expect(args).toEqual(['--title=Hello']);
+    });
+
+    it('attaches a value that names another option', () => {
+      const args: string[] = [];
+      addOptionalArg(args, '--title', '--completed');
+      expect(args).toEqual(['--title=--completed']);
     });
 
     it('appends an empty string as a literal value', () => {
@@ -107,13 +139,13 @@ describe('helpers', () => {
     it('serializes a number as a string', () => {
       const args: string[] = [];
       addOptionalNumberArg(args, '--priority', 5);
-      expect(args).toEqual(['--priority', '5']);
+      expect(args).toEqual(['--priority=5']);
     });
 
     it('preserves zero', () => {
       const args: string[] = [];
       addOptionalNumberArg(args, '--priority', 0);
-      expect(args).toEqual(['--priority', '0']);
+      expect(args).toEqual(['--priority=0']);
     });
 
     it('is a no-op for undefined', () => {

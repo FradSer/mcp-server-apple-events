@@ -346,6 +346,51 @@ Then use the local path in your Claude Desktop config:
 }
 
 /**
+ * Parses the JSON document out of `event`'s stdout.
+ *
+ * `event` 0.8.0 and later keep stdout free of notes, but a note could reach
+ * stdout before that: a missing AdvancedReminderEdit Shortcut printed three
+ * lines before the document, and `--no-shortcuts` did not take effect. A
+ * caller that only tried `JSON.parse(stdout)` then reported a failure for a
+ * reminder that had been saved, and a client that retries on error creates a
+ * duplicate. Try the whole payload first, then the last line that starts a
+ * JSON document, so a leading note cannot turn a successful write into an
+ * error.
+ */
+function parseCliJson<T>(stdout: string): T {
+  try {
+    return JSON.parse(stdout.trim()) as T;
+  } catch (error) {
+    const recovered = findTrailingJsonDocument(stdout);
+    if (recovered) return recovered.value as T;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`event execution failed: Invalid CLI output - ${detail}`);
+  }
+}
+
+/**
+ * Returns the value of the last JSON document in `text`, or undefined when no
+ * line starts one. `JSONEncoder` emits one value per invocation and escapes
+ * newlines inside strings, so only the document's own lines start with `{` or
+ * `[`; a nested object line carries its key first and is skipped.
+ */
+function findTrailingJsonDocument(
+  text: string,
+): { value: unknown } | undefined {
+  const lines = text.split('\n');
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trimStart() ?? '';
+    if (!line.startsWith('{') && !line.startsWith('[')) continue;
+    try {
+      return { value: JSON.parse(lines.slice(index).join('\n').trim()) };
+    } catch {
+      // Not the document start; keep looking earlier.
+    }
+  }
+  return undefined;
+}
+
+/**
  * Executes the `event` binary and parses its stdout as raw JSON.
  *
  * @template T - Expected JSON type emitted by `event`
@@ -369,12 +414,7 @@ export async function executeEventCliJson<T>(args: string[]): Promise<T> {
   if (!normalized) {
     throw new Error('event execution failed: Empty CLI output');
   }
-  try {
-    return JSON.parse(normalized) as T;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`event execution failed: Invalid CLI output - ${detail}`);
-  }
+  return parseCliJson<T>(normalized);
 }
 
 /**

@@ -40,6 +40,20 @@ const mockApplyReminderFilters = applyReminderFilters as jest.MockedFunction<
 const mockPrefilterReminderJsons =
   prefilterReminderJsons as jest.MockedFunction<typeof prefilterReminderJsons>;
 
+/**
+ * Reads one option value from an argv array built by the repository.
+ *
+ * `addArg` attaches values to their flag (`--start=2026-08-10`) so a value
+ * that starts with `-` cannot be read as the next option; an empty value keeps
+ * the separated form.
+ */
+const optionValue = (args: string[], flag: string): string | undefined => {
+  const attached = args.find((arg) => arg.startsWith(`${flag}=`));
+  if (attached !== undefined) return attached.slice(flag.length + 1);
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+
 const reminderFixture = (overrides: Partial<ReminderJSON> = {}): ReminderJSON =>
   ({
     id: 'rem-1',
@@ -128,8 +142,7 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'list',
-        '--list',
-        'Work',
+        '--list=Work',
         '--completed',
         '--json',
       ]);
@@ -146,10 +159,8 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'list',
-        '--start',
-        '2026-08-10',
-        '--end',
-        '2026-08-24',
+        '--start=2026-08-10',
+        '--end=2026-08-24',
         '--json',
       ]);
     });
@@ -165,10 +176,8 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'list',
-        '--start',
-        '2026-08-10',
-        '--end',
-        '2026-08-24',
+        '--start=2026-08-10',
+        '--end=2026-08-24',
         '--json',
       ]);
     });
@@ -183,14 +192,11 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(call).toEqual([
         'reminders',
         'list',
-        '--start',
-        '2026-08-10',
-        '--end',
-        expect.any(String),
+        '--start=2026-08-10',
+        expect.stringMatching(/^--end=\d{4}-\d{2}-\d{2}$/),
         '--json',
       ]);
-      const endDate = call[call.length - 2];
-      expect(endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(optionValue(call, '--end')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it('fills a missing start from a 14-day window when only endDate is given', async () => {
@@ -203,13 +209,11 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(call).toEqual([
         'reminders',
         'list',
-        '--start',
-        expect.any(String),
-        '--end',
-        '2026-08-24',
+        expect.stringMatching(/^--start=\d{4}-\d{2}-\d{2}$/),
+        '--end=2026-08-24',
         '--json',
       ]);
-      const startDate = call[call.length - 4];
+      const startDate = optionValue(call, '--start');
       expect(startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(startDate).not.toBe('2026-08-24');
     });
@@ -220,8 +224,8 @@ describe('ReminderRepository (event CLI backend)', () => {
       await reminderRepository.findReminders({ startDate: '9999-12-31' });
 
       const call = mockJson.mock.calls[0]?.[0] as string[];
-      expect(call[call.indexOf('--end') + 1]).toBe('9999-12-31');
-      expect(call[call.indexOf('--end') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(optionValue(call, '--end')).toBe('9999-12-31');
+      expect(optionValue(call, '--end')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it('keeps an inferred start within four digits for a year-zero end', async () => {
@@ -230,9 +234,9 @@ describe('ReminderRepository (event CLI backend)', () => {
       await reminderRepository.findReminders({ endDate: '0000-01-01' });
 
       const call = mockJson.mock.calls[0]?.[0] as string[];
-      expect(call[call.indexOf('--start') + 1]).toBe('0000-01-01');
-      expect(call[call.indexOf('--start') + 1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(call[call.indexOf('--end') + 1]).toBe('0000-01-01');
+      expect(optionValue(call, '--start')).toBe('0000-01-01');
+      expect(optionValue(call, '--start')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(optionValue(call, '--end')).toBe('0000-01-01');
     });
 
     it('falls back to today when an unparseable bound is used to size the window', async () => {
@@ -248,10 +252,8 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(call).toEqual([
         'reminders',
         'list',
-        '--start',
-        'not-a-real-date',
-        '--end',
-        expect.any(String),
+        '--start=not-a-real-date',
+        expect.stringMatching(/^--end=\d{4}-\d{2}-\d{2}$/),
         '--json',
       ]);
     });
@@ -271,10 +273,8 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(call).toEqual([
         'reminders',
         'list',
-        '--start',
-        '2026-03-08',
-        '--end',
-        '2026-03-22',
+        '--start=2026-03-08',
+        '--end=2026-03-22',
         '--json',
       ]);
     });
@@ -418,18 +418,12 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'create',
-        '--title',
-        'Buy milk',
-        '--list',
-        'Shopping',
-        '--notes',
-        'whole milk',
-        '--url',
-        'https://example.com',
-        '--due',
-        '2024-03-25 18:00:00',
-        '--priority',
-        '1',
+        '--title=Buy milk',
+        '--list=Shopping',
+        '--notes=whole milk',
+        '--url=https://example.com',
+        '--due=2024-03-25 18:00:00',
+        '--priority=1',
         '--no-shortcuts',
         '--json',
       ]);
@@ -443,8 +437,7 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'create',
-        '--title',
-        'Bare',
+        '--title=Bare',
         '--no-shortcuts',
         '--json',
       ]);
@@ -469,22 +462,14 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'update',
-        '--id',
-        'rem-1',
-        '--title',
-        'New Title',
-        '--notes',
-        'updated notes',
-        '--url',
-        'https://example.com',
-        '--due',
-        '2024-03-26 09:00:00',
-        '--start',
-        '2024-03-26 08:00:00',
-        '--priority',
-        '5',
-        '--completed',
-        'true',
+        '--id=rem-1',
+        '--title=New Title',
+        '--notes=updated notes',
+        '--url=https://example.com',
+        '--due=2024-03-26 09:00:00',
+        '--start=2024-03-26 08:00:00',
+        '--priority=5',
+        '--completed=true',
         '--no-shortcuts',
         '--json',
       ]);
@@ -501,10 +486,8 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
         'update',
-        '--id',
-        'rem-uc',
-        '--completed',
-        'false',
+        '--id=rem-uc',
+        '--completed=false',
         '--no-shortcuts',
         '--json',
       ]);
@@ -540,8 +523,7 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(mockPlain).toHaveBeenCalledWith([
         'reminders',
         'delete',
-        '--id',
-        'rem-99',
+        '--id=rem-99',
       ]);
     });
   });
@@ -557,8 +539,7 @@ describe('ReminderRepository (event CLI backend)', () => {
         'reminders',
         'lists',
         'create',
-        '--name',
-        'New List',
+        '--name=New List',
         '--json',
       ]);
       expect(result).toEqual({
@@ -594,10 +575,8 @@ describe('ReminderRepository (event CLI backend)', () => {
         'reminders',
         'lists',
         'update',
-        '--id',
-        'list-1',
-        '--name',
-        'New Name',
+        '--id=list-1',
+        '--name=New Name',
         '--json',
       ]);
       expect(result.title).toBe('New Name');
@@ -627,8 +606,7 @@ describe('ReminderRepository (event CLI backend)', () => {
         'reminders',
         'lists',
         'delete',
-        '--id',
-        'list-1',
+        '--id=list-1',
       ]);
     });
   });
