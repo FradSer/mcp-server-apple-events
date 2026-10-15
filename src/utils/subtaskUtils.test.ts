@@ -3,6 +3,7 @@
  * Tests for subtask parsing and manipulation utilities
  */
 
+import { performance } from 'node:perf_hooks';
 import type { Subtask } from '../types/index.js';
 import {
   addSubtask,
@@ -18,6 +19,16 @@ import {
   toggleSubtask,
   updateSubtask,
 } from './subtaskUtils.js';
+
+const UNTERMINATED_START_COUNT = 30_000;
+const PERFORMANCE_DEADLINE_MS = 500;
+
+function createUnterminatedSubtaskNotes(): string {
+  return Array.from(
+    { length: UNTERMINATED_START_COUNT },
+    () => '---SUBTASKS---',
+  ).join('\n');
+}
 
 describe('subtaskUtils', () => {
   describe('generateSubtaskId', () => {
@@ -119,6 +130,75 @@ Invalid line
 
       expect(result).toEqual([]);
     });
+
+    it('should use the first standalone start and first valid end marker', () => {
+      const notes = [
+        'Before',
+        '---SUBTASKS---',
+        '[ ] {abc12345} First task',
+        '---SUBTASKS---',
+        '[x] {def67890} Nested start stays in the first section',
+        '---END SUBTASKS--- trailing text',
+        '[ ] {fed98765} First valid end closes the section',
+        '---END SUBTASKS---',
+        'After',
+      ].join('\n');
+
+      expect(parseSubtasks(notes)).toEqual([
+        { id: 'abc12345', title: 'First task', isCompleted: false },
+        {
+          id: 'def67890',
+          title: 'Nested start stays in the first section',
+          isCompleted: true,
+        },
+        {
+          id: 'fed98765',
+          title: 'First valid end closes the section',
+          isCompleted: false,
+        },
+      ]);
+    });
+
+    it('should require a separate line for the section body', () => {
+      const notes = '---SUBTASKS---\n---END SUBTASKS---';
+
+      expect(parseSubtasks(notes)).toEqual([]);
+      expect(stripSubtasks(notes)).toBe(notes);
+    });
+
+    it('should ignore marker text embedded within a line', () => {
+      const notes =
+        'Notes ---SUBTASKS---\n[ ] {abc12345} Not a section\n---END SUBTASKS---';
+
+      expect(parseSubtasks(notes)).toEqual([]);
+    });
+
+    it('should parse CRLF sections and choose the first adjacent section', () => {
+      const notes = [
+        'Before',
+        '---SUBTASKS---',
+        '[ ] {abc12345} First task',
+        '---END SUBTASKS---',
+        '---SUBTASKS---',
+        '[x] {def67890} Second task',
+        '---END SUBTASKS---',
+        'After',
+      ].join('\r\n');
+
+      expect(parseSubtasks(notes)).toEqual([
+        { id: 'abc12345', title: 'First task', isCompleted: false },
+      ]);
+    });
+
+    it('should parse many unterminated starts within the time limit', () => {
+      const notes = createUnterminatedSubtaskNotes();
+      const startedAt = performance.now();
+      const result = parseSubtasks(notes);
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(result).toEqual([]);
+      expect(elapsedMs).toBeLessThan(PERFORMANCE_DEADLINE_MS);
+    });
   });
 
   describe('serializeSubtasks', () => {
@@ -171,6 +251,13 @@ Invalid line
       expect(stripSubtasks('Just notes')).toBe('Just notes');
     });
 
+    it('should leave marker text embedded within a line unchanged', () => {
+      const notes =
+        'Notes ---SUBTASKS---\n[ ] {abc12345} Not a section\n---END SUBTASKS---';
+
+      expect(stripSubtasks(notes)).toBe(notes);
+    });
+
     it('should remove subtask section from notes', () => {
       const notes =
         'My notes\n---SUBTASKS---\n[ ] {abc12345} Task\n---END SUBTASKS---';
@@ -185,6 +272,39 @@ Invalid line
       const result = stripSubtasks(notes);
 
       expect(result).toBe('Notes');
+    });
+
+    it('should remove only the first section when adjacent sections use CRLF', () => {
+      const notes = [
+        'Before',
+        '---SUBTASKS---',
+        '[ ] {abc12345} First task',
+        '---END SUBTASKS---',
+        '---SUBTASKS---',
+        '[x] {def67890} Second task',
+        '---END SUBTASKS---',
+        'After',
+      ].join('\r\n');
+
+      expect(stripSubtasks(notes)).toBe(
+        [
+          'Before',
+          '---SUBTASKS---',
+          '[x] {def67890} Second task',
+          '---END SUBTASKS---',
+          'After',
+        ].join('\r\n'),
+      );
+    });
+
+    it('should leave many unterminated starts unchanged within the time limit', () => {
+      const notes = createUnterminatedSubtaskNotes();
+      const startedAt = performance.now();
+      const result = stripSubtasks(notes);
+      const elapsedMs = performance.now() - startedAt;
+
+      expect(result).toBe(notes);
+      expect(elapsedMs).toBeLessThan(PERFORMANCE_DEADLINE_MS);
     });
   });
 
