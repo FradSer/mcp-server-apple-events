@@ -164,9 +164,9 @@ Invite alex@example.com to my "Team standup" event.
 Cancel just the September 21 occurrence of my weekly "Team standup".
 ```
 
-The server processes natural-language requests, interacts with Apple's native Reminders and Calendar apps, and returns formatted results.
+The server processes natural-language requests, interacts with Apple's native Reminders and Calendar apps, and returns structured results.
 
-> Alarms, recurrence rules, and location triggers are read-only via this server — configure them in Reminders.app / Calendar.app. They still appear in read results with visual indicators.
+> Alarms, recurrence rules, and location triggers are read-only via this server — configure them in Reminders.app / Calendar.app. Read tools preserve these values in structured records when the underlying app provides them.
 
 ## Write confirmation and untrusted data
 
@@ -258,20 +258,37 @@ These two `calendar_events` parameters are the only writes that do not go throug
 
 ### Read response shape
 
-Read responses carry visual indicators: 🔄 recurring, 📍 location-based, 🏷️ has tags, 📋 has subtasks. Example:
+Read tools return a `structuredContent` envelope whose `records` array contains the domain objects returned by that tool. Native values are preserved, including numeric reminder priorities (`0`, `1`, `5`, or `9`) rather than presentation labels. For example:
 
-```text
-- [ ] Buy groceries 🏷️📋
-  - List: Shopping
-  - ID: reminder-123
-  - Priority: high
-  - Tags: #shopping #errands
-  - Subtasks (1/3):
-    - [x] Milk
-    - [ ] Eggs
-    - [ ] Bread
-  - Due: 2024-03-25 18:00:00
+```json
+{
+  "provenance": {
+    "source": "apple-calendar-reminders",
+    "trust": "untrusted"
+  },
+  "records": [
+    {
+      "id": "reminder-123",
+      "title": "Buy groceries",
+      "isCompleted": false,
+      "list": "Shopping",
+      "notes": "Don't forget milk and eggs",
+      "url": "https://example.com",
+      "dueDate": "2024-03-25T18:00:00Z",
+      "priority": 1,
+      "tags": ["shopping", "errands"],
+      "subtasks": [
+        { "id": "a1b2c3d4", "title": "Milk", "isCompleted": true },
+        { "id": "e5f6a7b8", "title": "Eggs", "isCompleted": false },
+        { "id": "c9d0e1f2", "title": "Bread", "isCompleted": false }
+      ],
+      "subtaskProgress": { "completed": 1, "total": 3, "percentage": 33 }
+    }
+  ]
+}
 ```
+
+The accompanying `content` array contains a static text summary first (for example, `Read reminders.`), followed by a text item containing the serialized JSON mirror of the same `structuredContent` object. Clients that consume text can parse the second item; clients that support structured results should use `structuredContent`.
 
 The `url` field is stored in the native `url` property (visible via the "i" icon in Reminders.app) and also appended to the notes in a structured `URLs:` block for parsing and multi-URL support. URLs accept any valid URI scheme (`http`, `https`, `mailto`, `tel`, `obsidian`, `shortcuts`, …); `file`, `javascript`, `data`, and similar dangerous schemes are rejected, and http(s) hostnames are checked against an SSRF blocklist.
 
