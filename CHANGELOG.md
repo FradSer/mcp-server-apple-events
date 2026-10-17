@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Hosts without MCP form elicitation can write again. Add the startup-only
   `--require-write-confirmation` flag to restore v1.6.0's per-write confirmation
   barrier. The flag takes no value; invalid or unknown arguments fail startup.
+  Negated flags such as `--no-require-write-confirmation` are explicitly rejected.
   No environment variable controls the policy, and tool arguments cannot change it.
   Enabled confirmation still binds to an argument snapshot and fails closed on
   rejection, cancellation, invalid replies, missing forms, or transport failure.

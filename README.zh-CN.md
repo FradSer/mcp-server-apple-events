@@ -168,7 +168,7 @@ xcrun swiftc --version    # 应显示 Apple Swift version 6.3 或更高
 }
 ```
 
-本地构建使用 `node dist/index.js --require-write-confirmation`。省略该参数即使用默认模式。此开关不接受值：`--require-write-confirmation=false`、单独传入 `false` 或未知参数都会报错。使用 `mcp-server-apple-events --help`（或 `-h`）查看帮助。没有环境变量控制此策略；配置在每个服务器实例启动时固定，工具参数和条目内容无法更改。启动警告写入 stderr，stdout 保留给 MCP 通信。
+本地构建使用 `node dist/index.js --require-write-confirmation`。省略该参数即使用默认模式。此开关不接受值，也不支持否定形式：`--require-write-confirmation=false`、单独传入 `false`、`--no-require-write-confirmation` 或未知参数都会报错。使用 `mcp-server-apple-events --help`（或 `-h`）查看帮助。没有环境变量控制此策略；配置在每个服务器实例启动时固定，工具参数和条目内容无法更改。启动警告写入 stderr，stdout 保留给 MCP 通信。
 
 启用后，客户端通过 [MCP 表单 elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation) 显示工具名称及完整参数快照。只有接受且返回布尔值 `confirm: true` 才能执行该次写入。拒绝、取消、无效响应、连接中断或缺少表单支持都会阻止写入；无表单支持的客户端此时只能读取。两种模式下读取均不需要确认，原有参数校验、执行边界和不可信数据处理均继续生效，但它们不能替代已移除的确认屏障。
 

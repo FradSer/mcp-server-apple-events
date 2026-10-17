@@ -16,15 +16,24 @@ describe('built CLI', () => {
   });
 
   it.each([
-    '--require-write-confirmation=false',
-    '--unknown',
-  ])('rejects %s on stderr without MCP output', (arg) => {
-    const result = spawnSync(process.execPath, ['dist/index.js', arg], {
+    { args: ['--require-write-confirmation=false'] },
+    { args: ['--unknown'] },
+    { args: ['--no-require-write-confirmation'] },
+    {
+      args: ['--require-write-confirmation', '--no-require-write-confirmation'],
+    },
+    {
+      args: ['--no-require-write-confirmation', '--require-write-confirmation'],
+    },
+    { args: ['--no-help'] },
+  ])('rejects $args on stderr without starting MCP', ({ args }) => {
+    const result = spawnSync(process.execPath, ['dist/index.js', ...args], {
       encoding: 'utf8',
     });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('Invalid server options:');
+    expect(result.stderr).not.toContain('write confirmation is disabled');
   });
 
   it.each([

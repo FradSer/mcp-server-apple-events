@@ -12,7 +12,8 @@ the per-write confirmation barrier against prompt injection. Host authorization
 and macOS permissions still apply. With --require-write-confirmation, rejected,
 cancelled, failed or unavailable confirmation blocks the write.
 
-The confirmation flag takes no value. No environment variable controls this policy.
+The confirmation flag takes no value and has no --no- form.
+No environment variable controls this policy.
 `;
 
 export function parseServerOptions(args: string[]): {
@@ -27,6 +28,7 @@ export function parseServerOptions(args: string[]): {
     },
     strict: true,
     allowPositionals: false,
+    allowNegative: false,
   });
   return {
     requireWriteConfirmation: values['require-write-confirmation'],
