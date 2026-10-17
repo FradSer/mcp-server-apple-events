@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-17
+
 ### Changed (BREAKING)
 
-- **Server write confirmation is now off by default** — fixes [#150](https://github.com/FradSer/mcp-server-apple-events/issues/150).
+- **Server write confirmation is now off by default** — addresses [#149](https://github.com/FradSer/mcp-server-apple-events/issues/149) and [#150](https://github.com/FradSer/mcp-server-apple-events/issues/150) via [#151](https://github.com/FradSer/mcp-server-apple-events/pull/151).
   Hosts without MCP form elicitation can write again. Add the startup-only
   `--require-write-confirmation` flag to restore v1.6.0's per-write confirmation
   barrier. The flag takes no value; invalid or unknown arguments fail startup.
