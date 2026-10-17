@@ -195,6 +195,8 @@ export interface Calendar {
 export interface ServerConfig {
   name: string;
   version: string;
+  /** Startup-only policy. Defaults to false; never read from tool arguments. */
+  requireWriteConfirmation?: boolean;
 }
 
 /**

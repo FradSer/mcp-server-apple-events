@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **Server write confirmation is now off by default** — fixes [#150](https://github.com/FradSer/mcp-server-apple-events/issues/150).
+  Hosts without MCP form elicitation can write again. Add the startup-only
+  `--require-write-confirmation` flag to restore v1.6.0's per-write confirmation
+  barrier. The flag takes no value; invalid or unknown arguments fail startup.
+  No environment variable controls the policy, and tool arguments cannot change it.
+  Enabled confirmation still binds to an argument snapshot and fails closed on
+  rejection, cancellation, invalid replies, missing forms, or transport failure.
+  Reads, input validation, execution boundaries, and untrusted record provenance
+  remain in place in either mode. Help, MCP instructions, workflow prompts, and
+  English/Chinese documentation describe the active policy and host authorization.
+
+  **Security tradeoff:** the new default removes the per-write confirmation
+  barrier against prompt injection. Deletes can remove data and calendar changes
+  or invitations can notify other people without a server prompt. Existing JSON
+  encoding and provenance are not equivalent protection. Host user authorization
+  and macOS permissions still apply. A startup warning is emitted on stderr.
+
 ## [1.6.0] - 2026-10-15
 
 ### Changed (BREAKING)

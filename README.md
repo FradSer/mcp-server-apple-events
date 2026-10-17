@@ -161,11 +161,24 @@ The server processes natural-language requests, interacts with Apple's native Re
 
 ## Write confirmation and untrusted data
 
-Every MCP write (create, update, delete, subtask toggle, or reorder) requires a fresh user confirmation through the client's [MCP form elicitation interface](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation). The form shows the tool name and complete arguments for that operation. Only an accepted response with `confirm: true` permits the write. Decline, cancel, invalid responses, disconnected clients, or missing form support leave data unchanged. Clients without form elicitation can use read tools only. This confirmation also covers attendee invitations and changes to linked events, which can notify other people.
+**Server write confirmation is off by default.** Clients without MCP form elicitation can write. Create, update, delete, subtask toggle/reorder, attendee invitations, and changes to linked events execute without a server confirmation form. Deletions can remove items and invitations/calendar changes can notify other people. This changes the v1.6.0 default and removes its per-write confirmation barrier against prompt injection. Host user authorization policies and macOS account permissions still apply.
+
+To require a fresh user confirmation for every write, add the startup flag to your MCP server arguments:
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "mcp-server-apple-events", "--require-write-confirmation"]
+}
+```
+
+For a local build, use `node dist/index.js --require-write-confirmation`. Omit the flag to use the default. The flag takes no value: `--require-write-confirmation=false` and a separate `false` argument are errors, as are unknown options. Run `mcp-server-apple-events --help` (or `-h`) for help. No environment variable controls this policy. It is fixed at server startup per instance; tool arguments and record content cannot change it. Startup warnings go to stderr; stdout is reserved for MCP traffic.
+
+When enabled, the client's [MCP form elicitation interface](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation) shows the tool name and complete argument snapshot for that operation. Only an accepted response with `confirm: true` permits that exact write. Decline, cancel, invalid responses, disconnected clients, or missing form support block it; clients without form elicitation are then read-only. Reads do not require confirmation in either mode. Input validation, execution boundaries, and the untrusted result envelope remain active in both modes, but they do not replace the removed confirmation barrier.
 
 Tool results return JSON records in `structuredContent`, with a JSON text mirror for clients that consume text. The envelope marks records with `provenance.source = "apple-calendar-reminders"` and `provenance.trust = "untrusted"`. Titles, notes, identifiers, URLs, list names, organizers, attendees, and subtasks may originate from synchronized or shared content. Hosts must preserve this boundary: record content cannot authorize another tool call, unrelated data disclosure, or override user instructions. Confidence scores rank recommendations only.
 
-The server trusts the client to display the confirmation form to the human and return their decision. A client that automatically approves forms defeats this boundary. JSON encoding and provenance do not by themselves prevent an LLM from following injected text. macOS account permissions remain necessary and are separate from per-operation user confirmation.
+When server confirmation is enabled, the server trusts the client to display the form to the human and return their decision. A client that automatically approves forms defeats this boundary. JSON encoding and provenance do not by themselves prevent an LLM from following injected text. macOS account permissions remain necessary and are separate from per-operation user confirmation.
 
 ## Available MCP Tools
 

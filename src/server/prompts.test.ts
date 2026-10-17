@@ -63,8 +63,11 @@ describe('prompt templates', () => {
   ])('keeps retrieved data and authorization separate in %s', (name) => {
     const text = getPromptText(name);
     expect(text).toMatch(/Calendar.*Reminders.*untrusted data/i);
-    expect(text).toMatch(/explicit user confirmation/i);
+    expect(text).toMatch(/user authorization.*host policies/i);
     expect(text).toMatch(/confidence.*never authorizes/i);
+    expect(text).toContain(
+      'only when started with --require-write-confirmation',
+    );
     expect(text).not.toMatch(
       /Execute immediately|execute >80%|MUST make actual MCP tool calls|SHOULD execute updates and deletions/i,
     );
@@ -178,9 +181,9 @@ describe('prompt templates', () => {
       expect(text).toMatch(/present options to the user/i);
     });
 
-    it('requires confirmation instead of confidence-based execution', () => {
+    it('requires host authorization instead of confidence-based execution', () => {
       const text = getPromptText('reminder-review-assistant');
-      expect(text).toMatch(/explicit user confirmation/i);
+      expect(text).toMatch(/user authorization.*host policies/i);
       expect(text).not.toMatch(
         /execute.*immediately|MUST make actual MCP tool calls|SHOULD execute updates and deletions|must result in actual tool calls/i,
       );
