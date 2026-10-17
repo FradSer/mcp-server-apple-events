@@ -25,8 +25,13 @@ const mockFindProjectRoot = findProjectRoot as jest.MockedFunction<
 const mockStartServer = startServer as jest.MockedFunction<typeof startServer>;
 
 describe('index', () => {
+  const originalArgv = process.argv;
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
   beforeEach(() => {
     jest.clearAllMocks();
+    process.argv = [originalArgv[0]!, originalArgv[1]!];
     mockFindProjectRoot.mockReturnValue('/test/project');
     mockJoin.mockImplementation((...args) => args.join('/'));
     mockReadFileSync.mockReturnValue(
@@ -48,6 +53,7 @@ describe('index', () => {
     expect(mockStartServer).toHaveBeenCalledWith({
       name: 'mcp-server-apple-events',
       version: '0.11.0',
+      requireWriteConfirmation: false,
     });
   });
 

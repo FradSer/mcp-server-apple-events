@@ -189,7 +189,7 @@ const buildDailyTaskOrganizerPrompt = (
             'Classify tasks as Deep Work (>=60 minutes) or Shallow (15-60 minutes); create calendar blocks for >=60-minute tasks.',
             'Create missing reminders or optimize existing ones without moving due dates beyond today; avoid duplicates.',
             `Generate due dates using ${TIME_FORMAT_SPEC} (e.g., "${timeContext.currentDate} 14:00:00-05:00").`,
-            'Group proposed actions by type and confidence; require explicit user confirmation before each write.',
+            'Group proposed actions by type and confidence; require user authorization under host policies before each write.',
           ],
           constraints: [
             // Daily-task-organizer specific constraints
@@ -220,8 +220,8 @@ const buildDailyTaskOrganizerPrompt = (
           ],
           qualityBar: [
             'Current state highlights today-only metrics and rationale.',
-            'Actions include a confidence score, concise rationale, and explicit user confirmation before execution.',
-            'Calendar tool is used for every >=60-minute task confirmed for today.',
+            'Actions include a confidence score, concise rationale, and user authorization under host policies before execution.',
+            'Calendar tool is used for every >=60-minute task authorized for today.',
             `All due dates labeled "today" use ${TIME_FORMAT_SPEC} format.`,
             'Out-of-scope section explains what was skipped and why.',
           ],
@@ -279,7 +279,7 @@ const buildSmartReminderCreatorPrompt = (
             'Clarify execution scope and check for overlapping reminders.',
             'Ask for missing critical context only when needed to reach confidence.',
             "Set title, list placement, and timing to fit the user's schedule and urgency.",
-            'Run idempotency checks before recommending changes; execute only after explicit user confirmation.',
+            'Run idempotency checks before recommending changes; execute only after user authorization under host policies.',
           ],
           constraints: [
             'Use fuzzy time expressions unless precision is mandatory.',
@@ -301,7 +301,7 @@ const buildSmartReminderCreatorPrompt = (
           qualityBar: [
             'Timing aligns with importance and existing commitments.',
             'No duplicate reminders are created; similar items are merged or updated.',
-            'Actions include a confidence score, concise rationale, and explicit user confirmation before execution.',
+            'Actions include a confidence score, concise rationale, and user authorization under host policies before execution.',
             'Scope and assumptions are clear and tied to a specific list.',
           ],
           calibration: [
@@ -356,7 +356,7 @@ const buildReminderReviewAssistantPrompt = (
           ],
           process: [
             'Analyze reminders: identify overdue items, stale tasks, and patterns.',
-            'Propose HIGH confidence actions with exact arguments for explicit user confirmation.',
+            'Propose HIGH confidence actions with exact arguments for user authorization under host policies.',
             'Use AskUserQuestion for MEDIUM/LOW confidence decisions.',
             'Recommend lightweight maintenance routines.',
           ],
@@ -364,8 +364,8 @@ const buildReminderReviewAssistantPrompt = (
             'Use fuzzy time adjustments when suggesting schedules or follow-ups.',
             'Ask for critical missing context before final guidance.',
             'Keep recommendations grounded in Apple Reminders native capabilities.',
-            'Do not create NEW reminders unless the user explicitly requests it. Updates and deletions also require explicit user confirmation regardless of confidence.',
-            'Use AskUserQuestion to clarify preferences with clear options. Write authorization is collected separately through the server-requested MCP confirmation form.',
+            'Do not create NEW reminders unless the user explicitly requests it. Updates and deletions also require user authorization under host policies regardless of confidence.',
+            'Use AskUserQuestion to clarify preferences with clear options. Follow host user authorization policies. A separate server-requested MCP confirmation form is used only with --require-write-confirmation.',
             'For critical decisions (e.g., whether to complete a task, delete items, or adjust dates), present 2-4 options with descriptions using AskUserQuestion.',
             ...ASK_USER_QUESTION_EXAMPLES,
             ...CORE_CONSTRAINTS,
@@ -377,8 +377,8 @@ const buildReminderReviewAssistantPrompt = (
           ],
           qualityBar: [
             'Actions tie back to a specific list or pattern.',
-            'Action queue entries include confidence and rationale; execution requires explicit user confirmation.',
-            'HIGH confidence actions (>80%) remain proposals until explicit user confirmation.',
+            'Action queue entries include confidence and rationale; execution requires user authorization under host policies.',
+            'HIGH confidence actions (>80%) remain proposals until user authorization under host policies.',
             'LOW confidence decisions (<60%) must use AskUserQuestion tool, not text questions.',
             'No text-based questions appear in final output - all user decisions use AskUserQuestion.',
             'Routines are lightweight and sustainable.',
@@ -443,7 +443,7 @@ const buildWeeklyPlanningWorkflowPrompt = (
             'Analyze user ideas to identify weekly priorities and themes.',
             'Audit reminders and anchors (existing due dates and calendar commitments).',
             'Assign fuzzy due dates within the week and balance workload.',
-            'Rank recommendations by confidence, flag conflicts or overload, and require explicit user confirmation before writes.',
+            'Rank recommendations by confidence, flag conflicts or overload, and require user authorization under host policies before writes.',
             'Recommend lightweight review checkpoints.',
           ],
           constraints: [
@@ -465,14 +465,14 @@ const buildWeeklyPlanningWorkflowPrompt = (
           ],
           qualityBar: [
             'Weekly focus is clear and aligned with user input.',
-            'Action queue includes confidence, rationale, and explicit user confirmation before execution.',
+            'Action queue includes confidence, rationale, and user authorization under host policies before execution.',
             'Due dates stay inside the current week and remain realistic.',
             'Plan highlights conflicts or overload without excessive analysis.',
           ],
           calibration: [
             'If user ideas cannot be mapped to existing reminders, summarize these as "future planning notes" without creating reminders.',
             'When workload appears excessive, propose explicit prioritization: which reminders are essential this week vs. can be deferred.',
-            'If user provides no ideas, infer priorities from reminder patterns (urgency signals, list organization, dependencies) and request explicit user confirmation before making any changes.',
+            'If user provides no ideas, infer priorities from reminder patterns (urgency signals, list organization, dependencies) and request user authorization under host policies before making any changes.',
           ],
         }),
       ),

@@ -16,6 +16,7 @@ EventKit 后端为独立的 [`event`](https://github.com/FradSer/event) Swift CL
 - [配置说明](#配置说明)
 - [macOS 权限](#macos-权限)
 - [使用示例](#使用示例)
+- [写入确认与不可信数据](#写入确认与不可信数据)
 - [可用的 MCP 工具](#可用的-mcp-工具)
 - [结构化提示库](#结构化提示库)
 - [开发](#开发)
@@ -153,6 +154,27 @@ xcrun swiftc --version    # 应显示 Apple Swift version 6.3 或更高
 服务器处理自然语言请求，与 Apple 原生提醒事项和日历应用交互，并返回格式化结果。
 
 > alarms、重复规则与位置触发器在本服务器中是只读的——请在 Reminders.app / Calendar.app 中配置。它们仍会出现在读取结果中并带有视觉指示器。
+
+## 写入确认与不可信数据
+
+**服务器默认不要求逐次写入确认。** 不支持 MCP 表单 elicitation 的客户端也可以写入。创建、更新、删除、子任务切换或排序、参会者邀请及关联事件变更，都不会弹出服务器确认表单。删除可能移除数据，邀请或日历变更可能通知其他人。此默认值改变了 v1.6.0 的行为，移除了逐次确认提供的提示注入防护屏障；宿主自身的用户授权策略和 macOS 账户权限仍然适用。
+
+如需每次写入前确认，请在 MCP 服务器启动参数中增加：
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "mcp-server-apple-events", "--require-write-confirmation"]
+}
+```
+
+本地构建使用 `node dist/index.js --require-write-confirmation`。省略该参数即使用默认模式。此开关不接受值，也不支持否定形式：`--require-write-confirmation=false`、单独传入 `false`、`--no-require-write-confirmation` 或未知参数都会报错。使用 `mcp-server-apple-events --help`（或 `-h`）查看帮助。没有环境变量控制此策略；配置在每个服务器实例启动时固定，工具参数和条目内容无法更改。启动警告写入 stderr，stdout 保留给 MCP 通信。
+
+启用后，客户端通过 [MCP 表单 elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation) 显示工具名称及完整参数快照。只有接受且返回布尔值 `confirm: true` 才能执行该次写入。拒绝、取消、无效响应、连接中断或缺少表单支持都会阻止写入；无表单支持的客户端此时只能读取。两种模式下读取均不需要确认，原有参数校验、执行边界和不可信数据处理均继续生效，但它们不能替代已移除的确认屏障。
+
+工具结果在 `structuredContent` 中返回 JSON 记录，并提供 JSON 文本镜像。结果以 `provenance.source = "apple-calendar-reminders"` 和 `provenance.trust = "untrusted"` 标识来源和信任级别。标题、备注、标识符、URL、列表名、组织者、参会者和子任务可能来自同步或共享内容。宿主必须保留此边界，不得将记录内容视为工具调用、无关数据披露或覆盖用户指令的授权。置信度只用于排列建议。
+
+启用服务器确认时，服务器信任客户端向用户展示表单并返回用户决定。自动批准表单会破坏该边界。JSON 编码和来源标记本身不能阻止模型遵循注入指令。macOS 账户权限与逐次操作授权相互独立。
 
 ## 可用的 MCP 工具
 

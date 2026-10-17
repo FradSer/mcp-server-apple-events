@@ -16,6 +16,7 @@ import type {
   CalendarToolArgs,
   ListsToolArgs,
   RemindersToolArgs,
+  ServerConfig,
   SubtasksToolArgs,
 } from '../types/index.js';
 import {
@@ -28,7 +29,13 @@ import {
  * Registers all request handlers for the MCP server
  * @param server - The MCP server instance
  */
-export function registerHandlers(server: Server): void {
+export function registerHandlers(
+  server: Server,
+  config: Pick<ServerConfig, 'requireWriteConfirmation'> = {},
+): void {
+  // Capture startup policy once; neither tool data nor later config mutations
+  // can change this instance's confirmation boundary.
+  const requireWriteConfirmation = config.requireWriteConfirmation === true;
   // Handler for listing available tools
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS,
@@ -45,6 +52,7 @@ export function registerHandlers(server: Server): void {
         | CalendarToolArgs
         | CalendarsToolArgs) ?? {},
       async (name, args) => {
+        if (!requireWriteConfirmation) return !extra.signal.aborted;
         const result = await server.elicitInput(
           {
             mode: 'form',

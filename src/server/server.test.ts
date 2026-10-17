@@ -74,9 +74,21 @@ describe('Server Module', () => {
       };
       expect(callOptions.capabilities).not.toHaveProperty('resources');
 
-      expect(registerHandlers).toHaveBeenCalledWith(mockServerInstance);
+      expect(registerHandlers).toHaveBeenCalledWith(mockServerInstance, {
+        requireWriteConfirmation: false,
+      });
       expect(_server).toBe(mockServerInstance);
     });
+  });
+
+  it('rejects non-boolean programmatic policy values', () => {
+    expect(() =>
+      createServer({
+        name: 'bad',
+        version: '1',
+        requireWriteConfirmation: 'false' as unknown as boolean,
+      }),
+    ).toThrow('must be a boolean');
   });
 
   describe('startServer', () => {
@@ -95,6 +107,29 @@ describe('Server Module', () => {
       expect(mockServerInstance.connect).toHaveBeenCalledWith(
         mockTransportInstance,
       );
+    });
+
+    it('logs disabled confirmation only to stderr', async () => {
+      const stderr = jest.spyOn(process.stderr, 'write').mockReturnValue(true);
+      const stdout = jest.spyOn(process.stdout, 'write');
+      try {
+        await startServer({ name: 'default', version: '1' });
+        expect(stderr).toHaveBeenCalledWith(
+          expect.stringContaining('write confirmation is disabled'),
+        );
+        expect(stdout).not.toHaveBeenCalled();
+        stderr.mockClear();
+        await startServer({
+          name: 'required',
+          version: '1',
+          requireWriteConfirmation: true,
+        });
+        expect(stderr).not.toHaveBeenCalled();
+        expect(stdout).not.toHaveBeenCalled();
+      } finally {
+        stderr.mockRestore();
+        stdout.mockRestore();
+      }
     });
 
     describe('error handling', () => {
@@ -167,7 +202,9 @@ describe('Server Module', () => {
 
       expect(mockServer).toHaveBeenCalledTimes(1);
       expect(mockStdioServerTransport).toHaveBeenCalledTimes(1);
-      expect(registerHandlers).toHaveBeenCalledWith(mockServerInstance);
+      expect(registerHandlers).toHaveBeenCalledWith(mockServerInstance, {
+        requireWriteConfirmation: false,
+      });
     });
 
     describe('signal handlers', () => {
