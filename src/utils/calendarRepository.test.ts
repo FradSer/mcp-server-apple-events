@@ -9,9 +9,8 @@
  *                    with TS-side search/availability filtering
  *   - calendars    → `event calendar calendars --json`, mapped to the domain
  *                    type with source and write-permission fields
- *   - create       → `event calendar create` with the trimmed flag set
- *                    (no url / structuredLocation / isAllDay / availability /
- *                    alarms / recurrenceRules)
+ *   - create       → `event calendar create` with event URL, availability,
+ *                    and relative alarms
  *   - update       → `event calendar update` (no cross-calendar move, no span)
  *   - delete       → `event calendar delete --id= [--span=this|all]`
  */
@@ -84,6 +83,16 @@ describe('CalendarRepository (event CLI backend)', () => {
       ]);
       expect(result.id).toBe('evt-2');
       expect(result.title).toBe('Lunch');
+    });
+
+    it('normalizes the legacy EventKit notSupported availability spelling', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({ id: 'evt-legacy', availability: 'notSupported' }),
+      );
+
+      const result = await calendarRepository.findEventById('evt-legacy');
+
+      expect(result.availability).toBe('not-supported');
     });
 
     it('keeps an id that starts with a dash in one argv entry', async () => {
@@ -409,7 +418,7 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('createEvent', () => {
-    it('passes only the event-supported flag subset', async () => {
+    it('passes alarms, URL, and availability to the event CLI', async () => {
       mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
 
       await calendarRepository.createEvent({
@@ -419,6 +428,9 @@ describe('CalendarRepository (event CLI backend)', () => {
         calendar: 'Work',
         notes: 'agenda',
         location: 'HQ',
+        url: 'https://example.com/agenda',
+        availability: 'free',
+        alarms: [15, 60],
       });
 
       expect(mockJson).toHaveBeenCalledWith([
@@ -430,6 +442,10 @@ describe('CalendarRepository (event CLI backend)', () => {
         '--calendar=Work',
         '--notes=agenda',
         '--location=HQ',
+        '--url=https://example.com/agenda',
+        '--availability=free',
+        '--alarm=15',
+        '--alarm=60',
         '--json',
       ]);
     });
@@ -464,7 +480,7 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('updateEvent', () => {
-    it('passes only the event-supported flag subset', async () => {
+    it('passes event fields and replace/add alarm modes to the event CLI', async () => {
       mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
 
       await calendarRepository.updateEvent({
@@ -474,6 +490,10 @@ describe('CalendarRepository (event CLI backend)', () => {
         endDate: '2025-11-04 11:00:00',
         location: 'Conference room B',
         notes: 'rescheduled',
+        url: 'https://example.com/updated',
+        availability: 'tentative',
+        alarms: [10, 25],
+        addAlarms: undefined,
       });
 
       expect(mockJson).toHaveBeenCalledWith([
@@ -485,6 +505,47 @@ describe('CalendarRepository (event CLI backend)', () => {
         '--end=2025-11-04 11:00:00',
         '--location=Conference room B',
         '--notes=rescheduled',
+        '--url=https://example.com/updated',
+        '--availability=tentative',
+        '--alarm=10',
+        '--alarm=25',
+        '--json',
+      ]);
+    });
+
+    it('maps clearing URL and alarms to explicit CLI flags', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
+
+      await calendarRepository.updateEvent({
+        id: 'evt-1',
+        clearURL: true,
+        clearAlarms: true,
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'update',
+        '--id=evt-1',
+        '--clear-url',
+        '--clear-alarms',
+        '--json',
+      ]);
+    });
+
+    it('maps appended alarms without replacing existing ones', async () => {
+      mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
+
+      await calendarRepository.updateEvent({
+        id: 'evt-1',
+        addAlarms: [5, 20],
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'calendar',
+        'update',
+        '--id=evt-1',
+        '--add-alarm=5',
+        '--add-alarm=20',
         '--json',
       ]);
     });

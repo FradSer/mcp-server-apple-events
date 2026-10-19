@@ -2,10 +2,9 @@
  * calendarRepository.ts
  * Repository for calendar event data access via the vendored `event` CLI.
  *
- * Read-only fields (URL, structured location, all-day toggle, availability,
- * alarms, recurrence rules) are passed through from JSON when present;
- * write paths only cover what `event` exposes today. See
- * `docs/migration-to-event-cli.md` for the full table.
+ * Read-only fields (structured location, all-day toggle, recurrence rules)
+ * are passed through from JSON when present. See
+ * `docs/migration-to-event-cli.md` for the remaining gaps.
  */
 
 import type { Calendar, CalendarEvent } from '../types/index.js';
@@ -147,8 +146,13 @@ const EVENT_NULLABLE_FIELDS: (keyof EventJSON)[] = [
   'externalId',
 ];
 
-const mapEvent = (event: EventJSON): CalendarEvent =>
-  nullToUndefined(event, EVENT_NULLABLE_FIELDS) as CalendarEvent;
+const mapEvent = (event: EventJSON): CalendarEvent => {
+  const normalized = nullToUndefined(event, EVENT_NULLABLE_FIELDS);
+  if (normalized.availability === 'notSupported') {
+    normalized.availability = 'not-supported';
+  }
+  return normalized as CalendarEvent;
+};
 
 /**
  * Maps one `calendar calendars` entry onto the domain type. The CLI reports
@@ -323,6 +327,11 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--location', data.location);
     addOptionalArg(args, '--timezone', data.timeZone);
+    addOptionalArg(args, '--url', data.url);
+    addOptionalArg(args, '--availability', data.availability);
+    for (const minutes of data.alarms ?? []) {
+      addArg(args, '--alarm', String(minutes));
+    }
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }
@@ -336,6 +345,22 @@ class CalendarRepository implements ICalendarRepository {
     addOptionalArg(args, '--location', data.location);
     addOptionalArg(args, '--notes', data.notes);
     addOptionalArg(args, '--timezone', data.timeZone);
+    if (data.clearURL) {
+      args.push('--clear-url');
+    } else {
+      addOptionalArg(args, '--url', data.url);
+    }
+    addOptionalArg(args, '--availability', data.availability);
+    if (data.clearAlarms || data.alarms?.length === 0) {
+      args.push('--clear-alarms');
+    } else {
+      for (const minutes of data.alarms ?? []) {
+        addArg(args, '--alarm', String(minutes));
+      }
+    }
+    for (const minutes of data.addAlarms ?? []) {
+      addArg(args, '--add-alarm', String(minutes));
+    }
     args.push('--json');
     return executeEventCliJson<EventJSON>(args);
   }

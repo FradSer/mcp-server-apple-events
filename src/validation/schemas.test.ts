@@ -926,12 +926,12 @@ describe('ValidationSchemas', () => {
         expect(parsed.targetCalendar).toBe('Work');
       });
 
-      it('CreateCalendarEventSchema silently strips dropped fields (alarms, recurrence, structuredLocation, url, isAllDay, availability)', () => {
+      it('CreateCalendarEventSchema keeps writable fields and strips unsupported fields', () => {
         const parsed = CreateCalendarEventSchema.parse({
-          title: 'Trimmed',
+          title: 'Writable fields',
           startDate: '2025-11-04T09:00:00+08:00',
           endDate: '2025-11-04T10:00:00+08:00',
-          alarms: [{ relativeOffset: -1800 }],
+          alarms: [15, 60],
           recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
           structuredLocation: { title: 'Office', latitude: 1, longitude: 2 },
           url: 'https://example.com',
@@ -939,13 +939,13 @@ describe('ValidationSchemas', () => {
           availability: 'busy',
         }) as Record<string, unknown>;
 
+        expect(parsed.alarms).toEqual([15, 60]);
+        expect(parsed.url).toBe('https://example.com');
+        expect(parsed.availability).toBe('busy');
         for (const field of [
-          'alarms',
           'recurrenceRules',
           'structuredLocation',
-          'url',
           'isAllDay',
-          'availability',
         ]) {
           expect(parsed[field]).toBeUndefined();
         }
@@ -961,33 +961,49 @@ describe('ValidationSchemas', () => {
         expect(parsed.span).toBeUndefined();
       });
 
-      it('UpdateCalendarEventSchema silently strips dropped fields (alarms, recurrence, structuredLocation, url, isAllDay, availability, targetCalendar)', () => {
+      it('UpdateCalendarEventSchema keeps writable fields and strips unsupported fields', () => {
         const parsed = UpdateCalendarEventSchema.parse({
           id: 'evt-1',
-          alarms: [{ relativeOffset: -1800 }],
-          clearAlarms: true,
+          alarms: [15, 30],
           recurrenceRules: [{ frequency: 'weekly', interval: 1 }],
           clearRecurrence: true,
           structuredLocation: null,
-          url: 'https://example.com',
+          url: null,
           isAllDay: true,
           availability: 'free',
           targetCalendar: 'Other',
         }) as Record<string, unknown>;
 
+        expect(parsed.alarms).toEqual([15, 30]);
+        expect(parsed.url).toBeNull();
+        expect(parsed.availability).toBe('free');
         for (const field of [
-          'alarms',
-          'clearAlarms',
           'recurrenceRules',
           'clearRecurrence',
           'structuredLocation',
-          'url',
           'isAllDay',
-          'availability',
           'targetCalendar',
         ]) {
           expect(parsed[field]).toBeUndefined();
         }
+      });
+
+      it('UpdateCalendarEventSchema rejects conflicting alarm modes and negative offsets', () => {
+        expect(
+          UpdateCalendarEventSchema.safeParse({
+            id: 'evt-1',
+            alarms: [15],
+            addAlarms: [30],
+          }).success,
+        ).toBe(false);
+        expect(
+          CreateCalendarEventSchema.safeParse({
+            title: 'Invalid alarm',
+            startDate: '2025-11-04T09:00:00+08:00',
+            endDate: '2025-11-04T10:00:00+08:00',
+            alarms: [-15],
+          }).success,
+        ).toBe(false);
       });
 
       it('DeleteCalendarEventSchema keeps span for recurring deletes', () => {

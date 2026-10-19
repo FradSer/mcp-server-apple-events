@@ -335,6 +335,10 @@ export interface CalendarToolArgs extends BaseToolArgs {
   note?: string;
   location?: string;
   timezone?: string;
+  url?: string | null;
+  alarms?: number[];
+  addAlarms?: number[];
+  clearAlarms?: boolean;
   span?: 'this-event' | 'future-events'; // delete only
   /** Email addresses to invite. Update only; routed via Calendar.app scripting. */
   attendees?: string[];

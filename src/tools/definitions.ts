@@ -179,7 +179,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'calendar_events',
     description:
-      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. URL, structured-location, all-day toggle, availability, alarms, and recurrence rules are read-only via this tool; configure them in Calendar.app. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component).',
+      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. Event URLs, alarms, and scheduling availability can be written. Structured locations, all-day toggles, and recurrence rules remain read-only. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -223,11 +223,32 @@ export const TOOLS: Tool[] = [
           description:
             "IANA timezone identifier for a timed event (e.g., 'America/New_York', 'Asia/Shanghai'). Timed events' start and end times are interpreted in this timezone. All-day events ignore this option.",
         },
+        url: {
+          type: ['string', 'null'],
+          description:
+            'Event URL. Supply null on update to remove the URL. Unsafe schemes and blocked network addresses are rejected.',
+        },
+        alarms: {
+          type: 'array',
+          items: { type: 'integer', minimum: 0 },
+          description:
+            'Minutes before the event start. Create sets these alarms; update replaces all alarms. Use an empty array or clearAlarms=true to remove all alarms.',
+        },
+        addAlarms: {
+          type: 'array',
+          items: { type: 'integer', minimum: 0 },
+          description:
+            'Update only. Append these minutes-before-start alarms without removing existing alarms.',
+        },
+        clearAlarms: {
+          type: 'boolean',
+          description: 'Update only. Remove all alarms from the event.',
+        },
         availability: {
           type: 'string',
           enum: ['not-supported', 'busy', 'free', 'tentative', 'unavailable'],
           description:
-            'READ-ONLY filter: narrow read results by event availability. Cannot be set via create/update; configure in Calendar.app.',
+            'Read filter, or create/update value. Writable values are busy, free, tentative, and unavailable. The selected calendar must support the requested value.',
         },
         span: {
           type: 'string',
