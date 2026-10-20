@@ -121,6 +121,19 @@ describe('release package contents', () => {
     expect(releaseWorkflow).toMatch(/11\.5\.1/);
   });
 
+  it('skips post-migration calendar flag checks for the v1.5.0 recovery dispatch', () => {
+    const writeFlagCheck = releaseWorkflow.match(
+      /- name: Verify calendar write URL and availability options[\s\S]*?(?=\n\s+- name:)/,
+    )?.[0];
+
+    expect(writeFlagCheck).toMatch(
+      /if: \$\{\{ github\.event_name == 'push' \|\| inputs\.tag != 'v1\.5\.0' \}\}/,
+    );
+    expect(writeFlagCheck).toMatch(/grep -q -- '--url'/);
+    expect(writeFlagCheck).toMatch(/grep -q -- '--clear-url'/);
+    expect(writeFlagCheck).toMatch(/grep -q -- '--availability'/);
+  });
+
   it('limits manual recovery publishing to v1.5.0', () => {
     expect(releaseWorkflow).toMatch(/workflow_dispatch:/);
     expect(releaseWorkflow).toMatch(/description:.*v1\.5\.0/);
