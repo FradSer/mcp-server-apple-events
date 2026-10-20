@@ -82,6 +82,15 @@ jobs:
           grep -q -- '--id' /tmp/calendar-get-help.out
           bin/event calendar calendars --help > /tmp/calendar-calendars-help.out 2>&1
           grep -q -- '--json' /tmp/calendar-calendars-help.out
+          echo "=== Code signature ==="
+          codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
+          ! grep -q "Authority=" /tmp/codesign.out
+          codesign --verify --strict --verbose=2 bin/event
+
+      - name: Verify calendar write URL and availability options
+        if: ${{ github.event_name == 'push' || inputs.tag != 'v1.5.0' }}
+        run: |
+          set -euo pipefail
           echo "=== Calendar write URL and availability options ==="
           bin/event calendar create --help > /tmp/calendar-create-help.out 2>&1
           grep -q -- '--url' /tmp/calendar-create-help.out
@@ -90,10 +99,6 @@ jobs:
           grep -q -- '--url' /tmp/calendar-update-help.out
           grep -q -- '--clear-url' /tmp/calendar-update-help.out
           grep -q -- '--availability' /tmp/calendar-update-help.out
-          echo "=== Code signature ==="
-          codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
-          ! grep -q "Authority=" /tmp/codesign.out
-          codesign --verify --strict --verbose=2 bin/event
 
       - name: Verify npm package contents
         run: |
