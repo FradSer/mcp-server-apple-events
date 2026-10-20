@@ -418,6 +418,20 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('createEvent', () => {
+    it('normalizes legacy availability in the created event result', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({ id: 'created', availability: 'notSupported' }),
+      );
+
+      const result = await calendarRepository.createEvent({
+        title: 'New event',
+        startDate: '2025-11-04 09:00:00',
+        endDate: '2025-11-04 10:00:00',
+      });
+
+      expect(result.availability).toBe('not-supported');
+    });
+
     it('passes alarms, URL, and availability to the event CLI', async () => {
       mockJson.mockResolvedValueOnce(eventFixture({ id: 'created' }));
 
@@ -480,6 +494,16 @@ describe('CalendarRepository (event CLI backend)', () => {
   });
 
   describe('updateEvent', () => {
+    it('normalizes legacy availability in the updated event result', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({ id: 'evt-1', availability: 'notSupported' }),
+      );
+
+      const result = await calendarRepository.updateEvent({ id: 'evt-1' });
+
+      expect(result.availability).toBe('not-supported');
+    });
+
     it('passes event fields and replace/add alarm modes to the event CLI', async () => {
       mockJson.mockResolvedValueOnce(eventFixture({ id: 'evt-1' }));
 

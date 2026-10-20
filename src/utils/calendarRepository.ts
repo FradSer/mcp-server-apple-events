@@ -146,11 +146,21 @@ const EVENT_NULLABLE_FIELDS: (keyof EventJSON)[] = [
   'externalId',
 ];
 
+const normalizeAvailability = (
+  availability: string | null | undefined,
+): string | null | undefined =>
+  availability === 'notSupported' ? 'not-supported' : availability;
+
+const normalizeEventJSON = (event: EventJSON): EventJSON => ({
+  ...event,
+  availability: normalizeAvailability(event.availability),
+});
+
 const mapEvent = (event: EventJSON): CalendarEvent => {
-  const normalized = nullToUndefined(event, EVENT_NULLABLE_FIELDS);
-  if (normalized.availability === 'notSupported') {
-    normalized.availability = 'not-supported';
-  }
+  const normalized = nullToUndefined(
+    normalizeEventJSON(event),
+    EVENT_NULLABLE_FIELDS,
+  );
   return normalized as CalendarEvent;
 };
 
@@ -333,7 +343,7 @@ class CalendarRepository implements ICalendarRepository {
       addArg(args, '--alarm', String(minutes));
     }
     args.push('--json');
-    return executeEventCliJson<EventJSON>(args);
+    return normalizeEventJSON(await executeEventCliJson<EventJSON>(args));
   }
 
   async updateEvent(data: UpdateEventData): Promise<EventJSON> {
@@ -362,7 +372,7 @@ class CalendarRepository implements ICalendarRepository {
       addArg(args, '--add-alarm', String(minutes));
     }
     args.push('--json');
-    return executeEventCliJson<EventJSON>(args);
+    return normalizeEventJSON(await executeEventCliJson<EventJSON>(args));
   }
 
   /**
