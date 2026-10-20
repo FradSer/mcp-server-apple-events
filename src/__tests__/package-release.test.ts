@@ -47,32 +47,27 @@ describe('release package contents', () => {
     expect(releaseWorkflow).not.toMatch(/bin\/EventKitCLI/);
   });
 
-  it('packages the event release with reminder date-window support', () => {
-    expect(releaseWorkflow).toMatch(
-      /FradSer\/event\/releases\/download\/v0\.8\.0\/event-darwin-amd64\.tar\.gz/,
+  it('builds the pinned event source and verifies calendar write support', () => {
+    expect(releaseWorkflow).toMatch(/submodules:\s*recursive/);
+    expect(releaseWorkflow).toMatch(/pnpm run build:event/);
+    expect(releaseWorkflow).not.toMatch(/FradSer\/event\/releases\/download/);
+    expect(releaseWorkflow).not.toMatch(
+      /event-darwin-(?:amd64|arm64)\.tar\.gz/,
     );
-    expect(releaseWorkflow).toMatch(
-      /FradSer\/event\/releases\/download\/v0\.8\.0\/event-darwin-arm64\.tar\.gz/,
-    );
-    expect(releaseWorkflow).toMatch(
-      /c8a38d001fe2789c25d638def0db35b7ab766e8eed849e53f791f394b92e86b3\s+\$work_dir\/event-darwin-amd64\.tar\.gz/,
-    );
-    expect(releaseWorkflow).toMatch(
-      /2b8a78368a7db21f75645d679e81acb8add2b48173da21d0fa1716c0122e2826\s+\$work_dir\/event-darwin-arm64\.tar\.gz/,
-    );
-    expect(releaseWorkflow).toMatch(/lipo -create/);
+    expect(releaseWorkflow).toMatch(/lipo -info bin\/event/);
     expect(releaseWorkflow).toMatch(/bin\/event reminders list --help/);
     expect(releaseWorkflow).toMatch(/grep -q -- '--start'/);
     expect(releaseWorkflow).toMatch(/grep -q -- '--end'/);
     expect(releaseWorkflow).toMatch(/bin\/event calendar get --help/);
     expect(releaseWorkflow).toMatch(/bin\/event calendar calendars --help/);
+    expect(releaseWorkflow).toMatch(/bin\/event calendar create --help/);
+    expect(releaseWorkflow).toMatch(/bin\/event calendar update --help/);
+    expect(releaseWorkflow).toMatch(/grep -q -- '--url'/);
+    expect(releaseWorkflow).toMatch(/grep -q -- '--clear-url'/);
+    expect(releaseWorkflow).toMatch(/grep -q -- '--availability'/);
     expect(releaseWorkflow).not.toMatch(/disclaim/i);
-    expect(releaseWorkflow).toMatch(/scripts\/event-Info\.plist/);
-    expect(releaseWorkflow).toMatch(/scripts\/event\.entitlements/);
-    expect(releaseWorkflow).toMatch(/codesign .*--sign -/);
-    expect(releaseWorkflow).not.toMatch(/build:event/);
     expect(releaseWorkflow).not.toMatch(/notarize/);
-    expect(releaseWorkflow).not.toMatch(/\bswift\b/);
+    expect(releaseWorkflow).toMatch(/xcrun swiftc --version/);
     expect(releaseWorkflow).not.toMatch(
       /APPLE_CERTIFICATE|APPLE_ID|APPLE_TEAM_ID/,
     );
@@ -85,7 +80,8 @@ describe('release package contents', () => {
   });
 
   it('pins the CI runner image and verifies the ad-hoc signed universal binary', () => {
-    expect(releaseWorkflow).toMatch(/runs-on: macos-14/);
+    expect(releaseWorkflow).toMatch(/runs-on: macos-26/);
+    expect(releaseWorkflow).toMatch(/APPLE_SIGNING_IDENTITY:\s*'-'/);
     expect(releaseWorkflow).toMatch(/codesign --verify --strict/);
     expect(releaseWorkflow).not.toMatch(/Authority=Developer ID Application:/);
   });
