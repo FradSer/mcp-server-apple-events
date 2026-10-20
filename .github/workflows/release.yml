@@ -20,7 +20,10 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-14
+    # The vendored `event` source uses Swift 6.2 and the macOS 26 SDK needs
+    # Swift 6.3+. Build on the current macOS image instead of downloading an
+    # older prebuilt `event` release asset.
+    runs-on: macos-26
 
     # npm trusted publishing exchanges this job's OIDC identity for a
     # short-lived npm publish token; no long-lived npm secret is required.
@@ -33,6 +36,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref }}
+          submodules: recursive
 
       - name: Setup pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -55,37 +59,13 @@ jobs:
       - name: Build TypeScript
         run: pnpm run build:ts
 
-      - name: Prepare universal event binary from upstream release assets
+      - name: Build universal event binary from pinned submodule source
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
         run: |
           set -euo pipefail
-          work_dir="$(mktemp -d)"
-          trap 'rm -rf "$work_dir"' EXIT
-          mkdir -p bin "$work_dir/amd64" "$work_dir/arm64"
-
-          curl --fail --location --silent --show-error \
-            --output "$work_dir/event-darwin-amd64.tar.gz" \
-            https://github.com/FradSer/event/releases/download/v0.8.0/event-darwin-amd64.tar.gz
-          curl --fail --location --silent --show-error \
-            --output "$work_dir/event-darwin-arm64.tar.gz" \
-            https://github.com/FradSer/event/releases/download/v0.8.0/event-darwin-arm64.tar.gz
-          echo "c8a38d001fe2789c25d638def0db35b7ab766e8eed849e53f791f394b92e86b3  $work_dir/event-darwin-amd64.tar.gz" | shasum -a 256 -c -
-          echo "2b8a78368a7db21f75645d679e81acb8add2b48173da21d0fa1716c0122e2826  $work_dir/event-darwin-arm64.tar.gz" | shasum -a 256 -c -
-          tar -xzf "$work_dir/event-darwin-amd64.tar.gz" -C "$work_dir/amd64"
-          tar -xzf "$work_dir/event-darwin-arm64.tar.gz" -C "$work_dir/arm64"
-
-          amd64_binary="$(find "$work_dir/amd64" -type f -perm -111 -print -quit)"
-          arm64_binary="$(find "$work_dir/arm64" -type f -perm -111 -print -quit)"
-          test -n "$amd64_binary" && test -n "$arm64_binary"
-          lipo -create "$amd64_binary" "$arm64_binary" -output bin/event
-          chmod 755 bin/event
-
-          # Keep the EventKit identity and permissions expected by the runtime.
-          plutil -lint scripts/event-Info.plist
-          event_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' scripts/event-Info.plist)"
-          codesign --force --sign - --options runtime \
-            --identifier "$event_identifier" \
-            --entitlements scripts/event.entitlements \
-            bin/event
+          xcrun swiftc --version
+          pnpm run build:event
 
       - name: Verify universal ad-hoc event binary
         run: |
@@ -102,6 +82,14 @@ jobs:
           grep -q -- '--id' /tmp/calendar-get-help.out
           bin/event calendar calendars --help > /tmp/calendar-calendars-help.out 2>&1
           grep -q -- '--json' /tmp/calendar-calendars-help.out
+          echo "=== Calendar write URL and availability options ==="
+          bin/event calendar create --help > /tmp/calendar-create-help.out 2>&1
+          grep -q -- '--url' /tmp/calendar-create-help.out
+          grep -q -- '--availability' /tmp/calendar-create-help.out
+          bin/event calendar update --help > /tmp/calendar-update-help.out 2>&1
+          grep -q -- '--url' /tmp/calendar-update-help.out
+          grep -q -- '--clear-url' /tmp/calendar-update-help.out
+          grep -q -- '--availability' /tmp/calendar-update-help.out
           echo "=== Code signature ==="
           codesign -dv --verbose=2 bin/event 2>&1 | tee /tmp/codesign.out
           ! grep -q "Authority=" /tmp/codesign.out
