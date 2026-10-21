@@ -40,6 +40,9 @@ importers:
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@26.1.0)
+      jest-environment-node:
+        specifier: 30.4.1
+        version: 30.4.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

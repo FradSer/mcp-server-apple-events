@@ -38,6 +38,9 @@ export const handleCreateCalendarEvent = async (
       notes: validatedArgs.note,
       location: validatedArgs.location,
       timeZone: validatedArgs.timezone,
+      url: validatedArgs.url,
+      alarms: validatedArgs.alarms,
+      availability: validatedArgs.availability,
     });
     return createStructuredToolResult('Created calendar event.', [event]);
   }, 'create calendar event');
@@ -62,6 +65,11 @@ export const handleUpdateCalendarEvent = async (
         validatedArgs.note,
         validatedArgs.location,
         validatedArgs.timezone,
+        validatedArgs.url,
+        validatedArgs.alarms,
+        validatedArgs.addAlarms,
+        validatedArgs.clearAlarms ? true : undefined,
+        validatedArgs.availability,
       ].filter((value) => value !== undefined);
       if (others.length > 0) {
         throw new CliUserError(
@@ -87,6 +95,12 @@ export const handleUpdateCalendarEvent = async (
       notes: validatedArgs.note,
       location: validatedArgs.location,
       timeZone: validatedArgs.timezone,
+      url: validatedArgs.url ?? undefined,
+      clearURL: validatedArgs.url === null,
+      alarms: validatedArgs.alarms,
+      addAlarms: validatedArgs.addAlarms,
+      clearAlarms: validatedArgs.clearAlarms,
+      availability: validatedArgs.availability,
     });
     return createStructuredToolResult('Updated calendar event.', [event]);
   }, 'update calendar event');

@@ -1,22 +1,21 @@
-# Migrating to the `event` CLI backend (v1.5.0)
+# Migrating to the `event` CLI backend
 
 `mcp-server-apple-events` v1.5.0 swaps its embedded Swift binary for the
 standalone [`event`](https://github.com/FradSer/event) CLI. The two projects
-now share one EventKit codebase, but the swap forced us to drop MCP tool
-fields that `event` does not yet expose on its write surface. Read paths are
-preserved verbatim: alarms, recurrence rules, location triggers, structured
-locations, URLs, availability, and similar fields configured in Reminders.app
-or Calendar.app still round-trip through this server unchanged.
+now share one EventKit codebase. The initial migration dropped MCP write
+fields that the CLI did not expose. Calendar event alarms, URLs, and
+availability are now writable through the CLI and MCP server. Read paths for
+other fields configured in Reminders.app or Calendar.app continue to round-trip
+through this server unchanged.
 
 This page enumerates every removed field, the rationale, and the workaround.
 
 ## How `event` ships now
 
-`event` is vendored as a git submodule at `vendor/event`, pinned to the
-[`v0.5.0`](https://github.com/FradSer/event/releases/tag/v0.5.0) release tag.
-The resulting binary lands at `bin/event` inside this package, exactly
-mirroring the prior `bin/EventKitCLI` UX. You do **not** need to
-`brew install event` separately.
+`event` is vendored as a git submodule at `vendor/event`. Release builds compile
+the pinned source revision into `bin/event` inside this package, exactly
+mirroring the prior `bin/EventKitCLI` UX. You do **not** need to `brew install
+event` separately.
 
 **npx / Claude Desktop (recommended, zero build step)**
 
@@ -85,12 +84,9 @@ so values set inside Reminders.app or Calendar.app remain visible.
 
 | Field | Action | Workaround |
 | --- | --- | --- |
-| `alarms`, `clearAlarms` | create / update | Configure alarms in Calendar.app. |
 | `recurrenceRules`, `clearRecurrence` | create / update | Configure recurrence in Calendar.app. |
 | `structuredLocation` | create / update | Use the plain `location` text field instead. |
-| `url` | create / update | Add the URL to `note` or set it in Calendar.app. |
 | `isAllDay` | create / update | Pass dates as bare `YYYY-MM-DD` (no time) to create an all-day event; `event` infers it from the format. |
-| `availability` (write) | create / update | Read-side filtering on `availability` still works. To change availability, edit the event in Calendar.app. |
 | `targetCalendar` | update | `event` cannot move an event between calendars. Delete and recreate in the target calendar. |
 | `filterAccount` | read | `event` does not surface EventKit account info. Filter by `filterCalendar` instead. |
 | `span` (on update) | update | Update always saves with `EKSpan.thisEvent`. `delete` still respects `span: 'this-event' | 'future-events'`. |

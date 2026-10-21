@@ -92,11 +92,14 @@ describe('Tools Definitions', () => {
       expect(calendarProps).toHaveProperty('note');
       expect(calendarProps).toHaveProperty('targetCalendar');
       expect(calendarProps).toHaveProperty('span');
-      // availability stays as a read-only TS-side filter.
+      expect(calendarProps).toHaveProperty('url');
+      expect(calendarProps).toHaveProperty('alarms');
+      expect(calendarProps).toHaveProperty('addAlarms');
+      expect(calendarProps).toHaveProperty('clearAlarms');
       expect(calendarProps).toHaveProperty('availability');
     });
 
-    it('drops fields the `event` CLI cannot write', () => {
+    it('exposes the remaining unsupported fields as read-only or absent', () => {
       const remindersTool = TOOLS.find(
         (tool) => tool.name === 'reminders_tasks',
       );
@@ -119,13 +122,13 @@ describe('Tools Definitions', () => {
         (tool) => tool.name === 'calendar_events',
       );
       const calendarProps = calendarEventsTool?.inputSchema.properties ?? {};
+      expect(calendarProps).toHaveProperty('url');
+      expect(calendarProps).toHaveProperty('alarms');
+      expect(calendarProps).toHaveProperty('availability');
       for (const removed of [
-        'alarms',
-        'clearAlarms',
         'recurrenceRules',
         'clearRecurrence',
         'structuredLocation',
-        'url',
         'isAllDay',
         'filterAccount',
       ]) {

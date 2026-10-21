@@ -660,8 +660,23 @@ describe('Tool Handlers', () => {
         startDate: '2025-11-04 14:00:00',
         endDate: '2025-11-04 16:00:00',
         targetCalendar: 'Work',
+        url: 'https://example.com/agenda',
+        alarms: [15, 60],
+        availability: 'free',
       });
       expect(getTextContent(result.content)).toBe('Created calendar event.');
+      expect(mockCalendarRepository.createEvent).toHaveBeenCalledWith({
+        title: 'New Event',
+        startDate: '2025-11-04 14:00:00',
+        endDate: '2025-11-04 16:00:00',
+        calendar: 'Work',
+        notes: undefined,
+        location: undefined,
+        timeZone: undefined,
+        url: 'https://example.com/agenda',
+        alarms: [15, 60],
+        availability: 'free',
+      });
       expect(result.structuredContent).toEqual({
         provenance: {
           source: 'apple-calendar-reminders',
@@ -691,8 +706,26 @@ describe('Tool Handlers', () => {
         action: 'update',
         id: 'event-456',
         title: 'Updated Event',
+        url: null,
+        addAlarms: [5, 20],
+        availability: 'tentative',
       });
       expect(getTextContent(result.content)).toBe('Updated calendar event.');
+      expect(mockCalendarRepository.updateEvent).toHaveBeenCalledWith({
+        id: 'event-456',
+        title: 'Updated Event',
+        startDate: undefined,
+        endDate: undefined,
+        notes: undefined,
+        location: undefined,
+        timeZone: undefined,
+        url: undefined,
+        clearURL: true,
+        alarms: undefined,
+        addAlarms: [5, 20],
+        clearAlarms: undefined,
+        availability: 'tentative',
+      });
       expect(result.structuredContent).toEqual({
         provenance: {
           source: 'apple-calendar-reminders',
@@ -734,6 +767,22 @@ describe('Tool Handlers', () => {
         records: [{ event: invitedEvent, updated: 1 }],
       });
       expect(getJsonMirror(result)).toEqual(result.structuredContent);
+    });
+
+    it('keeps attendee invitations separate from EventKit field updates', async () => {
+      const result = await handleUpdateCalendarEvent({
+        action: 'update',
+        id: 'event-456',
+        attendees: ['person@example.com'],
+        alarms: [15],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getTextContent(result.content)).toContain(
+        'Update attendees on their own',
+      );
+      expect(mockCalendarRepository.addAttendees).not.toHaveBeenCalled();
+      expect(mockCalendarRepository.updateEvent).not.toHaveBeenCalled();
     });
   });
 

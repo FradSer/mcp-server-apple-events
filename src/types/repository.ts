@@ -179,6 +179,9 @@ export interface CreateEventData {
   notes?: string;
   location?: string;
   timeZone?: string;
+  url?: string;
+  alarms?: number[];
+  availability?: 'busy' | 'free' | 'tentative' | 'unavailable';
 }
 
 /** Fields accepted by `event calendar update`. */
@@ -190,6 +193,12 @@ export interface UpdateEventData {
   notes?: string;
   location?: string;
   timeZone?: string;
+  url?: string;
+  clearURL?: boolean;
+  alarms?: number[];
+  addAlarms?: number[];
+  clearAlarms?: boolean;
+  availability?: 'busy' | 'free' | 'tentative' | 'unavailable';
 }
 
 /**

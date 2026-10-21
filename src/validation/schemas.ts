@@ -429,6 +429,12 @@ const AvailabilitySchema = z
   .enum(['not-supported', 'busy', 'free', 'tentative', 'unavailable'])
   .optional();
 
+const WritableAvailabilitySchema = z
+  .enum(['busy', 'free', 'tentative', 'unavailable'])
+  .optional();
+
+const AlarmMinutesSchema = z.array(z.number().int().min(0));
+
 const SpanSchema = z.enum(['this-event', 'future-events']).optional();
 
 /**
@@ -555,6 +561,9 @@ export const CreateCalendarEventSchema = z.object({
   ),
   targetCalendar: SafeListNameSchema,
   timezone: TimeZoneSchema,
+  url: SafeUrlSchema,
+  alarms: AlarmMinutesSchema.optional(),
+  availability: WritableAvailabilitySchema,
 });
 
 export const ReadCalendarEventsSchema = z.object({
@@ -585,21 +594,41 @@ export const AttendeesSchema = z
   .max(VALIDATION.MAX_ATTENDEES, 'Too many attendees in a single call')
   .optional();
 
-export const UpdateCalendarEventSchema = z.object({
-  id: SafeIdSchema,
-  title: SafeTextSchema.optional(),
-  startDate: SafeDateSchema,
-  endDate: SafeDateSchema,
-  note: SafeNoteSchema,
-  location: createSafeTextSchema(
-    0,
-    VALIDATION.MAX_LOCATION_LENGTH,
-    'Location',
-    true,
-  ),
-  timezone: TimeZoneSchema,
-  attendees: AttendeesSchema,
-});
+export const UpdateCalendarEventSchema = z
+  .object({
+    id: SafeIdSchema,
+    title: SafeTextSchema.optional(),
+    startDate: SafeDateSchema,
+    endDate: SafeDateSchema,
+    note: SafeNoteSchema,
+    location: createSafeTextSchema(
+      0,
+      VALIDATION.MAX_LOCATION_LENGTH,
+      'Location',
+      true,
+    ),
+    timezone: TimeZoneSchema,
+    url: SafeUrlSchema.nullable(),
+    alarms: AlarmMinutesSchema.optional(),
+    addAlarms: AlarmMinutesSchema.optional(),
+    clearAlarms: z.boolean().optional(),
+    availability: WritableAvailabilitySchema,
+    attendees: AttendeesSchema,
+  })
+  .superRefine((value, ctx) => {
+    const alarmModes = [
+      value.alarms !== undefined,
+      value.addAlarms !== undefined,
+      value.clearAlarms === true,
+    ].filter(Boolean).length;
+    if (alarmModes > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['alarms'],
+        message: 'Choose only one of alarms, addAlarms, or clearAlarms.',
+      });
+    }
+  });
 
 export const DeleteCalendarEventSchema = z.object({
   id: SafeIdSchema,
