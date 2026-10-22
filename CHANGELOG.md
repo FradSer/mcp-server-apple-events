@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-10-23
+
+### Added
+
+- **Timed calendar reads include unambiguous UTC timestamps** ([#153](https://github.com/FradSer/mcp-server-apple-events/issues/153)) — `calendar_events` adds `startDateISO` and `endDateISO` when the event's time zone resolves to one instant, while preserving the existing wall-clock fields.
+
+### Fixed
+
+- **Unsupported calendar moves fail clearly** ([#154](https://github.com/FradSer/mcp-server-apple-events/issues/154)) — updates that supply `targetCalendar` now return an explicit unsupported-operation error instead of silently reporting a no-op as success.
+- **Single-reminder reads now use a direct by-id lookup** ([#108](https://github.com/FradSer/mcp-server-apple-events/issues/108)) — fetches one record with `event reminders get --id <id> --json` rather than serializing the full reminder collection for every read, update, or delete. The release workflow verifies the packaged CLI includes this command.
+
 ## [1.6.1] - 2026-10-17
 
 ### Changed (BREAKING)
@@ -769,7 +780,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic Apple Reminders integration
 - Foundation for macOS native reminder management
 
-[unreleased]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.6.0...HEAD
+[unreleased]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.6.1...v1.6.2
+[1.6.1]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/FradSer/mcp-server-apple-events/compare/v1.3.0...v1.4.0

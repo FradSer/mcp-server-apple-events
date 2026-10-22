@@ -56,6 +56,7 @@ describe('release package contents', () => {
     );
     expect(releaseWorkflow).toMatch(/lipo -info bin\/event/);
     expect(releaseWorkflow).toMatch(/bin\/event reminders list --help/);
+    expect(releaseWorkflow).toMatch(/bin\/event reminders get --help/);
     expect(releaseWorkflow).toMatch(/grep -q -- '--start'/);
     expect(releaseWorkflow).toMatch(/grep -q -- '--end'/);
     expect(releaseWorkflow).toMatch(/bin\/event calendar get --help/);

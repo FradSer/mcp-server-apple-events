@@ -3,9 +3,8 @@
  * Tests for the reminder repository against the vendored `event` CLI.
  *
  * Scenarios are organized by the four shapes the repository exposes:
- *   - read     → `event reminders list [--list <name>] [--completed] --json`
- *               (id lookups derived via list-and-find since `event` has no
- *               read-by-id command).
+ *   - read     → `event reminders get --id <id> --json` for individual
+ *               reminders and `event reminders list ... --json` for collections.
  *   - mutate   → `event reminders create|update|delete` with the trimmed flag
  *               set (no alarms/recurrence/locationTrigger/location/etc.).
  *   - lists    → `event reminders lists list|create|update|delete` with
@@ -22,6 +21,7 @@ import {
   applyReminderFilters,
   prefilterReminderJsons,
 } from './dateFiltering.js';
+import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
 import { reminderRepository } from './reminderRepository.js';
 
@@ -80,21 +80,22 @@ describe('ReminderRepository (event CLI backend)', () => {
   });
 
   describe('findReminderById', () => {
-    it('looks up a reminder by listing and finding (event has no read-by-id)', async () => {
+    it('reads one reminder through the direct by-id CLI command', async () => {
       const rem = reminderFixture({
         id: 'rem-2',
         title: 'Test 2',
         isCompleted: true,
         list: 'Work',
       });
-      mockJson.mockResolvedValueOnce([reminderFixture(), rem]);
+      mockJson.mockResolvedValueOnce(rem);
 
       const result = await reminderRepository.findReminderById('rem-2');
 
+      expect(mockJson).toHaveBeenCalledTimes(1);
       expect(mockJson).toHaveBeenCalledWith([
         'reminders',
-        'list',
-        '--completed',
+        'get',
+        '--id=rem-2',
         '--json',
       ]);
       expect(result.id).toBe('rem-2');
@@ -103,12 +104,21 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(result.isCompleted).toBe(true);
     });
 
-    it('throws CliUserError when the id is not present in the listing', async () => {
-      mockJson.mockResolvedValueOnce([reminderFixture()]);
+    it('propagates the CLI not-found error without falling back to a full scan', async () => {
+      mockJson.mockRejectedValueOnce(
+        new CliUserError("Not found: Reminder with ID 'missing' not found"),
+      );
 
       await expect(
         reminderRepository.findReminderById('missing'),
-      ).rejects.toThrow("Reminder with ID 'missing' not found.");
+      ).rejects.toThrow("Not found: Reminder with ID 'missing' not found");
+      expect(mockJson).toHaveBeenCalledTimes(1);
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'get',
+        '--id=missing',
+        '--json',
+      ]);
     });
 
     it('coerces null notes/url/dueDate to undefined on the domain type', async () => {

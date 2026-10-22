@@ -226,25 +226,11 @@ class ReminderRepository implements IReminderRepository {
     return reminders.map((reminder) => this.mapReminder(reminder));
   }
 
-  // Reads every reminder (including completed) once so we can `.find` by id.
-  // `event reminders list` is the only event command that surfaces a reminder
-  // by id, since there's no equivalent of the old `read-by-id` action.
-  private async readAllRemindersIncludingCompleted(): Promise<ReminderJSON[]> {
-    return executeEventCliJson<ReminderJSON[]>([
-      'reminders',
-      'list',
-      '--completed',
-      '--json',
-    ]);
-  }
-
   async findReminderById(id: string): Promise<Reminder> {
-    const all = await this.readAllRemindersIncludingCompleted();
-    const match = all.find((r) => r.id === id);
-    if (!match) {
-      throw new CliUserError(`Reminder with ID '${id}' not found.`);
-    }
-    return this.mapReminder(match);
+    const args: string[] = ['reminders', 'get'];
+    addArg(args, '--id', id);
+    args.push('--json');
+    return this.mapReminder(await executeEventCliJson<ReminderJSON>(args));
   }
 
   async findReminders(filters: ReminderFilters = {}): Promise<Reminder[]> {
