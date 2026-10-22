@@ -3,10 +3,8 @@
  * Integration tests for timezone handling across TypeScript and the `event`
  * Swift CLI.
  *
- * The TS layer (Repository) is a pass-through for date strings: it must not
- * coerce, reformat, or shift zones. These tests assert that property for both
- * reminder dueDate / startDate and calendar event start/endDate, since the
- * actual timezone semantics are implemented in `event`'s Swift code.
+ * The TS layer preserves the CLI date strings and adds explicit UTC timestamps
+ * for timed calendar events when their time zone resolves to one instant.
  */
 
 import type { CalendarEvent, Reminder } from '../types/index.js';
@@ -19,7 +17,7 @@ const mockJson = executeEventCliJson as jest.MockedFunction<
   typeof executeEventCliJson
 >;
 
-describe('Timezone Data Passthrough Tests', () => {
+describe('Timezone Data Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -79,6 +77,12 @@ describe('Timezone Data Passthrough Tests', () => {
       results.forEach((event, index) => {
         expect(event.startDate).toBe(testCases[index]?.start);
         expect(event.endDate).toBe(testCases[index]?.end);
+        expect(event.startDateISO).toBe(
+          new Date(testCases[index]!.start).toISOString(),
+        );
+        expect(event.endDateISO).toBe(
+          new Date(testCases[index]!.end).toISOString(),
+        );
       });
     });
   });

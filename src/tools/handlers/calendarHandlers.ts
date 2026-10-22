@@ -54,6 +54,11 @@ export const handleUpdateCalendarEvent = async (
       args,
       UpdateCalendarEventSchema,
     );
+    if (validatedArgs.targetCalendar) {
+      throw new CliUserError(
+        'Moving a calendar event to another calendar is not supported by the underlying `event` CLI. Move it in Calendar.app, or delete and recreate it in the target calendar.',
+      );
+    }
     // Attendees and EventKit fields travel through different subsystems with
     // no shared concurrency token, so a combined write would have no defined
     // ordering. Requiring attendees to stand alone keeps each call atomic.

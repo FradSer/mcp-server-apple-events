@@ -689,6 +689,20 @@ describe('Tool Handlers', () => {
   });
 
   describe('handleUpdateCalendarEvent', () => {
+    it('rejects an unsupported calendar move instead of reporting a no-op as success', async () => {
+      const result = await handleUpdateCalendarEvent({
+        action: 'update',
+        id: 'event-456',
+        targetCalendar: 'Personal',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getTextContent(result.content)).toContain(
+        'Moving a calendar event to another calendar is not supported',
+      );
+      expect(mockCalendarRepository.updateEvent).not.toHaveBeenCalled();
+    });
+
     it('returns the updated event as an untrusted structured record', async () => {
       const mockEvent = {
         id: 'event-456',

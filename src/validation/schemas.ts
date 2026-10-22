@@ -597,6 +597,7 @@ export const AttendeesSchema = z
 export const UpdateCalendarEventSchema = z
   .object({
     id: SafeIdSchema,
+    targetCalendar: SafeListNameSchema,
     title: SafeTextSchema.optional(),
     startDate: SafeDateSchema,
     endDate: SafeDateSchema,
