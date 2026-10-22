@@ -977,12 +977,12 @@ describe('ValidationSchemas', () => {
         expect(parsed.alarms).toEqual([15, 30]);
         expect(parsed.url).toBeNull();
         expect(parsed.availability).toBe('free');
+        expect(parsed.targetCalendar).toBe('Other');
         for (const field of [
           'recurrenceRules',
           'clearRecurrence',
           'structuredLocation',
           'isAllDay',
-          'targetCalendar',
         ]) {
           expect(parsed[field]).toBeUndefined();
         }

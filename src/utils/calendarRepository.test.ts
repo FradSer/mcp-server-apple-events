@@ -95,6 +95,54 @@ describe('CalendarRepository (event CLI backend)', () => {
       expect(result.availability).toBe('not-supported');
     });
 
+    it('adds UTC timestamps for wall-clock event dates in the stored time zone', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({
+          startDate: '2026-09-10 12:40:00',
+          endDate: '2026-09-10 13:10:00',
+          timeZone: 'GMT',
+        }),
+      );
+
+      const result = await calendarRepository.findEventById('evt-1');
+
+      expect(result.startDate).toBe('2026-09-10 12:40:00');
+      expect(result.endDate).toBe('2026-09-10 13:10:00');
+      expect(result.startDateISO).toBe('2026-09-10T12:40:00.000Z');
+      expect(result.endDateISO).toBe('2026-09-10T13:10:00.000Z');
+    });
+
+    it('does not guess a timestamp for a repeated daylight-saving hour', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({
+          startDate: '2026-11-01 01:30:00',
+          endDate: '2026-11-01 02:30:00',
+          timeZone: 'America/New_York',
+        }),
+      );
+
+      const result = await calendarRepository.findEventById('evt-1');
+
+      expect(result.startDateISO).toBeUndefined();
+      expect(result.endDateISO).toBe('2026-11-01T07:30:00.000Z');
+    });
+
+    it('does not add ISO timestamps to all-day events', async () => {
+      mockJson.mockResolvedValueOnce(
+        eventFixture({
+          startDate: '2026-09-10',
+          endDate: '2026-09-11',
+          isAllDay: true,
+          timeZone: 'GMT',
+        }),
+      );
+
+      const result = await calendarRepository.findEventById('evt-1');
+
+      expect(result.startDateISO).toBeUndefined();
+      expect(result.endDateISO).toBeUndefined();
+    });
+
     it('keeps an id that starts with a dash in one argv entry', async () => {
       // Issue #144: a separate `--id`, `-evt` pair reaches ArgumentParser as
       // an option, not a value.

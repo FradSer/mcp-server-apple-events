@@ -26,6 +26,7 @@ import {
 } from './dateUtils.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
+import { toEventDateISO } from './eventDateTime.js';
 import { addArg, addOptionalArg, nullToUndefined } from './helpers.js';
 import { parseReminderDueDate } from './reminderDateParser.js';
 
@@ -160,8 +161,19 @@ const mapEvent = (event: EventJSON): CalendarEvent => {
   const normalized = nullToUndefined(
     normalizeEventJSON(event),
     EVENT_NULLABLE_FIELDS,
+  ) as CalendarEvent;
+  if (normalized.isAllDay) return normalized;
+
+  const startDateISO = toEventDateISO(
+    normalized.startDate,
+    normalized.timeZone,
   );
-  return normalized as CalendarEvent;
+  const endDateISO = toEventDateISO(normalized.endDate, normalized.timeZone);
+  return {
+    ...normalized,
+    ...(startDateISO ? { startDateISO } : {}),
+    ...(endDateISO ? { endDateISO } : {}),
+  };
 };
 
 /**
