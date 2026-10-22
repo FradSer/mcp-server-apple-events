@@ -54,7 +54,7 @@ export const handleUpdateCalendarEvent = async (
       args,
       UpdateCalendarEventSchema,
     );
-    if (validatedArgs.targetCalendar) {
+    if (validatedArgs.targetCalendar !== undefined) {
       throw new CliUserError(
         'Moving a calendar event to another calendar is not supported by the underlying `event` CLI. Move it in Calendar.app, or delete and recreate it in the target calendar.',
       );

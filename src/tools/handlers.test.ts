@@ -689,11 +689,14 @@ describe('Tool Handlers', () => {
   });
 
   describe('handleUpdateCalendarEvent', () => {
-    it('rejects an unsupported calendar move instead of reporting a no-op as success', async () => {
+    it.each([
+      'Personal',
+      '',
+    ])('rejects unsupported calendar moves when targetCalendar is %j instead of reporting a no-op as success', async (targetCalendar) => {
       const result = await handleUpdateCalendarEvent({
         action: 'update',
         id: 'event-456',
-        targetCalendar: 'Personal',
+        targetCalendar,
       });
 
       expect(result.isError).toBe(true);
