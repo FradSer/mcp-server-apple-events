@@ -1,4 +1,4 @@
-# Apple Events MCP Server ![Version 1.6.0](https://img.shields.io/badge/version-1.6.0-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+# Apple Events MCP Server ![Version 1.6.2](https://img.shields.io/badge/version-1.6.2-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 [![X Follow](https://img.shields.io/twitter/follow/FradSer?style=social)](https://x.com/FradSer)
 

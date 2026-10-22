@@ -77,6 +77,8 @@ jobs:
           bin/event reminders list --help > /tmp/reminders-list-help.out 2>&1
           grep -q -- '--start' /tmp/reminders-list-help.out
           grep -q -- '--end' /tmp/reminders-list-help.out
+          bin/event reminders get --help > /tmp/reminders-get-help.out 2>&1
+          grep -q -- '--id' /tmp/reminders-get-help.out
           echo "=== Calendar by-id lookup and calendar listing ==="
           bin/event calendar get --help > /tmp/calendar-get-help.out 2>&1
           grep -q -- '--id' /tmp/calendar-get-help.out

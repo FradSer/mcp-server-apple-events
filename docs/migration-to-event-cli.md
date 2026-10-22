@@ -158,11 +158,11 @@ use — so an event that can be written can always be read back, and the read
 transfers one event instead of a whole window. `findEventById`
 (`src/utils/calendarRepository.ts`) calls it.
 
-Reminders still have no by-id command: `findReminderById`
-(`src/utils/reminderRepository.ts`) fetches the full reminder set (including
-completed) and does an in-memory `.find`. Every single-reminder read therefore
-transfers the whole result set over the CLI pipe. Tracked upstream at
-<https://github.com/FradSer/event/issues/11>.
+`event reminders get --id <id>` now resolves one reminder directly through
+EventKit. `findReminderById` (`src/utils/reminderRepository.ts`) uses this
+command instead of fetching every reminder (including completed items) and
+filtering the collection in TypeScript. Both by-id paths now return the CLI's
+typed not-found error without a second scan.
 
 ## Notes-field conventions are unchanged
 
