@@ -136,6 +136,10 @@ export interface CalendarEvent {
   title: string;
   startDate: string;
   endDate: string;
+  /** Absolute UTC timestamp when a timed event's source zone resolves unambiguously. */
+  startDateISO?: string;
+  /** Absolute UTC timestamp when a timed event's source zone resolves unambiguously. */
+  endDateISO?: string;
   calendar: string;
   notes?: string;
   location?: string;

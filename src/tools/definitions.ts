@@ -179,7 +179,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'calendar_events',
     description:
-      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. Event URLs, alarms, and scheduling availability can be written. Structured locations, all-day toggles, and recurrence rules remain read-only. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component).',
+      'Manages calendar events (time blocks). Supports reading, creating, updating, and deleting events. Event URLs, alarms, and scheduling availability can be written. Structured locations, all-day toggles, and recurrence rules remain read-only. All-day events are inferred from the date format ("YYYY-MM-DD" without a time component). On reads, startDate and endDate are wall-clock values in the event timeZone. Timed events also include startDateISO and endDateISO as UTC timestamps when the source zone resolves unambiguously; use those fields to schedule or compare events. All-day events do not include ISO timestamps.',
     inputSchema: {
       type: 'object',
       properties: {

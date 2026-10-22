@@ -185,7 +185,7 @@ xcrun swiftc --version    # 应显示 Apple Swift version 6.3 或更高
 | `reminders_tasks` | `read`、`create`、`update`、`delete` | 优先级、标签、子任务。`startDate` 通过 `update` 设置，`create` 不可用。不支持跨列表搬移。 |
 | `reminders_subtasks` | `read`、`create`、`update`、`delete`、`toggle`、`reorder` | 存储在备注字段中（Reminders.app 中人类可读）。 |
 | `reminders_lists` | `read`、`create`、`update`、`delete` | 通过 `name` → `newName` 重命名。 |
-| `calendar_events` | `read`、`create`、`update`、`delete` | All-day 由日期格式推断。不支持跨日历搬移。`span` 限定循环事件删除范围。`attendees`（update）邀请与会者；`occurrenceDate`（delete）排除循环序列中的单次实例——两者都需要额外配置，见[与会者与单次实例](#与会者与单次实例)。 |
+| `calendar_events` | `read`、`create`、`update`、`delete` | 读取时，`startDate` 和 `endDate` 是事件 `timeZone` 中的墙上时间；定时事件还会在时区可唯一解析时提供 UTC 时间戳 `startDateISO` 和 `endDateISO`。安排或比较事件时请使用 ISO 字段。全天事件不提供这两个字段。All-day 由日期格式推断。不支持跨日历搬移。`span` 限定循环事件删除范围。`attendees`（update）邀请与会者；`occurrenceDate`（delete）排除循环序列中的单次实例——两者都需要额外配置，见[与会者与单次实例](#与会者与单次实例)。 |
 | `calendar_calendars` | `read` | 不传日期范围时返回 EventKit 报告的全部日历，并附上 `source` 与是否可写。传 `startDate`/`endDate` 时只返回该范围内有事件的日历，并附事件数。 |
 
 调用示例：
