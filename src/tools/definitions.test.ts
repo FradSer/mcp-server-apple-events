@@ -75,6 +75,8 @@ describe('Tools Definitions', () => {
       expect(remindersProps).toHaveProperty('startDate');
       expect(remindersProps).toHaveProperty('dueDate');
       expect(remindersProps).toHaveProperty('priority');
+      expect(remindersProps).toHaveProperty('recurrence');
+      expect(remindersProps).toHaveProperty('clearRecurrence');
       expect(remindersProps).toHaveProperty('tags');
       expect(remindersProps).toHaveProperty('subtasks');
 
@@ -99,6 +101,18 @@ describe('Tools Definitions', () => {
       expect(calendarProps).toHaveProperty('availability');
     });
 
+    it('advertises case-insensitive recurrence frequency validation', () => {
+      const properties = TOOLS.find((tool) => tool.name === 'reminders_tasks')
+        ?.inputSchema.properties;
+      const recurrence = properties?.recurrence as {
+        properties: { frequency: { pattern: string; description: string } };
+      };
+      const frequency = recurrence.properties.frequency;
+      expect(new RegExp(frequency.pattern).test('WeEkLy')).toBe(true);
+      expect(new RegExp(frequency.pattern).test('hourly')).toBe(false);
+      expect(frequency.description).toMatch(/case-insensitive/i);
+    });
+
     it('exposes the remaining unsupported fields as read-only or absent', () => {
       const remindersTool = TOOLS.find(
         (tool) => tool.name === 'reminders_tasks',
@@ -109,9 +123,7 @@ describe('Tools Definitions', () => {
         'location',
         'alarms',
         'clearAlarms',
-        'recurrence',
         'recurrenceRules',
-        'clearRecurrence',
         'locationTrigger',
         'clearLocationTrigger',
       ]) {

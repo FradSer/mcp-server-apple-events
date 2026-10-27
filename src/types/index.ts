@@ -29,9 +29,20 @@ export interface RecurrenceRule {
   interval: number; // e.g., every 2 weeks
   endDate?: string;
   occurrenceCount?: number; // e.g., repeat 10 times
-  daysOfWeek?: number[]; // 1 = Sunday, 7 = Saturday
+  daysOfWeek?: string[]; // Canonical English weekday names from the CLI
   daysOfMonth?: number[]; // 1-31
   monthsOfYear?: number[]; // 1-12
+}
+
+/** One reminder repeat rule accepted by the CLI write commands. */
+export interface ReminderRecurrenceInput {
+  frequency: string; // Validated and normalized by ReminderRecurrenceSchema
+  interval?: number;
+  endDate?: string;
+  occurrenceCount?: number;
+  daysOfWeek?: Array<string | number>;
+  daysOfMonth?: number[];
+  monthsOfYear?: number[];
 }
 
 /**
@@ -281,6 +292,8 @@ export interface RemindersToolArgs extends BaseToolArgs {
   note?: string;
   url?: string;
   completed?: boolean; // update only
+  recurrence?: ReminderRecurrenceInput;
+  clearRecurrence?: boolean; // update only
   priority?: number; // 0=none, 1=high, 5=medium, 9=low
   // Tag / subtask payload (TS-managed in the notes field)
   tags?: string[];

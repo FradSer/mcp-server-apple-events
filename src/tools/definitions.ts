@@ -18,7 +18,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'reminders_tasks',
     description:
-      'Manages reminder tasks. Supports reading, creating, updating, and deleting reminders. Alarms, recurrence rules, and location-based triggers are read-only via this tool; configure them in Reminders.app.',
+      'Manages reminder tasks. Supports reading, creating, updating, and deleting reminders. Repeat rules can be created, replaced, or cleared. Alarms and location-based triggers are read-only via this tool; configure them in Reminders.app.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -68,6 +68,66 @@ export const TOOLS: Tool[] = [
         targetList: {
           type: 'string',
           description: 'The name of the list for create or update operations.',
+        },
+        recurrence: {
+          type: 'object',
+          description:
+            'Replace the repeat rule on create/update. A due date is required: supply dueDate on create; update can use the existing due date. Omit this object to preserve the rule. Supports one rule, with the same constraints as the event CLI.',
+          properties: {
+            frequency: {
+              type: 'string',
+              pattern:
+                '^(?:[dD][aA][iI][lL][yY]|[wW][eE][eE][kK][lL][yY]|[mM][oO][nN][tT][hH][lL][yY]|[yY][eE][aA][rR][lL][yY])$',
+              description:
+                'Repeat frequency: daily, weekly, monthly, or yearly (case-insensitive; normalized to lowercase).',
+            },
+            interval: {
+              type: 'integer',
+              minimum: 1,
+              description: 'Repeat every N periods. Defaults to 1.',
+            },
+            endDate: {
+              type: 'string',
+              description:
+                'Inclusive final day, YYYY-MM-DD. Mutually exclusive with occurrenceCount.',
+            },
+            occurrenceCount: {
+              type: 'integer',
+              minimum: 1,
+              description:
+                'Stop after N occurrences. Mutually exclusive with endDate.',
+            },
+            daysOfWeek: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                anyOf: [
+                  { type: 'string' },
+                  { type: 'integer', minimum: 1, maximum: 7 },
+                ],
+              },
+              description:
+                'Weekdays for weekly/monthly/yearly rules. Use English names, three-letter abbreviations (case-insensitive), or 1-7 (Sunday=1).',
+            },
+            daysOfMonth: {
+              type: 'array',
+              minItems: 1,
+              items: { type: 'integer', minimum: 1, maximum: 31 },
+              description: 'Days 1-31, for monthly rules only.',
+            },
+            monthsOfYear: {
+              type: 'array',
+              minItems: 1,
+              items: { type: 'integer', minimum: 1, maximum: 12 },
+              description: 'Months 1-12, for yearly rules only.',
+            },
+          },
+          required: ['frequency'],
+        },
+        clearRecurrence: {
+          type: 'boolean',
+          description:
+            'Remove the repeat rule (update only). Cannot be true when recurrence is supplied.',
         },
         // Read filters
         filterList: {
