@@ -16,6 +16,7 @@ import type {
   CalendarEvent,
   Reminder,
   ReminderList,
+  ReminderRecurrenceInput,
 } from './index.js';
 
 /**
@@ -26,7 +27,7 @@ export interface RecurrenceRuleJSON {
   interval?: number; // Defaults to 1 if not provided
   endDate?: string | null;
   occurrenceCount?: number | null;
-  daysOfWeek?: number[] | null; // 1 = Sunday, 7 = Saturday
+  daysOfWeek?: string[] | null; // Full English weekday names
   daysOfMonth?: number[] | null; // 1-31
   monthsOfYear?: number[] | null; // 1-12
 }
@@ -153,6 +154,7 @@ export interface CreateReminderData {
   url?: string;
   dueDate?: string;
   priority?: number;
+  recurrence?: ReminderRecurrenceInput;
 }
 
 /** Fields accepted by `event reminders update`. */
@@ -165,6 +167,8 @@ export interface UpdateReminderData {
   startDate?: string;
   dueDate?: string;
   priority?: number;
+  recurrence?: ReminderRecurrenceInput;
+  clearRecurrence?: boolean;
 }
 
 /**

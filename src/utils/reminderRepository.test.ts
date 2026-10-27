@@ -6,7 +6,7 @@
  *   - read     → `event reminders get --id <id> --json` for individual
  *               reminders and `event reminders list ... --json` for collections.
  *   - mutate   → `event reminders create|update|delete` with the trimmed flag
- *               set (no alarms/recurrence/locationTrigger/location/etc.).
+ *               set, including reminder recurrence rules.
  *   - lists    → `event reminders lists list|create|update|delete` with
  *               name→id resolution for update/delete.
  *   - guards   → cross-list moves must surface a clean `CliUserError`
@@ -102,6 +102,24 @@ describe('ReminderRepository (event CLI backend)', () => {
       expect(result.title).toBe('Test 2');
       expect(result.list).toBe('Work');
       expect(result.isCompleted).toBe(true);
+    });
+
+    it('reads canonical weekdays and count limits through a JSON round trip', async () => {
+      const rule = {
+        frequency: 'weekly' as const,
+        interval: 2,
+        daysOfWeek: ['Monday', 'Wednesday'],
+        occurrenceCount: 5,
+      };
+      mockJson.mockResolvedValueOnce(
+        JSON.parse(
+          JSON.stringify(reminderFixture({ recurrenceRules: [rule] })),
+        ),
+      );
+      const result = await reminderRepository.findReminderById('rem-1');
+      expect(JSON.parse(JSON.stringify(result)).recurrenceRules).toEqual([
+        rule,
+      ]);
     });
 
     it('propagates the CLI not-found error without falling back to a full scan', async () => {
@@ -439,6 +457,63 @@ describe('ReminderRepository (event CLI backend)', () => {
       ]);
     });
 
+    it.each([
+      'daily',
+      'weekly',
+      'monthly',
+      'yearly',
+    ] as const)('writes a %s rule and preserves the CLI JSON response', async (frequency) => {
+      const saved = reminderFixture({
+        recurrenceRules: [{ frequency, interval: 2, occurrenceCount: 5 }],
+      });
+      mockJson.mockResolvedValueOnce(saved);
+
+      const result = await reminderRepository.createReminder({
+        title: 'Repeat',
+        dueDate: '2027-01-15',
+        recurrence: { frequency, interval: 2, occurrenceCount: 5 },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'create',
+        '--title=Repeat',
+        '--due=2027-01-15',
+        `--recurrence=${frequency}`,
+        '--recurrence-interval=2',
+        '--recurrence-count=5',
+        '--no-shortcuts',
+        '--json',
+      ]);
+      expect(result).toEqual(saved);
+    });
+
+    it('maps monthly dates and mixed weekday tokens to CSV', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture());
+      await reminderRepository.createReminder({
+        title: 'Monthly',
+        dueDate: '2027-01-15',
+        recurrence: {
+          frequency: 'monthly',
+          endDate: '2027-12-31',
+          daysOfWeek: ['mon', 'Wednesday', 7],
+          daysOfMonth: [1, 15, 31],
+        },
+      });
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'create',
+        '--title=Monthly',
+        '--due=2027-01-15',
+        '--recurrence=monthly',
+        '--recurrence-end=2027-12-31',
+        '--recurrence-days=mon,Wednesday,7',
+        '--recurrence-days-of-month=1,15,31',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
     it('omits all optional flags when none are provided', async () => {
       mockJson.mockResolvedValueOnce(reminderFixture({ id: 'created' }));
 
@@ -483,6 +558,54 @@ describe('ReminderRepository (event CLI backend)', () => {
         '--no-shortcuts',
         '--json',
       ]);
+    });
+
+    it('replaces a yearly rule without requiring a new due date', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture());
+      await reminderRepository.updateReminder({
+        id: 'rem-1',
+        recurrence: { frequency: 'yearly', monthsOfYear: [1, 6, 12] },
+      });
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-1',
+        '--recurrence=yearly',
+        '--recurrence-months=1,6,12',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('clears a rule only when requested', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ recurrenceRules: [] }));
+      const result = await reminderRepository.updateReminder({
+        id: 'rem-1',
+        clearRecurrence: true,
+      });
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-1',
+        '--clear-recurrence',
+        '--no-shortcuts',
+        '--json',
+      ]);
+      expect(result.recurrenceRules).toEqual([]);
+    });
+
+    it('preserves CLI missing-due errors without retrying the mutation', async () => {
+      const error = new CliUserError(
+        'A repeat rule needs a due date; set --due as well.',
+      );
+      mockJson.mockRejectedValueOnce(error);
+      await expect(
+        reminderRepository.updateReminder({
+          id: 'rem-1',
+          recurrence: { frequency: 'daily' },
+        }),
+      ).rejects.toBe(error);
+      expect(mockJson).toHaveBeenCalledTimes(1);
     });
 
     it('passes --completed false when isCompleted=false (un-complete)', async () => {
