@@ -452,9 +452,101 @@ describe('ReminderRepository (event CLI backend)', () => {
         '--json',
       ]);
     });
+
+    it('appends location-alarm flags, using the attached form for negative coordinates', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'created' }));
+
+      await reminderRepository.createReminder({
+        title: 'Visit shop',
+        locationTrigger: {
+          title: '763 Leona St, Elyria, OH',
+          latitude: 41.4028486,
+          longitude: -82.1197902,
+          radius: 150,
+          proximity: 'leave',
+        },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'create',
+        '--title=Visit shop',
+        '--location=763 Leona St, Elyria, OH',
+        '--latitude=41.4028486',
+        '--longitude=-82.1197902',
+        '--radius=150',
+        '--proximity=leave',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('leaves radius and proximity to the CLI defaults when omitted', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'created' }));
+
+      await reminderRepository.createReminder({
+        title: 'Home',
+        locationTrigger: { title: 'Home', latitude: 41.4, longitude: -82.2 },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'create',
+        '--title=Home',
+        '--location=Home',
+        '--latitude=41.4',
+        '--longitude=-82.2',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
   });
 
   describe('updateReminder', () => {
+    it('passes location-alarm flags on update', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-loc' }));
+
+      await reminderRepository.updateReminder({
+        id: 'rem-loc',
+        locationTrigger: {
+          title: 'Office',
+          latitude: 40.7128,
+          longitude: -74.006,
+          proximity: 'enter',
+        },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-loc',
+        '--location=Office',
+        '--latitude=40.7128',
+        '--longitude=-74.006',
+        '--proximity=enter',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('passes --clear-location when clearLocationTrigger is set', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-loc' }));
+
+      await reminderRepository.updateReminder({
+        id: 'rem-loc',
+        clearLocationTrigger: true,
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-loc',
+        '--clear-location',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
     it('passes the supported flag subset and adds --completed <bool> when isCompleted is set', async () => {
       mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-1' }));
 

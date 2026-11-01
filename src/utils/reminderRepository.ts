@@ -13,6 +13,7 @@ import type {
   CreateReminderData,
   IReminderRepository,
   ListJSON,
+  LocationTriggerInput,
   RecurrenceRuleJSON,
   ReminderJSON,
   UpdateReminderData,
@@ -57,6 +58,23 @@ const mapAlarmType = (
  * (`EKAlarmProximityNone` — geofence configured but no fire condition) are
  * skipped so they don't show up as misleading "Arriving at..." entries.
  */
+/**
+ * Appends the `event` CLI's location-alarm flags. The CLI requires
+ * `--location`, `--latitude` and `--longitude` together; `--radius` and
+ * `--proximity` fall back to the CLI defaults (100 m, `enter`) when omitted.
+ */
+const addLocationTriggerArgs = (
+  args: string[],
+  trigger: LocationTriggerInput | undefined,
+): void => {
+  if (!trigger) return;
+  addArg(args, '--location', trigger.title);
+  addArg(args, '--latitude', String(trigger.latitude));
+  addArg(args, '--longitude', String(trigger.longitude));
+  addOptionalNumberArg(args, '--radius', trigger.radius);
+  addOptionalArg(args, '--proximity', trigger.proximity);
+};
+
 const deriveTopLevelLocationTrigger = (
   alarms: AlarmJSON[] | null | undefined,
 ): ReminderJSON['locationTrigger'] => {
@@ -288,6 +306,7 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--url', data.url);
     addOptionalArg(args, '--due', data.dueDate);
     addOptionalNumberArg(args, '--priority', data.priority);
+    addLocationTriggerArgs(args, data.locationTrigger);
     // Skip the AdvancedReminderEdit Shortcut path — tags / subtasks live in
     // the notes field (see tagUtils / subtaskUtils).
     args.push('--no-shortcuts', '--json');
@@ -307,6 +326,10 @@ class ReminderRepository implements IReminderRepository {
     addOptionalNumberArg(args, '--priority', data.priority);
     if (data.isCompleted !== undefined) {
       addArg(args, '--completed', data.isCompleted ? 'true' : 'false');
+    }
+    addLocationTriggerArgs(args, data.locationTrigger);
+    if (data.clearLocationTrigger) {
+      args.push('--clear-location');
     }
     args.push('--no-shortcuts', '--json');
     return executeEventCliJson<ReminderJSON>(args);

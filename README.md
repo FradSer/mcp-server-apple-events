@@ -157,7 +157,7 @@ Cancel just the September 21 occurrence of my weekly "Team standup".
 
 The server processes natural-language requests, interacts with Apple's native Reminders and Calendar apps, and returns structured results.
 
-> Alarms, recurrence rules, and location triggers are read-only via this server — configure them in Reminders.app / Calendar.app. Read tools preserve these values in structured records when the underlying app provides them.
+> Reminder alarms and recurrence rules are read-only via this server — configure them in Reminders.app / Calendar.app. Location-based reminder alarms can be set with `locationTrigger` (title, latitude, longitude, optional radius and `enter`/`leave` proximity) and removed with `clearLocationTrigger`. Read tools preserve these values in structured records when the underlying app provides them.
 
 ## Write confirmation and untrusted data
 
@@ -186,7 +186,7 @@ Service-scoped tools mirror Apple Reminders and Calendar domains. All take an `a
 
 | Tool | Actions | Notes |
 | --- | --- | --- |
-| `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks. `startDate` is set via `update`, not `create`; on `read` it scopes the due-date window alongside `endDate`. Cross-list moves unsupported. |
+| `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks, location-based alarms (`locationTrigger` / `clearLocationTrigger`). `startDate` is set via `update`, not `create`; on `read` it scopes the due-date window alongside `endDate`. Cross-list moves unsupported. |
 | `reminders_subtasks` | `read`, `create`, `update`, `delete`, `toggle`, `reorder` | Stored in the notes field (human-readable in Reminders.app). |
 | `reminders_lists` | `read`, `create`, `update`, `delete` | Rename via `name` → `newName`. |
 | `calendar_events` | `read`, `create`, `update`, `delete` | On reads, `startDate` and `endDate` are wall-clock values in the event's `timeZone`; timed events also include `startDateISO` and `endDateISO` as unambiguous UTC timestamps when available. Use the ISO fields to schedule or compare events. All-day events do not include them. All-day is inferred from date format. Cross-calendar moves remain unsupported. `span` scopes recurring deletes. `attendees` (update) invites addresses; `occurrenceDate` (delete) excepts one occurrence of a series — both need extra setup, see [Attendees and single occurrences](#attendees-and-single-occurrences). |
@@ -297,7 +297,7 @@ The accompanying `content` array contains a static text summary first (for examp
 
 Reminder URLs are stored in the native `url` property and in the structured `URLs:` notes block. Calendar event URLs are stored in EventKit's native URL property. Both reject unsafe URI schemes and blocked HTTP(S) addresses.
 
-> **Read-only fields**: reminder alarms, reminder recurrence and location triggers, calendar recurrence rules and structured locations, all-day toggles, and cross-calendar moves are not writable via this server. Calendar event alarms, URLs, and scheduling availability can be set through create/update. Calendar availability writes require a calendar that supports the selected value. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the remaining gaps.
+> **Read-only fields**: reminder time-based alarms, reminder recurrence, calendar recurrence rules and structured locations, all-day toggles, and cross-calendar moves are not writable via this server. Calendar event alarms, URLs, and scheduling availability can be set through create/update. Calendar availability writes require a calendar that supports the selected value. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the remaining gaps.
 
 ## Structured Prompt Library
 

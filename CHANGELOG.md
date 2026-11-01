@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Location-based reminder alarms are writable** — `reminders_tasks` `create` and `update` accept `locationTrigger` (`title`, `latitude`, `longitude`, optional `radius` in meters and `proximity` of `enter`/`leave`), mapped to the vendored `event` CLI's existing `--location/--latitude/--longitude/--radius/--proximity` flags. `update` also accepts `clearLocationTrigger` (`--clear-location`) to remove location alarms; combining it with `locationTrigger` is rejected. Coordinates are required because the CLI does not geocode addresses.
+
 ## [1.6.2] - 2026-10-23
 
 ### Added
