@@ -251,6 +251,53 @@ describe('Tool Handlers', () => {
       expect(getJsonMirror(result)).toEqual(result.structuredContent);
     });
 
+    it('passes a location trigger through to the repository', async () => {
+      mockReminderRepository.createReminder.mockResolvedValue({
+        id: 'rem-loc',
+        title: 'Visit shop',
+        isCompleted: false,
+        list: 'Errands',
+        notes: null,
+        url: null,
+        dueDate: null,
+        priority: 0,
+        locationTrigger: null,
+      });
+      const locationTrigger = {
+        title: '763 Leona St, Elyria, OH',
+        latitude: 41.4028486,
+        longitude: -82.1197902,
+        radius: 150,
+        proximity: 'enter' as const,
+      };
+
+      const result = await handleCreateReminder({
+        action: 'create',
+        title: 'Visit shop',
+        targetList: 'Errands',
+        locationTrigger,
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockReminderRepository.createReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ locationTrigger }),
+      );
+    });
+
+    it('rejects a location trigger with out-of-range coordinates', async () => {
+      const result = await handleCreateReminder({
+        action: 'create',
+        title: 'Bad location',
+        locationTrigger: { title: 'Nowhere', latitude: 91, longitude: 0 },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getTextContent(result.content)).toContain(
+        'Input validation failed',
+      );
+      expect(mockReminderRepository.createReminder).not.toHaveBeenCalled();
+    });
+
     it('rejects invalid subtask titles during creation', async () => {
       const result = await handleCreateReminder({
         action: 'create',
@@ -292,6 +339,59 @@ describe('Tool Handlers', () => {
         records: [updatedReminder],
       });
       expect(getJsonMirror(result)).toEqual(result.structuredContent);
+    });
+
+    it('passes location trigger changes through to the repository', async () => {
+      mockReminderRepository.updateReminder.mockResolvedValue({
+        id: 'rem-loc',
+        title: 'Visit shop',
+        isCompleted: false,
+        list: 'Errands',
+        notes: null,
+        url: null,
+        dueDate: null,
+        priority: 0,
+        locationTrigger: null,
+      });
+      const locationTrigger = {
+        title: 'Home',
+        latitude: 41.3978,
+        longitude: -82.2224,
+        proximity: 'leave' as const,
+      };
+
+      await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-loc',
+        locationTrigger,
+      });
+      expect(mockReminderRepository.updateReminder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'rem-loc', locationTrigger }),
+      );
+
+      await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-loc',
+        clearLocationTrigger: true,
+      });
+      expect(mockReminderRepository.updateReminder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'rem-loc', clearLocationTrigger: true }),
+      );
+    });
+
+    it('rejects combining locationTrigger with clearLocationTrigger', async () => {
+      const result = await handleUpdateReminder({
+        action: 'update',
+        id: 'rem-loc',
+        locationTrigger: { title: 'Home', latitude: 41.4, longitude: -82.2 },
+        clearLocationTrigger: true,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getTextContent(result.content)).toContain(
+        'Input validation failed',
+      );
+      expect(mockReminderRepository.updateReminder).not.toHaveBeenCalled();
     });
 
     it('preserves existing subtasks when adding tags with a new note', async () => {

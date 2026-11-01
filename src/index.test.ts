@@ -11,6 +11,9 @@ import { findProjectRoot } from './utils/projectUtils.js';
 jest.mock('node:fs');
 jest.mock('node:path');
 jest.mock('./server/server.js');
+jest.mock('./utils/reminderRepository.js', () => ({
+  configureReminderRepository: jest.fn(),
+}));
 jest.mock('./utils/projectUtils.js', () => ({
   findProjectRoot: jest.fn(),
 }));

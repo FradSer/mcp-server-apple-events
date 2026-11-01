@@ -289,6 +289,15 @@ export interface RemindersToolArgs extends BaseToolArgs {
   subtasks?: string[];
   targetList?: string;
   endDate?: string; // read only: due-date window end
+  // Location-based alarm (create/update)
+  locationTrigger?: {
+    title: string;
+    latitude: number;
+    longitude: number;
+    radius?: number;
+    proximity?: LocationProximity;
+  };
+  clearLocationTrigger?: boolean; // update only
 }
 
 /**

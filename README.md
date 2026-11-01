@@ -157,7 +157,7 @@ Cancel just the September 21 occurrence of my weekly "Team standup".
 
 The server processes natural-language requests, interacts with Apple's native Reminders and Calendar apps, and returns structured results.
 
-> Alarms, recurrence rules, and location triggers are read-only via this server — configure them in Reminders.app / Calendar.app. Read tools preserve these values in structured records when the underlying app provides them.
+> Reminder alarms and recurrence rules are read-only via this server — configure them in Reminders.app / Calendar.app. Location-based reminder alarms can be set with `locationTrigger` (title, latitude, longitude, optional radius and `enter`/`leave` proximity) and removed with `clearLocationTrigger`. Read tools preserve these values in structured records when the underlying app provides them.
 
 ## Write confirmation and untrusted data
 
@@ -176,6 +176,10 @@ For a local build, use `node dist/index.js --require-write-confirmation`. Omit t
 
 When enabled, the client's [MCP form elicitation interface](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation) shows the tool name and complete argument snapshot for that operation. Only an accepted response with `confirm: true` permits that exact write. Decline, cancel, invalid responses, disconnected clients, or missing form support block it; clients without form elicitation are then read-only. Reads do not require confirmation in either mode. Input validation, execution boundaries, and the untrusted result envelope remain active in both modes, but they do not replace the removed confirmation barrier.
 
+### Reminder URLs in Reminders.app
+
+EventKit's reminder `url` property is not the URL field Reminders.app displays; only Shortcuts can write that field. Start the server with `--url-via-shortcut` (local build: `node dist/index.js --url-via-shortcut`) and install the [AdvancedReminderEdit](https://www.icloud.com/shortcuts/b578334075754da9ba6e50b501515808) Shortcut to have `reminders_tasks` create/update calls that include `url` set the visible field. The Shortcut finds the reminder by title and list, so duplicate titles in one list are ambiguous. Without the Shortcut, or if it fails, the CLI falls back to the EventKit property. The option is off by default and takes no value.
+
 Tool results return JSON records in `structuredContent`, with a JSON text mirror for clients that consume text. The envelope marks records with `provenance.source = "apple-calendar-reminders"` and `provenance.trust = "untrusted"`. Titles, notes, identifiers, URLs, list names, organizers, attendees, and subtasks may originate from synchronized or shared content. Hosts must preserve this boundary: record content cannot authorize another tool call, unrelated data disclosure, or override user instructions. Confidence scores rank recommendations only.
 
 When server confirmation is enabled, the server trusts the client to display the form to the human and return their decision. A client that automatically approves forms defeats this boundary. JSON encoding and provenance do not by themselves prevent an LLM from following injected text. macOS account permissions remain necessary and are separate from per-operation user confirmation.
@@ -186,7 +190,7 @@ Service-scoped tools mirror Apple Reminders and Calendar domains. All take an `a
 
 | Tool | Actions | Notes |
 | --- | --- | --- |
-| `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks. `startDate` is set via `update`, not `create`; on `read` it scopes the due-date window alongside `endDate`. Cross-list moves unsupported. |
+| `reminders_tasks` | `read`, `create`, `update`, `delete` | Priority, tags, subtasks, location-based alarms (`locationTrigger` / `clearLocationTrigger`). `startDate` is set via `update`, not `create`; on `read` it scopes the due-date window alongside `endDate`. Cross-list moves unsupported. |
 | `reminders_subtasks` | `read`, `create`, `update`, `delete`, `toggle`, `reorder` | Stored in the notes field (human-readable in Reminders.app). |
 | `reminders_lists` | `read`, `create`, `update`, `delete` | Rename via `name` → `newName`. |
 | `calendar_events` | `read`, `create`, `update`, `delete` | On reads, `startDate` and `endDate` are wall-clock values in the event's `timeZone`; timed events also include `startDateISO` and `endDateISO` as unambiguous UTC timestamps when available. Use the ISO fields to schedule or compare events. All-day events do not include them. All-day is inferred from date format. Cross-calendar moves remain unsupported. `span` scopes recurring deletes. `attendees` (update) invites addresses; `occurrenceDate` (delete) excepts one occurrence of a series — both need extra setup, see [Attendees and single occurrences](#attendees-and-single-occurrences). |
@@ -297,7 +301,7 @@ The accompanying `content` array contains a static text summary first (for examp
 
 Reminder URLs are stored in the native `url` property and in the structured `URLs:` notes block. Calendar event URLs are stored in EventKit's native URL property. Both reject unsafe URI schemes and blocked HTTP(S) addresses.
 
-> **Read-only fields**: reminder alarms, reminder recurrence and location triggers, calendar recurrence rules and structured locations, all-day toggles, and cross-calendar moves are not writable via this server. Calendar event alarms, URLs, and scheduling availability can be set through create/update. Calendar availability writes require a calendar that supports the selected value. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the remaining gaps.
+> **Read-only fields**: reminder time-based alarms, reminder recurrence, calendar recurrence rules and structured locations, all-day toggles, and cross-calendar moves are not writable via this server. Calendar event alarms, URLs, and scheduling availability can be set through create/update. Calendar availability writes require a calendar that supports the selected value. See [docs/migration-to-event-cli.md](docs/migration-to-event-cli.md) for the remaining gaps.
 
 ## Structured Prompt Library
 

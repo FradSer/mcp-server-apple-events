@@ -23,7 +23,10 @@ import {
 } from './dateFiltering.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
-import { reminderRepository } from './reminderRepository.js';
+import {
+  configureReminderRepository,
+  reminderRepository,
+} from './reminderRepository.js';
 
 jest.mock('./eventCli.js');
 jest.mock('./dateFiltering.js');
@@ -452,9 +455,163 @@ describe('ReminderRepository (event CLI backend)', () => {
         '--json',
       ]);
     });
+
+    it('appends location-alarm flags, using the attached form for negative coordinates', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'created' }));
+
+      await reminderRepository.createReminder({
+        title: 'Visit shop',
+        locationTrigger: {
+          title: '763 Leona St, Elyria, OH',
+          latitude: 41.4028486,
+          longitude: -82.1197902,
+          radius: 150,
+          proximity: 'leave',
+        },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'create',
+        '--title=Visit shop',
+        '--location=763 Leona St, Elyria, OH',
+        '--latitude=41.4028486',
+        '--longitude=-82.1197902',
+        '--radius=150',
+        '--proximity=leave',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('leaves radius and proximity to the CLI defaults when omitted', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'created' }));
+
+      await reminderRepository.createReminder({
+        title: 'Home',
+        locationTrigger: { title: 'Home', latitude: 41.4, longitude: -82.2 },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'create',
+        '--title=Home',
+        '--location=Home',
+        '--latitude=41.4',
+        '--longitude=-82.2',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+  });
+
+  describe('URL-via-Shortcut option', () => {
+    afterEach(() => {
+      configureReminderRepository({ urlViaShortcut: false });
+    });
+
+    it('drops --no-shortcuts on create and update only when a url is sent', async () => {
+      configureReminderRepository({ urlViaShortcut: true });
+      mockJson.mockResolvedValue(reminderFixture({ id: 'rem-url' }));
+
+      await reminderRepository.createReminder({
+        title: 'Shop',
+        url: 'https://example.com',
+      });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'create',
+        '--title=Shop',
+        '--url=https://example.com',
+        '--json',
+      ]);
+
+      await reminderRepository.updateReminder({
+        id: 'rem-url',
+        url: 'https://example.com/2',
+      });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-url',
+        '--url=https://example.com/2',
+        '--json',
+      ]);
+
+      await reminderRepository.createReminder({ title: 'No URL' });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'create',
+        '--title=No URL',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('keeps --no-shortcuts for url writes when the option is off', async () => {
+      configureReminderRepository({});
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-url' }));
+
+      await reminderRepository.createReminder({
+        title: 'Shop',
+        url: 'https://example.com',
+      });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'create',
+        '--title=Shop',
+        '--url=https://example.com',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
   });
 
   describe('updateReminder', () => {
+    it('passes location-alarm flags on update', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-loc' }));
+
+      await reminderRepository.updateReminder({
+        id: 'rem-loc',
+        locationTrigger: {
+          title: 'Office',
+          latitude: 40.7128,
+          longitude: -74.006,
+          proximity: 'enter',
+        },
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-loc',
+        '--location=Office',
+        '--latitude=40.7128',
+        '--longitude=-74.006',
+        '--proximity=enter',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('passes --clear-location when clearLocationTrigger is set', async () => {
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-loc' }));
+
+      await reminderRepository.updateReminder({
+        id: 'rem-loc',
+        clearLocationTrigger: true,
+      });
+
+      expect(mockJson).toHaveBeenCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-loc',
+        '--clear-location',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
     it('passes the supported flag subset and adds --completed <bool> when isCompleted is set', async () => {
       mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-1' }));
 
