@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Location-based reminder alarms are writable** — `reminders_tasks` `create` and `update` accept `locationTrigger` (`title`, `latitude`, `longitude`, optional `radius` in meters and `proximity` of `enter`/`leave`), mapped to the vendored `event` CLI's existing `--location/--latitude/--longitude/--radius/--proximity` flags. `update` also accepts `clearLocationTrigger` (`--clear-location`) to remove location alarms; combining it with `locationTrigger` is rejected. Coordinates are required because the CLI does not geocode addresses.
+- **Opt-in `--url-via-shortcut` server flag** — reminder creates and updates that include `url` omit `--no-shortcuts`, so the `event` CLI runs the AdvancedReminderEdit Shortcut and the URL appears in Reminders.app's URL field (EventKit's `url` property is not displayed there). Off by default; falls back to the EventKit property when the Shortcut is missing or fails.
 
 ## [1.6.2] - 2026-10-23
 

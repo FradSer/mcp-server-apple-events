@@ -155,6 +155,38 @@ const resolveReadDateWindow = (filters: {
   };
 };
 
+/** Process-wide reminder write options, set once at startup. */
+export interface ReminderRepositoryOptions {
+  /**
+   * Let creates/updates that carry a `url` run the `event` CLI's
+   * AdvancedReminderEdit Shortcut so the URL lands in the field Reminders.app
+   * displays (EventKit's `EKReminder.url` is not shown there).
+   */
+  urlViaShortcut?: boolean;
+}
+
+const repositoryOptions: Required<ReminderRepositoryOptions> = {
+  urlViaShortcut: false,
+};
+
+export function configureReminderRepository(
+  options: ReminderRepositoryOptions,
+): void {
+  repositoryOptions.urlViaShortcut = options.urlViaShortcut === true;
+}
+
+/**
+ * `--no-shortcuts` keeps the CLI off the Shortcut path. The only advanced
+ * field this server forwards is `url` (tags and subtasks live in the notes
+ * field), so dropping the flag affects nothing but URL writes.
+ */
+const pushShortcutPolicyArgs = (args: string[], url: string | undefined) => {
+  if (!(repositoryOptions.urlViaShortcut && url !== undefined)) {
+    args.push('--no-shortcuts');
+  }
+  args.push('--json');
+};
+
 class ReminderRepository implements IReminderRepository {
   private mapReminder(reminder: ReminderJSON): Reminder {
     const normalizedReminder = nullToUndefined(reminder, [
@@ -307,9 +339,10 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--due', data.dueDate);
     addOptionalNumberArg(args, '--priority', data.priority);
     addLocationTriggerArgs(args, data.locationTrigger);
-    // Skip the AdvancedReminderEdit Shortcut path — tags / subtasks live in
-    // the notes field (see tagUtils / subtaskUtils).
-    args.push('--no-shortcuts', '--json');
+    // Skip the AdvancedReminderEdit Shortcut path unless URL-via-Shortcut is
+    // enabled — tags / subtasks live in the notes field (see tagUtils /
+    // subtaskUtils).
+    pushShortcutPolicyArgs(args, data.url);
     return executeEventCliJson<ReminderJSON>(args);
   }
 
@@ -331,7 +364,7 @@ class ReminderRepository implements IReminderRepository {
     if (data.clearLocationTrigger) {
       args.push('--clear-location');
     }
-    args.push('--no-shortcuts', '--json');
+    pushShortcutPolicyArgs(args, data.url);
     return executeEventCliJson<ReminderJSON>(args);
   }
 

@@ -4,6 +4,7 @@ describe('server startup options', () => {
   it('defaults to no server write confirmation', () => {
     expect(parseServerOptions([])).toEqual({
       requireWriteConfirmation: false,
+      urlViaShortcut: false,
       help: false,
     });
   });
@@ -11,8 +12,20 @@ describe('server startup options', () => {
   it('enables confirmation only with the explicit flag', () => {
     expect(parseServerOptions(['--require-write-confirmation'])).toEqual({
       requireWriteConfirmation: true,
+      urlViaShortcut: false,
       help: false,
     });
+  });
+
+  it('enables URL-via-Shortcut only with the explicit flag', () => {
+    expect(parseServerOptions(['--url-via-shortcut'])).toEqual({
+      requireWriteConfirmation: false,
+      urlViaShortcut: true,
+      help: false,
+    });
+    expect(() => parseServerOptions(['--url-via-shortcut=true'])).toThrow();
+    expect(() => parseServerOptions(['--no-url-via-shortcut'])).toThrow();
+    expect(CLI_HELP).toContain('--url-via-shortcut');
   });
 
   it.each([

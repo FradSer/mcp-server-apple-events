@@ -23,7 +23,10 @@ import {
 } from './dateFiltering.js';
 import { CliUserError } from './errorHandling.js';
 import { executeEventCliJson, executeEventCliPlain } from './eventCli.js';
-import { reminderRepository } from './reminderRepository.js';
+import {
+  configureReminderRepository,
+  reminderRepository,
+} from './reminderRepository.js';
 
 jest.mock('./eventCli.js');
 jest.mock('./dateFiltering.js');
@@ -496,6 +499,68 @@ describe('ReminderRepository (event CLI backend)', () => {
         '--location=Home',
         '--latitude=41.4',
         '--longitude=-82.2',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+  });
+
+  describe('URL-via-Shortcut option', () => {
+    afterEach(() => {
+      configureReminderRepository({ urlViaShortcut: false });
+    });
+
+    it('drops --no-shortcuts on create and update only when a url is sent', async () => {
+      configureReminderRepository({ urlViaShortcut: true });
+      mockJson.mockResolvedValue(reminderFixture({ id: 'rem-url' }));
+
+      await reminderRepository.createReminder({
+        title: 'Shop',
+        url: 'https://example.com',
+      });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'create',
+        '--title=Shop',
+        '--url=https://example.com',
+        '--json',
+      ]);
+
+      await reminderRepository.updateReminder({
+        id: 'rem-url',
+        url: 'https://example.com/2',
+      });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'update',
+        '--id=rem-url',
+        '--url=https://example.com/2',
+        '--json',
+      ]);
+
+      await reminderRepository.createReminder({ title: 'No URL' });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'create',
+        '--title=No URL',
+        '--no-shortcuts',
+        '--json',
+      ]);
+    });
+
+    it('keeps --no-shortcuts for url writes when the option is off', async () => {
+      configureReminderRepository({});
+      mockJson.mockResolvedValueOnce(reminderFixture({ id: 'rem-url' }));
+
+      await reminderRepository.createReminder({
+        title: 'Shop',
+        url: 'https://example.com',
+      });
+      expect(mockJson).toHaveBeenLastCalledWith([
+        'reminders',
+        'create',
+        '--title=Shop',
+        '--url=https://example.com',
         '--no-shortcuts',
         '--json',
       ]);
