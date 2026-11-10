@@ -13,6 +13,7 @@ import type {
   CreateReminderData,
   IReminderRepository,
   ListJSON,
+  LocationTriggerInput,
   RecurrenceRuleJSON,
   ReminderJSON,
   UpdateReminderData,
@@ -57,6 +58,23 @@ const mapAlarmType = (
  * (`EKAlarmProximityNone` — geofence configured but no fire condition) are
  * skipped so they don't show up as misleading "Arriving at..." entries.
  */
+/**
+ * Appends the `event` CLI's location-alarm flags. The CLI requires
+ * `--location`, `--latitude` and `--longitude` together; `--radius` and
+ * `--proximity` fall back to the CLI defaults (100 m, `enter`) when omitted.
+ */
+const addLocationTriggerArgs = (
+  args: string[],
+  trigger: LocationTriggerInput | undefined,
+): void => {
+  if (!trigger) return;
+  addArg(args, '--location', trigger.title);
+  addArg(args, '--latitude', String(trigger.latitude));
+  addArg(args, '--longitude', String(trigger.longitude));
+  addOptionalNumberArg(args, '--radius', trigger.radius);
+  addOptionalArg(args, '--proximity', trigger.proximity);
+};
+
 const deriveTopLevelLocationTrigger = (
   alarms: AlarmJSON[] | null | undefined,
 ): ReminderJSON['locationTrigger'] => {
@@ -135,6 +153,38 @@ const resolveReadDateWindow = (filters: {
     ),
     endDate: toDateOnly(endStr),
   };
+};
+
+/** Process-wide reminder write options, set once at startup. */
+export interface ReminderRepositoryOptions {
+  /**
+   * Let creates/updates that carry a `url` run the `event` CLI's
+   * AdvancedReminderEdit Shortcut so the URL lands in the field Reminders.app
+   * displays (EventKit's `EKReminder.url` is not shown there).
+   */
+  urlViaShortcut?: boolean;
+}
+
+const repositoryOptions: Required<ReminderRepositoryOptions> = {
+  urlViaShortcut: false,
+};
+
+export function configureReminderRepository(
+  options: ReminderRepositoryOptions,
+): void {
+  repositoryOptions.urlViaShortcut = options.urlViaShortcut === true;
+}
+
+/**
+ * `--no-shortcuts` keeps the CLI off the Shortcut path. The only advanced
+ * field this server forwards is `url` (tags and subtasks live in the notes
+ * field), so dropping the flag affects nothing but URL writes.
+ */
+const pushShortcutPolicyArgs = (args: string[], url: string | undefined) => {
+  if (!(repositoryOptions.urlViaShortcut && url !== undefined)) {
+    args.push('--no-shortcuts');
+  }
+  args.push('--json');
 };
 
 class ReminderRepository implements IReminderRepository {
@@ -288,9 +338,11 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--url', data.url);
     addOptionalArg(args, '--due', data.dueDate);
     addOptionalNumberArg(args, '--priority', data.priority);
-    // Skip the AdvancedReminderEdit Shortcut path — tags / subtasks live in
-    // the notes field (see tagUtils / subtaskUtils).
-    args.push('--no-shortcuts', '--json');
+    addLocationTriggerArgs(args, data.locationTrigger);
+    // Skip the AdvancedReminderEdit Shortcut path unless URL-via-Shortcut is
+    // enabled — tags / subtasks live in the notes field (see tagUtils /
+    // subtaskUtils).
+    pushShortcutPolicyArgs(args, data.url);
     return executeEventCliJson<ReminderJSON>(args);
   }
 
@@ -308,7 +360,11 @@ class ReminderRepository implements IReminderRepository {
     if (data.isCompleted !== undefined) {
       addArg(args, '--completed', data.isCompleted ? 'true' : 'false');
     }
-    args.push('--no-shortcuts', '--json');
+    addLocationTriggerArgs(args, data.locationTrigger);
+    if (data.clearLocationTrigger) {
+      args.push('--clear-location');
+    }
+    pushShortcutPolicyArgs(args, data.url);
     return executeEventCliJson<ReminderJSON>(args);
   }
 

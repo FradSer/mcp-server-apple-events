@@ -666,6 +666,67 @@ describe('ValidationSchemas', () => {
   });
 
   describe('Tool-specific schemas', () => {
+    describe('Location trigger validation', () => {
+      const valid = {
+        title: 'Home',
+        latitude: 41.3978,
+        longitude: -82.2224,
+      };
+
+      it('accepts a minimal trigger and optional radius/proximity', () => {
+        expect(() =>
+          CreateReminderSchema.parse({ title: 'R', locationTrigger: valid }),
+        ).not.toThrow();
+        expect(
+          CreateReminderSchema.parse({
+            title: 'R',
+            locationTrigger: { ...valid, radius: 250, proximity: 'leave' },
+          }).locationTrigger,
+        ).toEqual({ ...valid, radius: 250, proximity: 'leave' });
+      });
+
+      it.each([
+        ['latitude above 90', { latitude: 90.1 }],
+        ['latitude below -90', { latitude: -90.1 }],
+        ['longitude above 180', { longitude: 180.5 }],
+        ['longitude below -180', { longitude: -181 }],
+        ['zero radius', { radius: 0 }],
+        ['oversized radius', { radius: 100001 }],
+        ['unknown proximity', { proximity: 'near' }],
+        ['empty title', { title: '' }],
+        ['unknown field', { address: 'x' }],
+      ])('rejects %s', (_label, override) => {
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'R',
+            locationTrigger: { ...valid, ...override },
+          }),
+        ).toThrow();
+      });
+
+      it('requires title, latitude and longitude', () => {
+        expect(() =>
+          CreateReminderSchema.parse({
+            title: 'R',
+            locationTrigger: { title: 'Home', latitude: 41.4 },
+          }),
+        ).toThrow();
+      });
+
+      it('accepts clearLocationTrigger on update but not alongside a trigger', () => {
+        expect(() =>
+          UpdateReminderSchema.parse({ id: 'x', clearLocationTrigger: true }),
+        ).not.toThrow();
+        expect(() =>
+          UpdateReminderSchema.parse({
+            id: 'x',
+            locationTrigger: valid,
+            clearLocationTrigger: true,
+          }),
+        ).toThrow(/not both/);
+      });
+    });
+
     describe('Tag validation', () => {
       it('allows tags with optional leading #', () => {
         expect(() =>
@@ -833,7 +894,7 @@ describe('ValidationSchemas', () => {
         expect(parsed.subtasks).toEqual(['Step 1']);
       });
 
-      it('CreateReminderSchema silently strips dropped fields (alarms, recurrence, locationTrigger, startDate, location, completed)', () => {
+      it('CreateReminderSchema silently strips dropped fields (alarms, recurrence, startDate, location, completed) and keeps locationTrigger', () => {
         const parsed = CreateReminderSchema.parse({
           title: 'Trimmed',
           alarms: [{ relativeOffset: -900 }],
@@ -851,7 +912,12 @@ describe('ValidationSchemas', () => {
 
         expect(parsed.alarms).toBeUndefined();
         expect(parsed.recurrenceRules).toBeUndefined();
-        expect(parsed.locationTrigger).toBeUndefined();
+        expect(parsed.locationTrigger).toEqual({
+          title: 'Office',
+          latitude: 1,
+          longitude: 2,
+          proximity: 'enter',
+        });
         expect(parsed.startDate).toBeUndefined();
         expect(parsed.location).toBeUndefined();
         expect(parsed.completed).toBeUndefined();
@@ -876,20 +942,13 @@ describe('ValidationSchemas', () => {
         expect(parsed.removeTags).toEqual(['todo']);
       });
 
-      it('UpdateReminderSchema silently strips dropped fields (alarms, recurrence, locationTrigger, location, completionDate)', () => {
+      it('UpdateReminderSchema silently strips dropped fields (alarms, recurrence, location, completionDate)', () => {
         const parsed = UpdateReminderSchema.parse({
           id: 'rem-1',
           alarms: [{ absoluteDate: '2024-01-15T10:15:00Z' }],
           recurrenceRules: [{ frequency: 'monthly', interval: 1 }],
           clearAlarms: true,
           clearRecurrence: true,
-          locationTrigger: {
-            title: 'Office',
-            latitude: 1,
-            longitude: 2,
-            proximity: 'enter',
-          },
-          clearLocationTrigger: true,
           location: 'Office',
           completionDate: '2024-01-16T10:00:00Z',
         }) as Record<string, unknown>;
@@ -899,8 +958,6 @@ describe('ValidationSchemas', () => {
           'recurrenceRules',
           'clearAlarms',
           'clearRecurrence',
-          'locationTrigger',
-          'clearLocationTrigger',
           'location',
           'completionDate',
         ]) {

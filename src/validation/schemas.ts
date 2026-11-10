@@ -469,6 +469,40 @@ const SubtaskTitleSchema = createSafeTextSchema(
 
 const SubtaskTitleArraySchema = z.array(SubtaskTitleSchema).optional();
 
+/**
+ * Location-based alarm for a reminder (EKAlarm + EKStructuredLocation).
+ * Maps to `event reminders create|update --location --latitude --longitude
+ * [--radius] [--proximity]`. Coordinates are required: the CLI does not
+ * geocode street addresses.
+ */
+export const LocationTriggerInputSchema = z
+  .object({
+    title: createSafeTextSchema(
+      1,
+      VALIDATION.MAX_LOCATION_LENGTH,
+      'Location title',
+    ),
+    latitude: z
+      .number()
+      .finite()
+      .min(-90, 'Latitude must be between -90 and 90')
+      .max(90, 'Latitude must be between -90 and 90'),
+    longitude: z
+      .number()
+      .finite()
+      .min(-180, 'Longitude must be between -180 and 180')
+      .max(180, 'Longitude must be between -180 and 180'),
+    radius: z
+      .number()
+      .finite()
+      .positive('Radius must be greater than 0 meters')
+      .max(100000, 'Radius cannot exceed 100000 meters')
+      .optional(),
+    proximity: z.enum(['enter', 'leave']).optional(),
+  })
+  .strict()
+  .optional();
+
 /** Fields accepted by `event reminders create`. */
 const BaseReminderFields = {
   title: SafeTextSchema,
@@ -479,6 +513,7 @@ const BaseReminderFields = {
   priority: PriorityValueSchema,
   tags: TagArraySchema,
   subtasks: SubtaskTitleArraySchema,
+  locationTrigger: LocationTriggerInputSchema,
 };
 
 export const SafeIdSchema = z.string().min(1, 'ID cannot be empty');
@@ -521,20 +556,33 @@ export const ReadRemindersSchema = z
   });
 
 /** Fields accepted by `event reminders update`. */
-export const UpdateReminderSchema = z.object({
-  id: SafeIdSchema,
-  title: SafeTextSchema.optional(),
-  startDate: SafeDateSchema,
-  dueDate: SafeDateSchema,
-  note: SafeNoteSchema,
-  url: SafeUrlSchema,
-  completed: z.boolean().optional(),
-  targetList: SafeListNameSchema,
-  priority: PriorityValueSchema,
-  tags: TagArraySchema,
-  addTags: TagArraySchema,
-  removeTags: TagArraySchema,
-});
+export const UpdateReminderSchema = z
+  .object({
+    id: SafeIdSchema,
+    title: SafeTextSchema.optional(),
+    startDate: SafeDateSchema,
+    dueDate: SafeDateSchema,
+    note: SafeNoteSchema,
+    url: SafeUrlSchema,
+    completed: z.boolean().optional(),
+    targetList: SafeListNameSchema,
+    priority: PriorityValueSchema,
+    tags: TagArraySchema,
+    addTags: TagArraySchema,
+    removeTags: TagArraySchema,
+    locationTrigger: LocationTriggerInputSchema,
+    clearLocationTrigger: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.clearLocationTrigger && value.locationTrigger) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['clearLocationTrigger'],
+        message:
+          'Use either locationTrigger or clearLocationTrigger, not both.',
+      });
+    }
+  });
 
 export const DeleteReminderSchema = z.object({
   id: SafeIdSchema,

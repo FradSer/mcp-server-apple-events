@@ -66,7 +66,7 @@ so values set inside Reminders.app or Calendar.app remain visible.
 | --- | --- | --- |
 | `alarms`, `clearAlarms` | create / update | Configure alarms in Reminders.app. |
 | `recurrence`, `recurrenceRules`, `clearRecurrence` | create / update | Configure recurrence in Reminders.app. |
-| `locationTrigger`, `clearLocationTrigger` | create / update | Configure location-based reminders in Reminders.app. |
+| `locationTrigger`, `clearLocationTrigger` | create / update | Supported — mapped to `event reminders create|update --location --latitude --longitude [--radius] [--proximity]` and `--clear-location`. Coordinates are required; addresses are not geocoded. |
 | `location` (reminder text) | create / update | Set the reminder's location text from Reminders.app. |
 | `completionDate` | update | Use `completed: true` to mark complete (timestamp is set by EventKit automatically). |
 | `startDate` | create | Set it via `update` after creation; `update` still accepts `startDate`. |

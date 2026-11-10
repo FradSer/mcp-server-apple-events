@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { CLI_HELP, parseServerOptions } from './server/options.js';
 import { startServer } from './server/server.js';
 import { findProjectRoot } from './utils/projectUtils.js';
+import { configureReminderRepository } from './utils/reminderRepository.js';
 
 // Find project root and load package.json
 const projectRoot = findProjectRoot();
@@ -30,6 +31,7 @@ try {
   if (options.help) {
     process.stdout.write(CLI_HELP);
   } else {
+    configureReminderRepository({ urlViaShortcut: options.urlViaShortcut });
     startServer({
       name: packageJson.name,
       version: packageJson.version,

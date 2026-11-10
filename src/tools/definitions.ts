@@ -18,7 +18,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'reminders_tasks',
     description:
-      'Manages reminder tasks. Supports reading, creating, updating, and deleting reminders. Alarms, recurrence rules, and location-based triggers are read-only via this tool; configure them in Reminders.app.',
+      'Manages reminder tasks. Supports reading, creating, updating, and deleting reminders. Location-based alarms (arrive/leave geofences) can be set on create/update via locationTrigger and removed via clearLocationTrigger. Time-based alarms and recurrence rules are read-only via this tool; configure them in Reminders.app.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -58,6 +58,49 @@ export const TOOLS: Tool[] = [
           type: 'boolean',
           description:
             'Mark the reminder as completed/uncompleted (update only).',
+        },
+        locationTrigger: {
+          type: 'object',
+          description:
+            "Location-based alarm (create/update). Reminders.app shows this as the reminder's Location and alerts when arriving at or leaving the place. Coordinates are required; street addresses are not geocoded. On update, replaces any existing location alarm.",
+          properties: {
+            title: {
+              type: 'string',
+              description:
+                'Place name or address shown in Reminders.app (e.g., "Home" or "763 Leona St, Elyria, OH").',
+            },
+            latitude: {
+              type: 'number',
+              minimum: -90,
+              maximum: 90,
+              description: 'Latitude in decimal degrees.',
+            },
+            longitude: {
+              type: 'number',
+              minimum: -180,
+              maximum: 180,
+              description: 'Longitude in decimal degrees.',
+            },
+            radius: {
+              type: 'number',
+              exclusiveMinimum: 0,
+              maximum: 100000,
+              description: 'Geofence radius in meters (default 100).',
+            },
+            proximity: {
+              type: 'string',
+              enum: ['enter', 'leave'],
+              description:
+                "Alert when arriving ('enter', default) or leaving ('leave').",
+            },
+          },
+          required: ['title', 'latitude', 'longitude'],
+          additionalProperties: false,
+        },
+        clearLocationTrigger: {
+          type: 'boolean',
+          description:
+            'Update only. Remove all location-based alarms from the reminder. Cannot be combined with locationTrigger.',
         },
         priority: {
           type: 'integer',

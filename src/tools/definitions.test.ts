@@ -112,11 +112,11 @@ describe('Tools Definitions', () => {
         'recurrence',
         'recurrenceRules',
         'clearRecurrence',
-        'locationTrigger',
-        'clearLocationTrigger',
       ]) {
         expect(remindersProps).not.toHaveProperty(removed);
       }
+      expect(remindersProps).toHaveProperty('locationTrigger');
+      expect(remindersProps).toHaveProperty('clearLocationTrigger');
 
       const calendarEventsTool = TOOLS.find(
         (tool) => tool.name === 'calendar_events',

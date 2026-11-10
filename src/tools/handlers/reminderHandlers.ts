@@ -107,6 +107,7 @@ export const handleCreateReminder = async (
       list: validatedArgs.targetList,
       dueDate: validatedArgs.dueDate,
       priority: validatedArgs.priority,
+      locationTrigger: validatedArgs.locationTrigger,
     });
     return createStructuredToolResult('Created reminder.', [reminder]);
   }, 'create reminder');
@@ -161,6 +162,8 @@ export const handleUpdateReminder = async (
       startDate: validatedArgs.startDate,
       dueDate: validatedArgs.dueDate,
       priority: validatedArgs.priority,
+      locationTrigger: validatedArgs.locationTrigger,
+      clearLocationTrigger: validatedArgs.clearLocationTrigger,
     });
     return createStructuredToolResult('Updated reminder.', [reminder]);
   }, 'update reminder');

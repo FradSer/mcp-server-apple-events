@@ -145,6 +145,18 @@ export interface EventJSON {
  * Data interfaces for repository methods
  */
 
+/**
+ * Location-based alarm input accepted by `event reminders create|update`
+ * via `--location/--latitude/--longitude/--radius/--proximity`.
+ */
+export interface LocationTriggerInput {
+  title: string;
+  latitude: number;
+  longitude: number;
+  radius?: number; // meters; the CLI defaults to 100
+  proximity?: 'enter' | 'leave'; // the CLI defaults to 'enter'
+}
+
 /** Fields accepted by `event reminders create`. */
 export interface CreateReminderData {
   title: string;
@@ -153,6 +165,7 @@ export interface CreateReminderData {
   url?: string;
   dueDate?: string;
   priority?: number;
+  locationTrigger?: LocationTriggerInput;
 }
 
 /** Fields accepted by `event reminders update`. */
@@ -165,6 +178,8 @@ export interface UpdateReminderData {
   startDate?: string;
   dueDate?: string;
   priority?: number;
+  locationTrigger?: LocationTriggerInput;
+  clearLocationTrigger?: boolean;
 }
 
 /**
