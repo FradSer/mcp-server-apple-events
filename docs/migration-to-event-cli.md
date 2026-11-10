@@ -4,9 +4,9 @@
 standalone [`event`](https://github.com/FradSer/event) CLI. The two projects
 now share one EventKit codebase. The initial migration dropped MCP write
 fields that the CLI did not expose. Calendar event alarms, URLs, and
-availability are now writable through the CLI and MCP server. Read paths for
-other fields configured in Reminders.app or Calendar.app continue to round-trip
-through this server unchanged.
+availability, and reminder recurrence are now writable through the CLI and MCP
+server. Read paths for other fields configured in Reminders.app or Calendar.app
+continue to round-trip through this server unchanged.
 
 This page enumerates every removed field, the rationale, and the workaround.
 
@@ -65,7 +65,6 @@ so values set inside Reminders.app or Calendar.app remain visible.
 | Field | Action | Workaround |
 | --- | --- | --- |
 | `alarms`, `clearAlarms` | create / update | Configure alarms in Reminders.app. |
-| `recurrence`, `recurrenceRules`, `clearRecurrence` | create / update | Configure recurrence in Reminders.app. |
 | `locationTrigger`, `clearLocationTrigger` | create / update | Configure location-based reminders in Reminders.app. |
 | `location` (reminder text) | create / update | Set the reminder's location text from Reminders.app. |
 | `completionDate` | update | Use `completed: true` to mark complete (timestamp is set by EventKit automatically). |
@@ -73,6 +72,18 @@ so values set inside Reminders.app or Calendar.app remain visible.
 | `completed` | create | Create the reminder first, then call `update` with `completed: true`. |
 | `isCompleted: false` | update | Supported — `--completed false` un-completes (requires `event` CLI >= 0.5.0, commit 564bd4b). |
 | Moving a reminder between lists | update | `event` cannot move reminders between lists. Delete and recreate in the target list, or move from Reminders.app. |
+
+Reminder `create` and `update` accept a `recurrence` object with `frequency`
+(`daily`, `weekly`, `monthly`, or `yearly`) and optional `interval`, `endDate`,
+`occurrenceCount`, `daysOfWeek`, `daysOfMonth`, and `monthsOfYear`. The end date
+and occurrence count are mutually exclusive. Weekdays apply to weekly, monthly,
+and yearly rules. Weekdays accept English names, three-letter abbreviations, or
+numbers 1–7, where Sunday is 1. Month days 1–31 apply only to monthly rules;
+months 1–12 apply only to yearly rules. The end date is an inclusive local day.
+A repeating reminder needs a due date. An update can retain its
+existing due date. Use `clearRecurrence: true` on update to remove its rules.
+The returned `recurrenceRules` remain read-only output. The vendored CLI also
+accepts date-only `dueDate` values for all-day reminders.
 
 ### `reminders_lists`
 

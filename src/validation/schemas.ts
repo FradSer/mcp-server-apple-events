@@ -469,6 +469,64 @@ const SubtaskTitleSchema = createSafeTextSchema(
 
 const SubtaskTitleArraySchema = z.array(SubtaskTitleSchema).optional();
 
+const WEEKDAY_NAME =
+  /^(?:sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)$/i;
+const PositiveRecurrenceInteger = z
+  .number()
+  .int()
+  .min(1)
+  .max(Number.MAX_SAFE_INTEGER);
+
+export const ReminderRecurrenceSchema = z
+  .object({
+    frequency: z
+      .string()
+      .transform((value) => value.toLowerCase())
+      .pipe(z.enum(['daily', 'weekly', 'monthly', 'yearly'])),
+    interval: PositiveRecurrenceInteger.optional(),
+    endDate: SafeDateSchema.refine(
+      (value) => value === undefined || /^\d{4}-\d{2}-\d{2}$/.test(value),
+      'Recurrence endDate must use YYYY-MM-DD',
+    ),
+    occurrenceCount: PositiveRecurrenceInteger.optional(),
+    daysOfWeek: z
+      .array(
+        z.union([
+          z.number().int().min(1).max(7),
+          z
+            .string()
+            .trim()
+            .refine(
+              (value) => WEEKDAY_NAME.test(value) || /^[1-7]$/.test(value),
+              'Use an English weekday name, abbreviation, or 1-7 (Sunday=1)',
+            ),
+        ]),
+      )
+      .min(1)
+      .optional(),
+    daysOfMonth: z.array(z.number().int().min(1).max(31)).min(1).optional(),
+    monthsOfYear: z.array(z.number().int().min(1).max(12)).min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (value.endDate !== undefined && value.occurrenceCount !== undefined) {
+      issue('endDate', 'Use either endDate or occurrenceCount, not both');
+    }
+    if (value.daysOfWeek !== undefined && value.frequency === 'daily') {
+      issue(
+        'daysOfWeek',
+        'daysOfWeek applies to weekly, monthly, or yearly rules',
+      );
+    }
+    if (value.daysOfMonth !== undefined && value.frequency !== 'monthly') {
+      issue('daysOfMonth', 'daysOfMonth applies to monthly rules only');
+    }
+    if (value.monthsOfYear !== undefined && value.frequency !== 'yearly') {
+      issue('monthsOfYear', 'monthsOfYear applies to yearly rules only');
+    }
+  });
+
 /** Fields accepted by `event reminders create`. */
 const BaseReminderFields = {
   title: SafeTextSchema,
@@ -479,6 +537,7 @@ const BaseReminderFields = {
   priority: PriorityValueSchema,
   tags: TagArraySchema,
   subtasks: SubtaskTitleArraySchema,
+  recurrence: ReminderRecurrenceSchema.optional(),
 };
 
 export const SafeIdSchema = z.string().min(1, 'ID cannot be empty');
@@ -486,7 +545,24 @@ export const SafeIdSchema = z.string().min(1, 'ID cannot be empty');
 /**
  * Tool-specific validation schemas
  */
-export const CreateReminderSchema = z.object(BaseReminderFields);
+export const CreateReminderSchema = z
+  .object({ ...BaseReminderFields, clearRecurrence: z.boolean().optional() })
+  .superRefine((value, ctx) => {
+    if (value.clearRecurrence === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['clearRecurrence'],
+        message: 'clearRecurrence is only supported on update',
+      });
+    }
+    if (value.recurrence !== undefined && value.dueDate === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dueDate'],
+        message: 'A repeat rule needs a due date; set dueDate as well',
+      });
+    }
+  });
 
 export const ReadRemindersSchema = z
   .object({
@@ -521,20 +597,32 @@ export const ReadRemindersSchema = z
   });
 
 /** Fields accepted by `event reminders update`. */
-export const UpdateReminderSchema = z.object({
-  id: SafeIdSchema,
-  title: SafeTextSchema.optional(),
-  startDate: SafeDateSchema,
-  dueDate: SafeDateSchema,
-  note: SafeNoteSchema,
-  url: SafeUrlSchema,
-  completed: z.boolean().optional(),
-  targetList: SafeListNameSchema,
-  priority: PriorityValueSchema,
-  tags: TagArraySchema,
-  addTags: TagArraySchema,
-  removeTags: TagArraySchema,
-});
+export const UpdateReminderSchema = z
+  .object({
+    id: SafeIdSchema,
+    title: SafeTextSchema.optional(),
+    startDate: SafeDateSchema,
+    dueDate: SafeDateSchema,
+    note: SafeNoteSchema,
+    url: SafeUrlSchema,
+    completed: z.boolean().optional(),
+    targetList: SafeListNameSchema,
+    priority: PriorityValueSchema,
+    tags: TagArraySchema,
+    addTags: TagArraySchema,
+    removeTags: TagArraySchema,
+    recurrence: ReminderRecurrenceSchema.optional(),
+    clearRecurrence: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.recurrence !== undefined && value.clearRecurrence === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['clearRecurrence'],
+        message: 'Use either recurrence or clearRecurrence, not both',
+      });
+    }
+  });
 
 export const DeleteReminderSchema = z.object({
   id: SafeIdSchema,

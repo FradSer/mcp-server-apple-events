@@ -7,7 +7,11 @@
  * not used so the AdvancedReminderEdit Shortcut is not required.
  */
 
-import type { Reminder, ReminderList } from '../types/index.js';
+import type {
+  Reminder,
+  ReminderList,
+  ReminderRecurrenceInput,
+} from '../types/index.js';
 import type {
   AlarmJSON,
   CreateReminderData,
@@ -135,6 +139,28 @@ const resolveReadDateWindow = (filters: {
     ),
     endDate: toDateOnly(endStr),
   };
+};
+
+const addRecurrenceArgs = (
+  args: string[],
+  recurrence: ReminderRecurrenceInput | undefined,
+): void => {
+  if (!recurrence) return;
+  addArg(args, '--recurrence', recurrence.frequency);
+  addOptionalNumberArg(args, '--recurrence-interval', recurrence.interval);
+  addOptionalArg(args, '--recurrence-end', recurrence.endDate);
+  addOptionalNumberArg(args, '--recurrence-count', recurrence.occurrenceCount);
+  addOptionalArg(args, '--recurrence-days', recurrence.daysOfWeek?.join(','));
+  addOptionalArg(
+    args,
+    '--recurrence-days-of-month',
+    recurrence.daysOfMonth?.join(','),
+  );
+  addOptionalArg(
+    args,
+    '--recurrence-months',
+    recurrence.monthsOfYear?.join(','),
+  );
 };
 
 class ReminderRepository implements IReminderRepository {
@@ -288,6 +314,7 @@ class ReminderRepository implements IReminderRepository {
     addOptionalArg(args, '--url', data.url);
     addOptionalArg(args, '--due', data.dueDate);
     addOptionalNumberArg(args, '--priority', data.priority);
+    addRecurrenceArgs(args, data.recurrence);
     // Skip the AdvancedReminderEdit Shortcut path — tags / subtasks live in
     // the notes field (see tagUtils / subtaskUtils).
     args.push('--no-shortcuts', '--json');
@@ -307,6 +334,10 @@ class ReminderRepository implements IReminderRepository {
     addOptionalNumberArg(args, '--priority', data.priority);
     if (data.isCompleted !== undefined) {
       addArg(args, '--completed', data.isCompleted ? 'true' : 'false');
+    }
+    addRecurrenceArgs(args, data.recurrence);
+    if (data.clearRecurrence) {
+      args.push('--clear-recurrence');
     }
     args.push('--no-shortcuts', '--json');
     return executeEventCliJson<ReminderJSON>(args);

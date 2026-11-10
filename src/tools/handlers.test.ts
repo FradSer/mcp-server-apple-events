@@ -222,6 +222,41 @@ describe('Tool Handlers', () => {
   });
 
   describe('handleCreateReminder', () => {
+    it('forwards recurrence and returns the rule in both JSON representations', async () => {
+      const recurrence = {
+        frequency: 'weekly' as const,
+        interval: 2,
+        daysOfWeek: ['Monday', 'Wednesday'],
+        occurrenceCount: 4,
+      };
+      const reminder = {
+        id: 'rec-1',
+        title: 'Repeat',
+        isCompleted: false,
+        list: 'Inbox',
+        notes: null,
+        url: null,
+        dueDate: '2027-01-01',
+        priority: 0,
+        locationTrigger: null,
+        recurrenceRules: [recurrence],
+      };
+      mockReminderRepository.createReminder.mockResolvedValue(reminder);
+      const result = await handleCreateReminder({
+        action: 'create',
+        title: 'Repeat',
+        dueDate: '2027-01-01',
+        recurrence,
+      });
+      expect(mockReminderRepository.createReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ recurrence }),
+      );
+      expect(result.structuredContent).toEqual(
+        expect.objectContaining({ records: [reminder] }),
+      );
+      expect(getJsonMirror(result)).toEqual(result.structuredContent);
+    });
+
     it('returns the created reminder as an untrusted structured record', async () => {
       const newReminder = {
         id: 'rem-123',
@@ -265,6 +300,37 @@ describe('Tool Handlers', () => {
   });
 
   describe('handleUpdateReminder', () => {
+    it('forwards a replacement or clear request without requiring a new due date', async () => {
+      const reminder = {
+        id: 'rec-1',
+        title: 'Repeat',
+        isCompleted: false,
+        list: 'Inbox',
+        notes: null,
+        url: null,
+        dueDate: '2027-01-01',
+        priority: 0,
+        locationTrigger: null,
+      };
+      mockReminderRepository.updateReminder.mockResolvedValue(reminder);
+      const recurrence = {
+        frequency: 'monthly' as const,
+        daysOfMonth: [1, 15],
+      };
+      await handleUpdateReminder({ action: 'update', id: 'rec-1', recurrence });
+      expect(mockReminderRepository.updateReminder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ recurrence }),
+      );
+      await handleUpdateReminder({
+        action: 'update',
+        id: 'rec-1',
+        clearRecurrence: true,
+      });
+      expect(mockReminderRepository.updateReminder).toHaveBeenLastCalledWith(
+        expect.objectContaining({ clearRecurrence: true }),
+      );
+    });
+
     it('returns the updated reminder as an untrusted structured record', async () => {
       const updatedReminder = {
         id: 'rem-456',

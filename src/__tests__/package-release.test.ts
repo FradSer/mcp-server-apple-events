@@ -80,6 +80,27 @@ describe('release package contents', () => {
     );
   });
 
+  it('checks reminder recurrence flags in new releases', () => {
+    const step = releaseWorkflow.match(
+      /- name: Verify reminder repeat options[\s\S]*?(?=\n\s+- name:)/,
+    )?.[0];
+    expect(step).toMatch(/inputs\.tag != 'v1\.5\.0'/);
+    expect(step).toMatch(/bin\/event reminders create --help/);
+    expect(step).toMatch(/bin\/event reminders update --help/);
+    for (const flag of [
+      '--recurrence',
+      '--recurrence-interval',
+      '--recurrence-end',
+      '--recurrence-count',
+      '--recurrence-days',
+      '--recurrence-days-of-month',
+      '--recurrence-months',
+      '--clear-recurrence',
+    ]) {
+      expect(step).toContain(flag);
+    }
+  });
+
   it('pins the CI runner image and verifies the ad-hoc signed universal binary', () => {
     expect(releaseWorkflow).toMatch(/runs-on: macos-26/);
     expect(releaseWorkflow).toMatch(/APPLE_SIGNING_IDENTITY:\s*'-'/);

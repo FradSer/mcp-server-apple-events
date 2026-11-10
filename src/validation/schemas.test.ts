@@ -30,6 +30,139 @@ describe('ValidationSchemas', () => {
     jest.clearAllMocks();
   });
 
+  describe('reminder recurrence writes', () => {
+    const weekly = { frequency: 'weekly', interval: 2, daysOfWeek: ['Mon', 4] };
+
+    it('preserves a create rule and its optional limits', () => {
+      const result = CreateReminderSchema.parse({
+        title: 'Repeat',
+        dueDate: '2026-11-01',
+        recurrence: { ...weekly, occurrenceCount: 5 },
+      });
+      expect(result).toHaveProperty('recurrence', {
+        ...weekly,
+        occurrenceCount: 5,
+      });
+    });
+
+    it.each([
+      'daily',
+      'weekly',
+      'monthly',
+      'yearly',
+    ])('accepts %s', (frequency) => {
+      expect(
+        CreateReminderSchema.parse({
+          title: 'Repeat',
+          dueDate: '2026-11-01',
+          recurrence: { frequency },
+        }),
+      ).toHaveProperty('recurrence.frequency', frequency);
+    });
+
+    it.each([
+      'DAILY',
+      'Weekly',
+      'MoNtHlY',
+      'YEARLY',
+    ])('normalizes %s like the CLI', (frequency) => {
+      expect(
+        CreateReminderSchema.parse({
+          title: 'Repeat',
+          dueDate: '2026-11-01',
+          recurrence: { frequency },
+        }),
+      ).toHaveProperty('recurrence.frequency', frequency.toLowerCase());
+      expect(
+        UpdateReminderSchema.parse({ id: 'test', recurrence: { frequency } }),
+      ).toHaveProperty('recurrence.frequency', frequency.toLowerCase());
+    });
+
+    it.each([
+      {},
+      { frequency: 'hourly' },
+      { frequency: 'daily', interval: 0 },
+      { frequency: 'daily', interval: 1.5 },
+      { frequency: 'daily', occurrenceCount: 0 },
+      { frequency: 'daily', occurrenceCount: 1.5 },
+      { frequency: 'daily', endDate: '2026-02-30' },
+      { frequency: 'daily', endDate: '2026-11-01T12:00:00' },
+      { frequency: 'daily', endDate: '2026-11-01', occurrenceCount: 3 },
+      { frequency: 'daily', daysOfWeek: ['Monday'] },
+      { frequency: 'weekly', daysOfWeek: [] },
+      { frequency: 'weekly', daysOfWeek: [0] },
+      { frequency: 'weekly', daysOfWeek: [8] },
+      { frequency: 'weekly', daysOfWeek: ['Mo'] },
+      { frequency: 'weekly', daysOfMonth: [1] },
+      { frequency: 'monthly', daysOfMonth: [0] },
+      { frequency: 'monthly', daysOfMonth: [32] },
+      { frequency: 'monthly', daysOfMonth: [] },
+      { frequency: 'monthly', monthsOfYear: [1] },
+      { frequency: 'yearly', monthsOfYear: [13] },
+      { frequency: 'yearly', monthsOfYear: [] },
+      { frequency: 'yearly', daysOfMonth: [1] },
+    ])('rejects invalid rules %j', (recurrence) => {
+      expect(() =>
+        UpdateReminderSchema.parse({ id: 'test', recurrence }),
+      ).toThrow();
+    });
+
+    it('requires a due date on create and allows the existing date on update', () => {
+      expect(() =>
+        CreateReminderSchema.parse({ title: 'Repeat', recurrence: weekly }),
+      ).toThrow(/due date/i);
+      expect(
+        UpdateReminderSchema.parse({ id: 'test', recurrence: weekly }),
+      ).toHaveProperty('recurrence', weekly);
+    });
+
+    it('accepts applicable weekday and month selectors and date limits', () => {
+      for (const recurrence of [
+        {
+          frequency: 'monthly',
+          daysOfWeek: ['sunday', 'SAT', 2],
+          daysOfMonth: [1, 31],
+          endDate: '2028-02-29',
+        },
+        {
+          frequency: 'yearly',
+          monthsOfYear: [1, 12],
+          daysOfWeek: ['Wednesday'],
+        },
+      ]) {
+        expect(
+          UpdateReminderSchema.parse({ id: 'test', recurrence }),
+        ).toHaveProperty('recurrence', recurrence);
+      }
+    });
+
+    it('rejects clearRecurrence on create', () => {
+      expect(() =>
+        CreateReminderSchema.parse({ title: 'Test', clearRecurrence: true }),
+      ).toThrow();
+    });
+
+    it('clears on update and rejects a simultaneous replacement', () => {
+      expect(
+        UpdateReminderSchema.parse({ id: 'test', clearRecurrence: true }),
+      ).toHaveProperty('clearRecurrence', true);
+      expect(() =>
+        UpdateReminderSchema.parse({
+          id: 'test',
+          recurrence: weekly,
+          clearRecurrence: true,
+        }),
+      ).toThrow();
+      expect(
+        UpdateReminderSchema.parse({
+          id: 'test',
+          recurrence: weekly,
+          clearRecurrence: false,
+        }),
+      ).toHaveProperty('recurrence', weekly);
+    });
+  });
+
   describe('Base validation schemas', () => {
     describe('SafeTextSchema', () => {
       it('should validate safe text', () => {
@@ -882,7 +1015,6 @@ describe('ValidationSchemas', () => {
           alarms: [{ absoluteDate: '2024-01-15T10:15:00Z' }],
           recurrenceRules: [{ frequency: 'monthly', interval: 1 }],
           clearAlarms: true,
-          clearRecurrence: true,
           locationTrigger: {
             title: 'Office',
             latitude: 1,
@@ -898,7 +1030,6 @@ describe('ValidationSchemas', () => {
           'alarms',
           'recurrenceRules',
           'clearAlarms',
-          'clearRecurrence',
           'locationTrigger',
           'clearLocationTrigger',
           'location',

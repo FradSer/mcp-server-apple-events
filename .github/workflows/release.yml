@@ -89,6 +89,18 @@ jobs:
           ! grep -q "Authority=" /tmp/codesign.out
           codesign --verify --strict --verbose=2 bin/event
 
+      - name: Verify reminder repeat options
+        if: ${{ github.event_name == 'push' || inputs.tag != 'v1.5.0' }}
+        run: |
+          set -euo pipefail
+          bin/event reminders create --help > /tmp/reminders-create-help.out 2>&1
+          bin/event reminders update --help > /tmp/reminders-update-help.out 2>&1
+          for flag in --recurrence --recurrence-interval --recurrence-end --recurrence-count --recurrence-days --recurrence-days-of-month --recurrence-months; do
+            grep -qE -- "(^|[[:space:]])${flag}([[:space:]]|$)" /tmp/reminders-create-help.out
+            grep -qE -- "(^|[[:space:]])${flag}([[:space:]]|$)" /tmp/reminders-update-help.out
+          done
+          grep -q -- '--clear-recurrence' /tmp/reminders-update-help.out
+
       - name: Verify calendar write URL and availability options
         if: ${{ github.event_name == 'push' || inputs.tag != 'v1.5.0' }}
         run: |
